@@ -14,7 +14,7 @@ const MAX_USERS = 500;
 const DEFAULT_USERS = [
   {
     id: "u-admin",
-    userCode: "NV001",
+    userCode: "NR001",
     username: "admin",
     password: "NORA-ADMIN-2026",
     fullName: "System Admin",
@@ -29,7 +29,7 @@ const DEFAULT_USERS = [
   },
   {
     id: "u-ceo",
-    userCode: "NV002",
+    userCode: "NR002",
     username: "ceo",
     password: "NORA-CEO-2026",
     fullName: "CEO Demo",
@@ -44,7 +44,7 @@ const DEFAULT_USERS = [
   },
   {
     id: "u-head-tech",
-    userCode: "NV003",
+    userCode: "NR003",
     username: "head-tech",
     password: "NORA-HEAD-2026",
     fullName: "Trưởng BP Kỹ thuật",

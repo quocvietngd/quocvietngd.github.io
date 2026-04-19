@@ -501,7 +501,7 @@ const seedAccountingCashflow = [
 const seedAccountingAttendance = [
   {
     id: "at-001",
-    employeeCode: "NV001",
+    employeeCode: "NR001",
     employeeName: "Yến",
     department: "Điều dưỡng",
     date: today,
@@ -513,7 +513,7 @@ const seedAccountingAttendance = [
   },
   {
     id: "at-002",
-    employeeCode: "NV002",
+    employeeCode: "NR002",
     employeeName: "Quyền",
     department: "Tư vấn",
     date: today,
@@ -525,7 +525,7 @@ const seedAccountingAttendance = [
   },
   {
     id: "at-003",
-    employeeCode: "NV003",
+    employeeCode: "NR003",
     employeeName: "Hồ Trang",
     department: "Telesales",
     date: today,
