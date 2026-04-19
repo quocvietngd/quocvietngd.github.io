@@ -181,6 +181,7 @@ const VN_ADDRESSES = {
 const STORAGE = {
   reports: "nora_reports_v1",
   dataSource: "nora_data_source_v1",
+  usersSyncEndpoint: "nora_users_sync_endpoint_v1",
   auth: "nora_auth_v1",
   loginPrefs: "nora_login_prefs_v1",
   users: "nora_users_v1",
@@ -2568,6 +2569,10 @@ let hrFiles = loadJSON(STORAGE.hrFiles, {});
 let authState = loadJSON(STORAGE.auth, { loggedIn: false, role: null, username: null, userId: null });
 let reports = loadJSON(STORAGE.reports, seedReports);
 let dataSourceConfig = normalizeDataSourceConfig(loadJSON(STORAGE.dataSource, { type: "local", url: "" }));
+let usersSyncTimer = null;
+let usersSyncPromise = null;
+let usersSyncListenersBound = false;
+const USERS_AUTO_SYNC_INTERVAL = 20000;
 let editingUserId = null;
 let editingCustomerId = null;
 let editingInventoryId = null;
@@ -2697,11 +2702,39 @@ function applyDataSourceConfigToInputs() {
   if (els.sourceUrl) els.sourceUrl.value = dataSourceConfig.url;
 }
 
-function getUsersSyncEndpoint() {
+function isHttpUrl(value) {
+  return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+function deriveUsersEndpoint(rawUrl) {
+  const normalized = String(rawUrl || "").trim().replace(/\/+$/g, "");
+  if (!normalized) return "";
+  if (/\/users?$/i.test(normalized)) return normalized;
+  if (/\/reports?$/i.test(normalized)) return normalized.replace(/\/reports?$/i, "/users");
+  return `${normalized}/users`;
+}
+
+function getSavedUsersSyncEndpoint() {
+  return String(loadJSON(STORAGE.usersSyncEndpoint, "") || "").trim();
+}
+
+function saveUsersSyncEndpoint(endpointUrl) {
+  saveJSON(STORAGE.usersSyncEndpoint, String(endpointUrl || "").trim());
+}
+
+function rememberUsersSyncEndpointFromSource() {
   const cfg = getCurrentDataSourceConfig();
-  if (cfg.type !== "api" || !cfg.url) return "";
-  if (/\/reports?$/i.test(cfg.url)) return cfg.url.replace(/\/reports?$/i, "/users");
-  return `${cfg.url.replace(/\/+$/g, "")}/users`;
+  if (!isHttpUrl(cfg.url)) return;
+  saveUsersSyncEndpoint(deriveUsersEndpoint(cfg.url));
+}
+
+function getUsersSyncEndpoint() {
+  const saved = getSavedUsersSyncEndpoint();
+  if (isHttpUrl(saved)) return deriveUsersEndpoint(saved);
+
+  const cfg = getCurrentDataSourceConfig();
+  if (!isHttpUrl(cfg.url)) return "";
+  return deriveUsersEndpoint(cfg.url);
 }
 
 function normalizeRemoteUser(user = {}) {
@@ -2756,6 +2789,9 @@ async function pushRemoteUsers(endpointUrl, usersList) {
 }
 
 async function syncUsersFromRemote(showToastOnSuccess = false) {
+  if (usersSyncPromise) return usersSyncPromise;
+
+  usersSyncPromise = (async () => {
   const endpointUrl = getUsersSyncEndpoint();
   if (!endpointUrl) return false;
   const remoteUsers = await fetchRemoteUsers(endpointUrl);
@@ -2766,6 +2802,13 @@ async function syncUsersFromRemote(showToastOnSuccess = false) {
     showToast(`Đã tải ${remoteUsers.length} tài khoản từ remote.`, "success");
   }
   return true;
+  })();
+
+  try {
+    return await usersSyncPromise;
+  } finally {
+    usersSyncPromise = null;
+  }
 }
 
 async function persistUsersToRemote(actionLabel = "") {
@@ -2792,6 +2835,33 @@ function syncUsersToRemoteInBackground(actionLabel = "") {
     if (actionLabel) {
       logActivity("Nhân sự", "Cảnh báo đồng bộ cloud", `${actionLabel} | ${err.message}`);
     }
+  });
+}
+
+function startUsersAutoSync() {
+  if (usersSyncTimer) clearInterval(usersSyncTimer);
+  usersSyncTimer = setInterval(() => {
+    if (document.hidden) return;
+    syncUsersFromRemote(false).catch(() => {
+      // Keep local fallback when endpoint is temporarily unavailable.
+    });
+  }, USERS_AUTO_SYNC_INTERVAL);
+
+  if (usersSyncListenersBound) return;
+  usersSyncListenersBound = true;
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      syncUsersFromRemote(false).catch(() => {
+        // Keep local fallback when endpoint is temporarily unavailable.
+      });
+    }
+  });
+
+  window.addEventListener("focus", () => {
+    syncUsersFromRemote(false).catch(() => {
+      // Keep local fallback when endpoint is temporarily unavailable.
+    });
   });
 }
 let attendanceAutoSyncSignature = "";
@@ -10782,21 +10852,25 @@ els.userBody.addEventListener("click", async (event) => {
 });
 
 applyDataSourceConfigToInputs();
+rememberUsersSyncEndpointFromSource();
 syncUsersFromRemote(false).then((updated) => {
   if (updated && authState.loggedIn) renderUserTable();
 }).catch(() => {
   // Keep local users as fallback when remote is unavailable.
 });
+startUsersAutoSync();
 
 if (els.sourceType) {
   els.sourceType.addEventListener("change", () => {
     saveDataSourceConfigFromInputs();
+    rememberUsersSyncEndpointFromSource();
   });
 }
 
 if (els.sourceUrl) {
   els.sourceUrl.addEventListener("change", () => {
     saveDataSourceConfigFromInputs();
+    rememberUsersSyncEndpointFromSource();
   });
 }
 
@@ -10809,6 +10883,7 @@ els.syncBtn.addEventListener("click", async () => {
   const type = els.sourceType.value;
   const url = els.sourceUrl.value.trim();
   saveDataSourceConfigFromInputs();
+  rememberUsersSyncEndpointFromSource();
   showToast("Đang đồng bộ dữ liệu...", "info");
 
   try {
@@ -10839,6 +10914,7 @@ els.testConnectionBtn.addEventListener("click", async () => {
   const type = els.sourceType.value;
   const url = els.sourceUrl.value.trim();
   saveDataSourceConfigFromInputs();
+  rememberUsersSyncEndpointFromSource();
   if (!url) {
     showToast("Vui lòng nhập endpoint URL.", "warning");
     return;
