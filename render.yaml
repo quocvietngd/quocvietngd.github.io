@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: nora-sync-api
+    name: nora-sync-quocvietngd-2026
     runtime: node
     plan: free
     buildCommand: npm install
