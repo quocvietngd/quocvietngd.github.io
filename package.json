@@ -1,0 +1,21 @@
+{
+  "name": "nora-kpi-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:webhook": "node server/webhook-server.mjs",
+    "dev:realtime": "node server/webhook-server.mjs & vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.3",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1"
+  },
+  "devDependencies": {
+    "vite": "^5.3.3"
+  }
+}

@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run NORA Dashboard",
+			"type": "shell",
+			"command": "zsh",
+			"args": [
+				"-lc",
+				"export PATH=\"/Users/tranquocviet/.local/node/node-v22.14.0-darwin-arm64/bin:$PATH\" && npm run dev"
+			],
+			"isBackground": true,
+			"group": "build"
+		}
+	]
+}
