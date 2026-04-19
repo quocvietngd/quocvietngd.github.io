@@ -54,6 +54,40 @@ Ghi chú:
 - Nếu chạy local, cần tunnel HTTPS (ngrok/cloudflared) trỏ về `http://localhost:8787` để Telegram gọi webhook.
 - Nút Đọc tin báo cáo vẫn có thể dùng để đồng bộ thủ công ngay lập tức.
 
+## Dong bo mat khau da thiet bi (Users Cloud)
+
+Server `server/webhook-server.mjs` da duoc mo rong thanh API luu users + reports dung chung cho nhieu thiet bi.
+
+### 1) Chay API server
+
+- Lenh:
+  - `npm run dev:webhook`
+- Server se mo cong `8787` va co cac endpoint:
+  - `GET/PUT/POST /api/users`
+  - `GET/PUT/POST /api/reports`
+
+### 2) Public API de thiet bi khac truy cap
+
+- Dung localtunnel/ngrok/cloudflared tro vao cong `8787`.
+- Vi du URL public: `https://abcxyz.loca.lt`
+
+### 3) Cau hinh trong dashboard (tren MOI thiet bi)
+
+- Vao trang `Nguon du lieu`.
+- Chon `Data source = REST API`.
+- Nhap URL: `https://abcxyz.loca.lt/api/reports`
+- Bam `Dong bo du lieu`.
+
+Luu y:
+- App tu dong doi `/api/reports` -> `/api/users` de dong bo tai khoan.
+- Khi tao/sua tai khoan (doi mat khau), app se day danh sach users len cloud endpoint.
+- Khi dang nhap, app se keo users cloud truoc khi kiem tra mat khau.
+
+### 4) Kiem tra nhanh
+
+- `curl https://abcxyz.loca.lt/api/users`
+- Neu thay danh sach users JSON va sau khi doi mat khau co cap nhat, dong bo da thanh cong.
+
 ## Dữ liệu remote kỳ vọng
 
 GET endpoint trả về mảng JSON:

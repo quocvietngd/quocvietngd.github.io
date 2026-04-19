@@ -7,6 +7,55 @@ const PORT = Number(process.env.TELEGRAM_WEBHOOK_PORT || 8787);
 const HOST = process.env.TELEGRAM_WEBHOOK_HOST || "0.0.0.0";
 const STATE_FILE = resolve(process.cwd(), "server", "telegram-bridge-state.json");
 const MAX_REPORTS = 2000;
+const MAX_USERS = 500;
+
+const DEFAULT_USERS = [
+  {
+    id: "u-admin",
+    userCode: "NV001",
+    username: "admin",
+    password: "NORA-ADMIN-2026",
+    fullName: "System Admin",
+    roleKey: "admin",
+    department: "Vận hành",
+    phone: "",
+    email: "",
+    address: "",
+    bankAccount: "",
+    status: "active",
+    createdAt: Date.now()
+  },
+  {
+    id: "u-ceo",
+    userCode: "NV002",
+    username: "ceo",
+    password: "NORA-CEO-2026",
+    fullName: "CEO Demo",
+    roleKey: "ceo",
+    department: "Ban điều hành",
+    phone: "",
+    email: "",
+    address: "",
+    bankAccount: "",
+    status: "active",
+    createdAt: Date.now()
+  },
+  {
+    id: "u-head-tech",
+    userCode: "NV003",
+    username: "head-tech",
+    password: "NORA-HEAD-2026",
+    fullName: "Trưởng BP Kỹ thuật",
+    roleKey: "head",
+    department: "Kỹ thuật",
+    phone: "",
+    email: "",
+    address: "",
+    bankAccount: "",
+    status: "active",
+    createdAt: Date.now()
+  }
+];
 
 function ensureStateFile() {
   const dir = dirname(STATE_FILE);
@@ -20,7 +69,9 @@ function ensureStateFile() {
       webhookSecret: randomUUID().replace(/-/g, ""),
       webhookPath: "",
       updatedAt: 0,
-      reports: []
+      reports: [],
+      users: DEFAULT_USERS,
+      kpiReports: []
     };
     writeFileSync(STATE_FILE, JSON.stringify(initial, null, 2), "utf8");
   }
@@ -29,7 +80,20 @@ function ensureStateFile() {
 function readState() {
   ensureStateFile();
   try {
-    return JSON.parse(readFileSync(STATE_FILE, "utf8"));
+    const raw = JSON.parse(readFileSync(STATE_FILE, "utf8"));
+    const normalized = {
+      token: String(raw.token || ""),
+      chatId: String(raw.chatId || ""),
+      lastUpdateId: Number(raw.lastUpdateId || 0),
+      webhookBaseUrl: String(raw.webhookBaseUrl || ""),
+      webhookSecret: String(raw.webhookSecret || randomUUID().replace(/-/g, "")),
+      webhookPath: String(raw.webhookPath || ""),
+      updatedAt: Number(raw.updatedAt || 0),
+      reports: Array.isArray(raw.reports) ? raw.reports.slice(-MAX_REPORTS) : [],
+      users: normalizeUsersList(raw.users && Array.isArray(raw.users) && raw.users.length ? raw.users : DEFAULT_USERS),
+      kpiReports: normalizeKpiReportsList(raw.kpiReports)
+    };
+    return normalized;
   } catch {
     return {
       token: "",
@@ -39,9 +103,54 @@ function readState() {
       webhookSecret: randomUUID().replace(/-/g, ""),
       webhookPath: "",
       updatedAt: 0,
-      reports: []
+      reports: [],
+      users: DEFAULT_USERS,
+      kpiReports: []
     };
   }
+}
+
+function normalizeUser(input = {}) {
+  return {
+    id: String(input.id || `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
+    userCode: String(input.userCode || "").trim().toUpperCase(),
+    username: String(input.username || "").trim().toLowerCase(),
+    password: String(input.password || ""),
+    fullName: String(input.fullName || "").trim(),
+    roleKey: String(input.roleKey || "staff"),
+    department: String(input.department || "Ban điều hành"),
+    phone: String(input.phone || ""),
+    email: String(input.email || ""),
+    address: String(input.address || ""),
+    bankAccount: String(input.bankAccount || ""),
+    status: input.status === "suspended" ? "suspended" : "active",
+    createdAt: Number(input.createdAt) || Date.now()
+  };
+}
+
+function normalizeUsersList(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((item) => normalizeUser(item))
+    .filter((user) => user.username)
+    .slice(-MAX_USERS);
+}
+
+function normalizeKpiReport(input = {}) {
+  return {
+    date: normalizeDate(input.date),
+    department: String(input.department || "Chưa xác định").trim() || "Chưa xác định",
+    completion: parseFlexibleNumber(input.completion),
+    quality: parseFlexibleNumber(input.quality),
+    issues: parseFlexibleNumber(input.issues),
+    submitter: String(input.submitter || "Unknown").trim() || "Unknown",
+    updatedAt: Number(input.updatedAt) || Date.now()
+  };
+}
+
+function normalizeKpiReportsList(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((item) => normalizeKpiReport(item)).slice(-MAX_REPORTS);
 }
 
 function writeState(nextState) {
@@ -53,7 +162,9 @@ function writeState(nextState) {
     webhookSecret: String(nextState.webhookSecret || randomUUID().replace(/-/g, "")),
     webhookPath: String(nextState.webhookPath || ""),
     updatedAt: Number(nextState.updatedAt || Date.now()),
-    reports: Array.isArray(nextState.reports) ? nextState.reports.slice(-MAX_REPORTS) : []
+    reports: Array.isArray(nextState.reports) ? nextState.reports.slice(-MAX_REPORTS) : [],
+    users: normalizeUsersList(nextState.users && Array.isArray(nextState.users) && nextState.users.length ? nextState.users : DEFAULT_USERS),
+    kpiReports: normalizeKpiReportsList(nextState.kpiReports)
   };
   writeFileSync(STATE_FILE, JSON.stringify(safe, null, 2), "utf8");
   return safe;
@@ -63,10 +174,22 @@ function sendJson(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type"
   });
   res.end(JSON.stringify(payload));
+}
+
+function pickUsersPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.users)) return payload.users;
+  return [];
+}
+
+function pickReportsPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.reports)) return payload.reports;
+  return [];
 }
 
 function normalizeVietnamese(input) {
@@ -268,6 +391,76 @@ const server = createServer(async (req, res) => {
 
   if (method === "GET" && url.pathname === "/api/telegram/health") {
     sendJson(res, 200, { ok: true, service: "telegram-webhook-bridge" });
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/users") {
+    const state = readState();
+    sendJson(res, 200, state.users || []);
+    return;
+  }
+
+  if ((method === "PUT" || method === "POST") && url.pathname === "/api/users") {
+    try {
+      const payload = await parseJsonBody(req);
+      const state = readState();
+      const incomingUsers = pickUsersPayload(payload);
+      const nextUsers = normalizeUsersList(incomingUsers);
+      if (!nextUsers.length) {
+        sendJson(res, 400, { ok: false, error: "Users payload phải là mảng users hợp lệ" });
+        return;
+      }
+      state.users = nextUsers;
+      state.updatedAt = Date.now();
+      const saved = writeState(state);
+      sendJson(res, 200, { ok: true, count: saved.users.length });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Save users failed" });
+    }
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/reports") {
+    const state = readState();
+    sendJson(res, 200, state.kpiReports || []);
+    return;
+  }
+
+  if (method === "PUT" && url.pathname === "/api/reports") {
+    try {
+      const payload = await parseJsonBody(req);
+      const state = readState();
+      const incomingReports = pickReportsPayload(payload);
+      const nextReports = normalizeKpiReportsList(incomingReports);
+      state.kpiReports = nextReports;
+      state.updatedAt = Date.now();
+      const saved = writeState(state);
+      sendJson(res, 200, { ok: true, count: saved.kpiReports.length });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Save reports failed" });
+    }
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/reports") {
+    try {
+      const payload = await parseJsonBody(req);
+      const state = readState();
+      const incoming = Array.isArray(payload)
+        ? pickReportsPayload(payload)
+        : (payload && Array.isArray(payload.reports) ? payload.reports : [payload]);
+      const normalized = normalizeKpiReportsList(incoming);
+      if (!normalized.length) {
+        sendJson(res, 400, { ok: false, error: "Reports payload không hợp lệ" });
+        return;
+      }
+      state.kpiReports = [...(state.kpiReports || []), ...normalized].slice(-MAX_REPORTS);
+      state.updatedAt = Date.now();
+      const saved = writeState(state);
+      sendJson(res, 200, { ok: true, count: saved.kpiReports.length });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Append report failed" });
+    }
     return;
   }
 

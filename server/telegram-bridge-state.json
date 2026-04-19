@@ -5,7 +5,7 @@
   "webhookBaseUrl": "",
   "webhookSecret": "af0f3d03a19c4be3abddbef1387cfe96",
   "webhookPath": "",
-  "updatedAt": 1776490500104,
+  "updatedAt": 1776592475862,
   "reports": [
     {
       "id": "900001",
@@ -189,5 +189,53 @@
         "telegramUpdateId": "147800165"
       }
     }
-  ]
+  ],
+  "users": [
+    {
+      "id": "u-admin",
+      "userCode": "NV001",
+      "username": "admin",
+      "password": "NORA-ADMIN-2026",
+      "fullName": "System Admin",
+      "roleKey": "admin",
+      "department": "Vận hành",
+      "phone": "",
+      "email": "",
+      "address": "",
+      "bankAccount": "",
+      "status": "active",
+      "createdAt": 1776592440074
+    },
+    {
+      "id": "u-ceo",
+      "userCode": "NV002",
+      "username": "ceo",
+      "password": "NORA-CEO-2026",
+      "fullName": "CEO Demo",
+      "roleKey": "ceo",
+      "department": "Ban điều hành",
+      "phone": "",
+      "email": "",
+      "address": "",
+      "bankAccount": "",
+      "status": "active",
+      "createdAt": 1776592440074
+    },
+    {
+      "id": "u-head-tech",
+      "userCode": "NV003",
+      "username": "head-tech",
+      "password": "NORA-HEAD-2026",
+      "fullName": "Trưởng BP Kỹ thuật",
+      "roleKey": "head",
+      "department": "Kỹ thuật",
+      "phone": "",
+      "email": "",
+      "address": "",
+      "bankAccount": "",
+      "status": "active",
+      "createdAt": 1776592440074
+    }
+  ],
+  "kpiReports": []
 }
