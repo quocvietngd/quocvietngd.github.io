@@ -2805,16 +2805,18 @@ async function syncUsersFromRemote(showToastOnSuccess = false) {
   if (usersSyncPromise) return usersSyncPromise;
 
   usersSyncPromise = (async () => {
-  const endpointUrl = getUsersSyncEndpoint();
-  if (!endpointUrl) return false;
-  const remoteUsers = await fetchRemoteUsers(endpointUrl);
-  if (!remoteUsers.length) return false;
-  users = remoteUsers;
-  saveJSON(STORAGE.users, users);
-  if (showToastOnSuccess) {
-    showToast(`Đã tải ${remoteUsers.length} tài khoản từ remote.`, "success");
-  }
-  return true;
+    const endpointUrl = getUsersSyncEndpoint();
+    if (!endpointUrl) return false;
+    const remoteUsers = await fetchRemoteUsers(endpointUrl);
+    if (!remoteUsers.length) return false;
+    users = remoteUsers;
+    saveJSON(STORAGE.users, users);
+    const forcedLogout = enforceActiveSessionAccess();
+    if (forcedLogout) return true;
+    if (showToastOnSuccess) {
+      showToast(`Đã tải ${remoteUsers.length} tài khoản từ remote.`, "success");
+    }
+    return true;
   })();
 
   try {
@@ -4618,12 +4620,31 @@ function performLogout() {
   renderAll();
 }
 
+function enforceActiveSessionAccess() {
+  if (!authState.loggedIn || !authState.userId) return false;
+  const currentUser = users.find((u) => u.id === authState.userId);
+  if (!currentUser) {
+    showToast("Tài khoản đã bị xóa. Vui lòng liên hệ quản trị viên.", "warning");
+    performLogout();
+    return true;
+  }
+  if ((currentUser.status || "active") === "suspended") {
+    showToast("Tài khoản đang bị tạm dừng. Bạn đã được đăng xuất.", "warning");
+    performLogout();
+    return true;
+  }
+  return false;
+}
+
 function setAuthUI() {
   if (authState.loggedIn) {
     const user = getCurrentUser();
-    if (!user) {
+    if (!user || (user.status || "active") === "suspended") {
       authState = { loggedIn: false, role: null, username: null, userId: null };
       saveJSON(STORAGE.auth, authState);
+      if (user && (user.status || "active") === "suspended") {
+        showToast("Tài khoản đang bị tạm dừng. Bạn đã được đăng xuất.", "warning");
+      }
       setAuthUI();
       return;
     }
@@ -10518,6 +10539,11 @@ els.loginBtn.addEventListener("click", async () => {
 
   if (!user || user.password !== password) {
     els.authMessage.textContent = "Tên đăng nhập hoặc mật khẩu không hợp lệ";
+    return;
+  }
+
+  if ((user.status || "active") === "suspended") {
+    els.authMessage.textContent = "Tài khoản đang tạm dừng. Vui lòng liên hệ quản trị viên.";
     return;
   }
 
