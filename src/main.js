@@ -180,6 +180,7 @@ const VN_ADDRESSES = {
 /* eslint-enable */
 const STORAGE = {
   reports: "nora_reports_v1",
+  dataSource: "nora_data_source_v1",
   auth: "nora_auth_v1",
   loginPrefs: "nora_login_prefs_v1",
   users: "nora_users_v1",
@@ -2566,6 +2567,7 @@ let recycleBin = loadJSON(STORAGE.recycleBin, []);
 let hrFiles = loadJSON(STORAGE.hrFiles, {});
 let authState = loadJSON(STORAGE.auth, { loggedIn: false, role: null, username: null, userId: null });
 let reports = loadJSON(STORAGE.reports, seedReports);
+let dataSourceConfig = normalizeDataSourceConfig(loadJSON(STORAGE.dataSource, { type: "local", url: "" }));
 let editingUserId = null;
 let editingCustomerId = null;
 let editingInventoryId = null;
@@ -2678,6 +2680,120 @@ let nurseReportOverrides = loadJSON(STORAGE.nurseReportOverrides, {});
 let telegramSourceConfig = loadJSON(STORAGE.telegramSource, { token: "", chatId: "", webhookBaseUrl: "", lastUpdateId: 0, lastSyncedAt: 0 });
 let attendanceAutoSyncTimer = null;
 let attendanceSyncInProgress = false;
+
+function getCurrentDataSourceConfig() {
+  const type = els.sourceType ? els.sourceType.value : dataSourceConfig.type;
+  const url = els.sourceUrl ? els.sourceUrl.value.trim() : dataSourceConfig.url;
+  return normalizeDataSourceConfig({ type, url });
+}
+
+function saveDataSourceConfigFromInputs() {
+  dataSourceConfig = getCurrentDataSourceConfig();
+  saveJSON(STORAGE.dataSource, dataSourceConfig);
+}
+
+function applyDataSourceConfigToInputs() {
+  if (els.sourceType) els.sourceType.value = dataSourceConfig.type;
+  if (els.sourceUrl) els.sourceUrl.value = dataSourceConfig.url;
+}
+
+function getUsersSyncEndpoint() {
+  const cfg = getCurrentDataSourceConfig();
+  if (cfg.type !== "api" || !cfg.url) return "";
+  if (/\/reports?$/i.test(cfg.url)) return cfg.url.replace(/\/reports?$/i, "/users");
+  return `${cfg.url.replace(/\/+$/g, "")}/users`;
+}
+
+function normalizeRemoteUser(user = {}) {
+  return {
+    id: String(user.id || `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
+    userCode: String(user.userCode || "").trim().toUpperCase(),
+    username: String(user.username || "").trim().toLowerCase(),
+    password: String(user.password || ""),
+    fullName: String(user.fullName || "").trim(),
+    roleKey: String(user.roleKey || "staff"),
+    department: String(user.department || "Ban điều hành"),
+    phone: String(user.phone || ""),
+    email: String(user.email || ""),
+    address: String(user.address || ""),
+    bankAccount: String(user.bankAccount || ""),
+    status: user.status === "suspended" ? "suspended" : "active",
+    createdAt: Number(user.createdAt) || Date.now()
+  };
+}
+
+function sanitizeUsersForRemote(list) {
+  return list.map((user) => normalizeRemoteUser(user));
+}
+
+async function fetchRemoteUsers(endpointUrl) {
+  const response = await fetch(endpointUrl, { method: "GET" });
+  if (!response.ok) throw new Error(`Không thể GET users (${response.status})`);
+  const data = await response.json();
+  if (!Array.isArray(data)) throw new Error("Users remote phải là mảng JSON");
+  return data.map((user) => normalizeRemoteUser(user)).filter((user) => user.username);
+}
+
+async function pushRemoteUsers(endpointUrl, usersList) {
+  const payload = sanitizeUsersForRemote(usersList);
+  const tryRequests = [
+    { method: "PUT", body: JSON.stringify(payload) },
+    { method: "POST", body: JSON.stringify(payload) },
+    { method: "POST", body: JSON.stringify({ users: payload }) }
+  ];
+
+  let lastStatus = "N/A";
+  for (const req of tryRequests) {
+    const response = await fetch(endpointUrl, {
+      method: req.method,
+      headers: { "Content-Type": "application/json" },
+      body: req.body
+    });
+    lastStatus = String(response.status);
+    if (response.ok) return;
+  }
+  throw new Error(`Không thể đồng bộ users lên remote (HTTP ${lastStatus})`);
+}
+
+async function syncUsersFromRemote(showToastOnSuccess = false) {
+  const endpointUrl = getUsersSyncEndpoint();
+  if (!endpointUrl) return false;
+  const remoteUsers = await fetchRemoteUsers(endpointUrl);
+  if (!remoteUsers.length) return false;
+  users = remoteUsers;
+  saveJSON(STORAGE.users, users);
+  if (showToastOnSuccess) {
+    showToast(`Đã tải ${remoteUsers.length} tài khoản từ remote.`, "success");
+  }
+  return true;
+}
+
+async function persistUsersToRemote(actionLabel = "") {
+  saveJSON(STORAGE.users, users);
+  const endpointUrl = getUsersSyncEndpoint();
+  if (!endpointUrl) return true;
+  try {
+    await pushRemoteUsers(endpointUrl, users);
+    return true;
+  } catch (err) {
+    showToast(`Đã lưu local nhưng chưa đồng bộ cloud: ${err.message}`, "warning");
+    if (actionLabel) {
+      logActivity("Nhân sự", "Cảnh báo đồng bộ cloud", `${actionLabel} | ${err.message}`);
+    }
+    return false;
+  }
+}
+
+function syncUsersToRemoteInBackground(actionLabel = "") {
+  const endpointUrl = getUsersSyncEndpoint();
+  if (!endpointUrl) return;
+  pushRemoteUsers(endpointUrl, users).catch((err) => {
+    showToast(`Chưa đồng bộ cloud users: ${err.message}`, "warning");
+    if (actionLabel) {
+      logActivity("Nhân sự", "Cảnh báo đồng bộ cloud", `${actionLabel} | ${err.message}`);
+    }
+  });
+}
 let attendanceAutoSyncSignature = "";
 let telegramRealtimeSyncTimer = null;
 let schedules = loadJSON(STORAGE.schedule, seedSchedule);
@@ -2954,6 +3070,14 @@ function loadJSON(key, fallback) {
 
 function saveJSON(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function normalizeDataSourceConfig(rawConfig = {}) {
+  const type = rawConfig.type === "api" || rawConfig.type === "sheet" ? rawConfig.type : "local";
+  return {
+    type,
+    url: String(rawConfig.url || "").trim()
+  };
 }
 
 function clonePlain(value) {
@@ -3952,6 +4076,7 @@ function restoreDeletedRecord(restoreRef) {
         : item.payload;
       users.push(restoredUser);
       saveJSON(STORAGE.users, users);
+      syncUsersToRemoteInBackground(`Khôi phục tài khoản ${restoredUser.username}`);
     }
   } else if (item.entityType === "customer") {
     const exists = customers.some((c) => c.id === item.payload.id);
@@ -9198,7 +9323,7 @@ els.hrProfileFileList.addEventListener("click", (event) => {
   }
 });
 
-els.userBody.addEventListener("click", (event) => {
+els.userBody.addEventListener("click", async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
   if (target.classList.contains("user-name-link")) {
@@ -10297,7 +10422,13 @@ async function postRemoteReport(type, url, payload) {
   if (!response.ok) throw new Error(`Không thể POST lên ${type}`);
 }
 
-els.loginBtn.addEventListener("click", () => {
+els.loginBtn.addEventListener("click", async () => {
+  try {
+    await syncUsersFromRemote(false);
+  } catch (err) {
+    showToast(`Không thể tải tài khoản cloud: ${err.message}`, "warning");
+  }
+
   const username = els.loginUsername.value.trim().toLowerCase();
   const password = els.loginPassword.value;
   const user = users.find((u) => u.username.toLowerCase() === username);
@@ -10454,7 +10585,7 @@ els.customerBody.addEventListener("click", (event) => {
   renderCustomerTable();
 });
 
-els.saveUserBtn.addEventListener("click", () => {
+els.saveUserBtn.addEventListener("click", async () => {
   if (!can("canManageUsers")) {
     els.userManageStatus.textContent = "Bạn không có quyền quản lý tài khoản.";
     els.userModalStatus.textContent = "Bạn không có quyền quản lý tài khoản.";
@@ -10476,6 +10607,12 @@ els.saveUserBtn.addEventListener("click", () => {
     els.userManageStatus.textContent = msg;
     els.userModalStatus.textContent = msg;
   };
+
+  try {
+    await syncUsersFromRemote(false);
+  } catch (err) {
+    showToast(`Không thể tải users cloud trước khi lưu: ${err.message}`, "warning");
+  }
 
   if (!userCode) {
     showFormError("Vui lòng nhập mã nhân viên.");
@@ -10539,7 +10676,7 @@ els.saveUserBtn.addEventListener("click", () => {
     logActivity("Nhân sự", "Tạo tài khoản", `${userCode} | ${username} | Vai trò: ${roleKey}`);
   }
 
-  saveJSON(STORAGE.users, users);
+  await persistUsersToRemote(`Lưu tài khoản ${username}`);
 
   const currentUser = getCurrentUser();
   if (currentUser && currentUser.id === authState.userId) {
@@ -10553,7 +10690,7 @@ els.saveUserBtn.addEventListener("click", () => {
   renderAll();
 });
 
-els.userBody.addEventListener("click", (event) => {
+els.userBody.addEventListener("click", async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
   if (!can("canManageUsers")) return;
@@ -10597,6 +10734,11 @@ els.userBody.addEventListener("click", (event) => {
   if (target.classList.contains("user-suspend-btn")) {
     // close dropdown
     hideAllActionMenus();
+    try {
+      await syncUsersFromRemote(false);
+    } catch (err) {
+      showToast(`Không thể tải users cloud trước khi cập nhật: ${err.message}`, "warning");
+    }
     const isSelf = userId === authState.userId;
     users = users.map((u) => {
       if (u.id !== userId) return u;
@@ -10604,7 +10746,7 @@ els.userBody.addEventListener("click", (event) => {
       logActivity("Nhân sự", newStatus === "suspended" ? "Tạm dừng tài khoản" : "Kích hoạt tài khoản", `${u.userCode || u.username}`);
       return { ...u, status: newStatus };
     });
-    saveJSON(STORAGE.users, users);
+    await persistUsersToRemote("Cập nhật trạng thái tài khoản");
     if (isSelf) {
       performLogout();
       return;
@@ -10621,9 +10763,15 @@ els.userBody.addEventListener("click", (event) => {
       return;
     }
 
+    try {
+      await syncUsersFromRemote(false);
+    } catch (err) {
+      showToast(`Không thể tải users cloud trước khi xóa: ${err.message}`, "warning");
+    }
+
     const deletedUser = users.find((u) => u.id === userId);
     users = users.filter((u) => u.id !== userId);
-    saveJSON(STORAGE.users, users);
+    await persistUsersToRemote(`Xóa tài khoản ${deletedUser ? deletedUser.username : userId}`);
     els.userManageStatus.textContent = "Đã xóa tài khoản.";
     if (deletedUser) {
       const restoreRef = addToRecycleBin("user", deletedUser, `Tài khoản: ${deletedUser.username}`);
@@ -10633,6 +10781,25 @@ els.userBody.addEventListener("click", (event) => {
   }
 });
 
+applyDataSourceConfigToInputs();
+syncUsersFromRemote(false).then((updated) => {
+  if (updated && authState.loggedIn) renderUserTable();
+}).catch(() => {
+  // Keep local users as fallback when remote is unavailable.
+});
+
+if (els.sourceType) {
+  els.sourceType.addEventListener("change", () => {
+    saveDataSourceConfigFromInputs();
+  });
+}
+
+if (els.sourceUrl) {
+  els.sourceUrl.addEventListener("change", () => {
+    saveDataSourceConfigFromInputs();
+  });
+}
+
 els.syncBtn.addEventListener("click", async () => {
   if (!can("canSyncData")) {
     els.submitStatus.textContent = "Bạn không có quyền đồng bộ dữ liệu.";
@@ -10641,6 +10808,7 @@ els.syncBtn.addEventListener("click", async () => {
 
   const type = els.sourceType.value;
   const url = els.sourceUrl.value.trim();
+  saveDataSourceConfigFromInputs();
   showToast("Đang đồng bộ dữ liệu...", "info");
 
   try {
@@ -10652,6 +10820,13 @@ els.syncBtn.addEventListener("click", async () => {
     const remoteReports = await fetchRemoteReports(type, url);
     reports = remoteReports;
     saveJSON(STORAGE.reports, reports);
+    if (type === "api") {
+      try {
+        await syncUsersFromRemote(false);
+      } catch {
+        // reports sync can still succeed even if users endpoint is unavailable.
+      }
+    }
     renderAll();
     showToast("Đồng bộ thành công.");
     logActivity("Dữ liệu", "Đồng bộ dữ liệu", `Nguồn: ${type} | Endpoint: ${url}`);
@@ -10663,6 +10838,7 @@ els.syncBtn.addEventListener("click", async () => {
 els.testConnectionBtn.addEventListener("click", async () => {
   const type = els.sourceType.value;
   const url = els.sourceUrl.value.trim();
+  saveDataSourceConfigFromInputs();
   if (!url) {
     showToast("Vui lòng nhập endpoint URL.", "warning");
     return;
@@ -10820,6 +10996,7 @@ els.reportForm.addEventListener("submit", async (event) => {
   try {
     const type = els.sourceType.value;
     const url = els.sourceUrl.value.trim();
+    saveDataSourceConfigFromInputs();
     if (type !== "local") await postRemoteReport(type, url, newRow);
     showToast("Nộp báo cáo thành công.");
   } catch (err) {
