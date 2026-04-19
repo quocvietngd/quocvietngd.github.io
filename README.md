@@ -96,6 +96,9 @@ Muc tieu: doi mat khau o 1 trinh duyet, tat ca trinh duyet/thiet bi khac tu dong
 
 Repo da co san file `render.yaml` de deploy len Render.
 
+One-click deploy:
+- `https://render.com/deploy?repo=https://github.com/quocvietngd/web-quan-tri`
+
 Buoc nhanh:
 - Tao Web Service moi tren Render tu repo nay.
 - Render se doc `render.yaml` va chay `node server/webhook-server.mjs`.
