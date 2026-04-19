@@ -2023,3 +2023,81 @@ td.schedule-editable:hover {
 .schedule-bottom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
+
+@media (max-width: 768px) {
+  .tables,
+  .reports-table-wrap,
+  .schedule-table-wrap {
+    position: relative;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tables::after,
+  .reports-table-wrap::after,
+  .schedule-table-wrap::after {
+    content: "Vuot ngang de xem them cot";
+    position: sticky;
+    left: 8px;
+    bottom: 6px;
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #3b4b5f;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #dbe7f3;
+    border-radius: 999px;
+    padding: 3px 8px;
+    backdrop-filter: blur(3px);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  .tables table {
+    min-width: 760px;
+    table-layout: auto;
+  }
+
+  .tables th,
+  .tables td {
+    font-size: 0.82rem;
+    line-height: 1.35;
+    padding: 8px 9px;
+    white-space: nowrap;
+  }
+
+  #reportsTable {
+    min-width: 680px;
+    table-layout: auto;
+  }
+
+  #reportsTable th,
+  #reportsTable td {
+    white-space: nowrap;
+  }
+
+  #scheduleTable {
+    min-width: 1260px !important;
+    table-layout: fixed;
+  }
+
+  #scheduleTable th,
+  #scheduleTable td {
+    font-size: 0.8rem;
+    padding: 7px 8px;
+  }
+
+  #scheduleTable th:nth-child(1),
+  #scheduleTable td:nth-child(1) {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: inherit;
+    box-shadow: 1px 0 0 rgba(148, 163, 184, 0.4);
+  }
+
+  #scheduleTable thead th:nth-child(1) {
+    z-index: 4;
+    background: #eaf2fb;
+  }
+}
