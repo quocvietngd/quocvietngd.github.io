@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: nora-sync-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server/webhook-server.mjs
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: TELEGRAM_WEBHOOK_HOST
+        value: 0.0.0.0
+      - key: STATE_FILE
+        value: /var/data/telegram-bridge-state.json
+    disk:
+      name: nora-sync-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -88,6 +88,48 @@ Luu y:
 - `curl https://abcxyz.loca.lt/api/users`
 - Neu thay danh sach users JSON va sau khi doi mat khau co cap nhat, dong bo da thanh cong.
 
+## Thiet lap dong bo "nhu phan mem chuan" (khuyen nghi)
+
+Muc tieu: doi mat khau o 1 trinh duyet, tat ca trinh duyet/thiet bi khac tu dong nhan thay doi.
+
+### 1) Deploy backend users sync len cloud (luon online)
+
+Repo da co san file `render.yaml` de deploy len Render.
+
+Buoc nhanh:
+- Tao Web Service moi tren Render tu repo nay.
+- Render se doc `render.yaml` va chay `node server/webhook-server.mjs`.
+- Service co Persistent Disk (`/var/data`) de luu users/reports khong mat sau restart.
+
+Sau khi deploy xong, ban se co URL dang:
+- `https://nora-sync-api.onrender.com`
+
+Kiem tra:
+- `https://nora-sync-api.onrender.com/api/users`
+- `https://nora-sync-api.onrender.com/api/reports`
+
+### 2) Cai endpoint trung tam cho TOAN BO trinh duyet
+
+Sua file `public/runtime-config.json`:
+
+```json
+{
+  "usersSyncEndpoint": "https://nora-sync-api.onrender.com/api/users"
+}
+```
+
+Deploy lai frontend (push len `main`).
+
+Loi ich:
+- Moi thiet bi mo web deu tu dong nap endpoint nay.
+- Khong can nhap lai thu cong tren tung may.
+
+### 3) Hanh vi dong bo sau khi cai xong
+
+- Khi doi mat khau o trang Nhan su: app day users len cloud.
+- Cac tab/thiet bi khac tu dong keo users cloud theo chu ky va khi focus lai tab.
+- Dang nhap moi luon uu tien users cloud truoc local.
+
 ## Dữ liệu remote kỳ vọng
 
 GET endpoint trả về mảng JSON:

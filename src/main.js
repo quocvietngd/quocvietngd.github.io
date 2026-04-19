@@ -2728,6 +2728,19 @@ function rememberUsersSyncEndpointFromSource() {
   saveUsersSyncEndpoint(deriveUsersEndpoint(cfg.url));
 }
 
+async function loadRuntimeUsersSyncConfig() {
+  try {
+    const response = await fetch("./runtime-config.json", { method: "GET", cache: "no-store" });
+    if (!response.ok) return;
+    const config = await response.json();
+    const endpointUrl = String(config?.usersSyncEndpoint || "").trim();
+    if (!isHttpUrl(endpointUrl)) return;
+    saveUsersSyncEndpoint(deriveUsersEndpoint(endpointUrl));
+  } catch {
+    // Optional config: ignore when runtime-config.json is missing or invalid.
+  }
+}
+
 function getUsersSyncEndpoint() {
   const saved = getSavedUsersSyncEndpoint();
   if (isHttpUrl(saved)) return deriveUsersEndpoint(saved);
@@ -11044,6 +11057,14 @@ els.testTelegramBtn.addEventListener("click", async () => {
 });
 
 startTelegramRealtimeSync();
+
+loadRuntimeUsersSyncConfig().then(() => {
+  syncUsersFromRemote(false).then((updated) => {
+    if (updated && authState.loggedIn) renderUserTable();
+  }).catch(() => {
+    // Keep local users as fallback when runtime endpoint is unavailable.
+  });
+});
 
 els.reportDate.value = today;
 els.reportForm.addEventListener("submit", async (event) => {

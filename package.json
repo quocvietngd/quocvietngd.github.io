@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:webhook": "node server/webhook-server.mjs",
     "dev:realtime": "node server/webhook-server.mjs & vite",
+    "start:server": "node server/webhook-server.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

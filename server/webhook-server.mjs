@@ -3,9 +3,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
-const PORT = Number(process.env.TELEGRAM_WEBHOOK_PORT || 8787);
+const PORT = Number(process.env.PORT || process.env.TELEGRAM_WEBHOOK_PORT || 8787);
 const HOST = process.env.TELEGRAM_WEBHOOK_HOST || "0.0.0.0";
-const STATE_FILE = resolve(process.cwd(), "server", "telegram-bridge-state.json");
+const STATE_FILE = process.env.STATE_FILE
+  ? resolve(process.env.STATE_FILE)
+  : resolve(process.cwd(), "server", "telegram-bridge-state.json");
 const MAX_REPORTS = 2000;
 const MAX_USERS = 500;
 
