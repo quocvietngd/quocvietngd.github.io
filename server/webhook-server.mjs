@@ -9,17 +9,24 @@ const { Pool } = pg;
 
 const PORT = Number(process.env.PORT || process.env.TELEGRAM_WEBHOOK_PORT || 8787);
 const HOST = process.env.TELEGRAM_WEBHOOK_HOST || "0.0.0.0";
+const RENDER_DISK_ROOT = "/var/data";
+const DEFAULT_STATE_FILE = existsSync(RENDER_DISK_ROOT)
+  ? resolve(RENDER_DISK_ROOT, "telegram-bridge-state.json")
+  : resolve(process.cwd(), "server", "telegram-bridge-state.json");
 const STATE_FILE = process.env.STATE_FILE
   ? resolve(process.env.STATE_FILE)
-  : resolve(process.cwd(), "server", "telegram-bridge-state.json");
+  : DEFAULT_STATE_FILE;
 const MAX_REPORTS = 2000;
 const MAX_USERS = 500;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const USE_POSTGRES = Boolean(DATABASE_URL);
 const PG_STATE_KEY = "global_state";
+const DEFAULT_BACKUP_DIR = existsSync(RENDER_DISK_ROOT)
+  ? resolve(RENDER_DISK_ROOT, "backups")
+  : resolve(process.cwd(), "server", "backups");
 const BACKUP_DIR = process.env.BACKUP_DIR
   ? resolve(process.env.BACKUP_DIR)
-  : resolve(process.cwd(), "server", "backups");
+  : DEFAULT_BACKUP_DIR;
 const BACKUP_INTERVAL_MS = Math.max(5, Number(process.env.BACKUP_INTERVAL_MINUTES || 30)) * 60 * 1000;
 
 let dbPool = null;
