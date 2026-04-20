@@ -183,6 +183,7 @@ const STORAGE = {
   dataSource: "nora_data_source_v1",
   usersSyncEndpoint: "nora_users_sync_endpoint_v1",
   usersPendingSync: "nora_users_pending_sync_v1",
+  criticalStatePendingSync: "nora_critical_state_pending_sync_v1",
   auth: "nora_auth_v1",
   loginPrefs: "nora_login_prefs_v1",
   users: "nora_users_v1",
@@ -2581,6 +2582,12 @@ let usersSyncTimer = null;
 let usersSyncPromise = null;
 let usersSyncListenersBound = false;
 const USERS_AUTO_SYNC_INTERVAL = 20000;
+let criticalStateSyncQueueTimer = null;
+let criticalStatePullTimer = null;
+let criticalStateSyncInFlight = false;
+let criticalStateSyncListenersBound = false;
+let isApplyingRemoteCriticalState = false;
+const CRITICAL_STATE_AUTO_SYNC_INTERVAL = 30000;
 let editingUserId = null;
 let editingCustomerId = null;
 let editingInventoryId = null;
@@ -2756,6 +2763,201 @@ function getUsersSyncEndpoint() {
   const cfg = getCurrentDataSourceConfig();
   if (!isHttpUrl(cfg.url)) return "";
   return deriveUsersEndpoint(cfg.url);
+}
+
+const CRITICAL_STATE_KEYS = new Set([
+  STORAGE.customers,
+  STORAGE.schedule,
+  STORAGE.inventoryItems,
+  STORAGE.inventoryTransactions,
+  STORAGE.hrFiles
+]);
+
+function deriveAppStateEndpoint(usersEndpoint) {
+  const normalized = String(usersEndpoint || "").trim().replace(/\/+$/g, "");
+  if (!normalized) return "";
+  if (/\/app-state$/i.test(normalized)) return normalized;
+  if (/\/users?$/i.test(normalized)) return normalized.replace(/\/users?$/i, "/app-state");
+  return `${normalized}/app-state`;
+}
+
+function getAppStateSyncEndpoint() {
+  const usersEndpoint = getUsersSyncEndpoint();
+  if (!isHttpUrl(usersEndpoint)) return "";
+  return deriveAppStateEndpoint(usersEndpoint);
+}
+
+function hasLocalCriticalData() {
+  return (
+    (Array.isArray(customers) && customers.length > 0) ||
+    (Array.isArray(schedules) && schedules.length > 0) ||
+    (Array.isArray(inventoryItems) && inventoryItems.length > 0) ||
+    (Array.isArray(inventoryTransactions) && inventoryTransactions.length > 0) ||
+    (hrFiles && Object.keys(hrFiles).length > 0)
+  );
+}
+
+function buildCriticalStatePayload() {
+  return {
+    customers: Array.isArray(customers) ? customers : [],
+    schedules: Array.isArray(schedules) ? schedules : [],
+    inventoryItems: Array.isArray(inventoryItems) ? inventoryItems : [],
+    inventoryTransactions: Array.isArray(inventoryTransactions) ? inventoryTransactions : [],
+    hrFiles: hrFiles && typeof hrFiles === "object" ? hrFiles : {},
+    updatedAt: Date.now()
+  };
+}
+
+function normalizeRemoteCriticalState(raw = {}) {
+  return {
+    customers: Array.isArray(raw.customers) ? raw.customers : [],
+    schedules: Array.isArray(raw.schedules) ? raw.schedules : [],
+    inventoryItems: Array.isArray(raw.inventoryItems) ? raw.inventoryItems : [],
+    inventoryTransactions: Array.isArray(raw.inventoryTransactions) ? raw.inventoryTransactions : [],
+    hrFiles: raw.hrFiles && typeof raw.hrFiles === "object" ? raw.hrFiles : {},
+    updatedAt: Number(raw.updatedAt) || 0
+  };
+}
+
+function getRemoteCriticalStateRowCount(remoteState) {
+  return (
+    (remoteState.customers?.length || 0) +
+    (remoteState.schedules?.length || 0) +
+    (remoteState.inventoryItems?.length || 0) +
+    (remoteState.inventoryTransactions?.length || 0)
+  );
+}
+
+async function fetchRemoteCriticalState(endpointUrl) {
+  const response = await fetch(endpointUrl, { method: "GET" });
+  if (!response.ok) throw new Error(`Không thể GET app-state (${response.status})`);
+  const data = await response.json();
+  return normalizeRemoteCriticalState(data);
+}
+
+async function pushRemoteCriticalState(endpointUrl) {
+  const response = await fetch(endpointUrl, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(buildCriticalStatePayload())
+  });
+  if (!response.ok) throw new Error(`Không thể PUT app-state (${response.status})`);
+}
+
+async function syncCriticalStateToRemote(showToastOnSuccess = false) {
+  if (criticalStateSyncInFlight) return false;
+  const endpointUrl = getAppStateSyncEndpoint();
+  if (!endpointUrl) return false;
+
+  criticalStateSyncInFlight = true;
+  try {
+    await pushRemoteCriticalState(endpointUrl);
+    localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
+    if (showToastOnSuccess) {
+      showToast("Đã đồng bộ dữ liệu khách hàng/lịch/kho lên cloud.", "success");
+    }
+    return true;
+  } catch (err) {
+    localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
+    if (showToastOnSuccess) {
+      showToast(`Đồng bộ cloud thất bại: ${err.message}`, "warning");
+    }
+    return false;
+  } finally {
+    criticalStateSyncInFlight = false;
+  }
+}
+
+function queueCriticalStateSync(storageKey) {
+  if (isApplyingRemoteCriticalState) return;
+  if (!CRITICAL_STATE_KEYS.has(storageKey)) return;
+  localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
+  if (criticalStateSyncQueueTimer) clearTimeout(criticalStateSyncQueueTimer);
+  criticalStateSyncQueueTimer = setTimeout(() => {
+    syncCriticalStateToRemote(false).catch(() => {
+      // Keep local data and retry on next cycle.
+    });
+  }, 1200);
+}
+
+async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
+  const endpointUrl = getAppStateSyncEndpoint();
+  if (!endpointUrl) return false;
+
+  const hasPendingSync = Boolean(loadJSON(STORAGE.criticalStatePendingSync, false));
+  if (hasPendingSync) {
+    const pushed = await syncCriticalStateToRemote(showToastOnSuccess);
+    if (pushed) return true;
+    return false;
+  }
+
+  const remoteState = await fetchRemoteCriticalState(endpointUrl);
+  const remoteRows = getRemoteCriticalStateRowCount(remoteState);
+  if (remoteRows === 0 && hasLocalCriticalData()) return false;
+
+  isApplyingRemoteCriticalState = true;
+  try {
+    customers = remoteState.customers.map((customer) => normalizeCustomer(customer));
+    schedules = remoteState.schedules;
+    inventoryItems = remoteState.inventoryItems.map((item) => ({
+      ...item,
+      purchasePrice: Number(item.purchasePrice) || 0,
+      salePrice: Number(item.salePrice) || 0,
+      quantity: Math.max(0, Number(item.quantity) || 0),
+      alertThreshold: Math.max(0, Number(item.alertThreshold) || 0),
+      status: item.status === "inactive" ? "inactive" : "active",
+      updatedAt: Number(item.updatedAt) || Date.now()
+    }));
+    inventoryTransactions = remoteState.inventoryTransactions.map((txn) => ({
+      ...txn,
+      quantity: Math.max(0, Number(txn.quantity) || 0),
+      stockAfter: Math.max(0, Number(txn.stockAfter) || 0),
+      createdAt: Number(txn.createdAt) || Date.now(),
+      type: txn.type === "out" ? "out" : "in"
+    }));
+    hrFiles = remoteState.hrFiles;
+
+    saveJSON(STORAGE.customers, customers);
+    saveJSON(STORAGE.schedule, schedules);
+    saveJSON(STORAGE.inventoryItems, inventoryItems);
+    saveJSON(STORAGE.inventoryTransactions, inventoryTransactions);
+    saveJSON(STORAGE.hrFiles, hrFiles);
+    localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
+  } finally {
+    isApplyingRemoteCriticalState = false;
+  }
+
+  if (showToastOnSuccess) {
+    showToast("Đã tải dữ liệu khách hàng/lịch/kho từ cloud.", "success");
+  }
+  return true;
+}
+
+function startCriticalStateAutoSync() {
+  if (criticalStatePullTimer) clearInterval(criticalStatePullTimer);
+  criticalStatePullTimer = setInterval(() => {
+    if (document.hidden) return;
+    syncCriticalStateFromRemote(false).catch(() => {
+      // Keep local fallback and retry.
+    });
+  }, CRITICAL_STATE_AUTO_SYNC_INTERVAL);
+
+  if (criticalStateSyncListenersBound) return;
+  criticalStateSyncListenersBound = true;
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      syncCriticalStateFromRemote(false).catch(() => {
+        // Keep local fallback and retry.
+      });
+    }
+  });
+
+  window.addEventListener("focus", () => {
+    syncCriticalStateFromRemote(false).catch(() => {
+      // Keep local fallback and retry.
+    });
+  });
 }
 
 function normalizeRemoteUser(user = {}) {
@@ -3182,6 +3384,7 @@ function loadJSON(key, fallback) {
 
 function saveJSON(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+  queueCriticalStateSync(key);
 }
 
 function normalizeDataSourceConfig(rawConfig = {}) {
@@ -10924,7 +11127,13 @@ syncUsersFromRemote(false).then((updated) => {
 }).catch(() => {
   // Keep local users as fallback when remote is unavailable.
 });
+syncCriticalStateFromRemote(false).then((updated) => {
+  if (updated) renderAll();
+}).catch(() => {
+  // Keep local critical state as fallback when remote is unavailable.
+});
 startUsersAutoSync();
+startCriticalStateAutoSync();
 
 if (els.sourceType) {
   els.sourceType.addEventListener("change", () => {

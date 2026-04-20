@@ -1,7 +1,11 @@
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import pg from "pg";
+
+const { Pool } = pg;
 
 const PORT = Number(process.env.PORT || process.env.TELEGRAM_WEBHOOK_PORT || 8787);
 const HOST = process.env.TELEGRAM_WEBHOOK_HOST || "0.0.0.0";
@@ -10,6 +14,16 @@ const STATE_FILE = process.env.STATE_FILE
   : resolve(process.cwd(), "server", "telegram-bridge-state.json");
 const MAX_REPORTS = 2000;
 const MAX_USERS = 500;
+const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
+const USE_POSTGRES = Boolean(DATABASE_URL);
+const PG_STATE_KEY = "global_state";
+const BACKUP_DIR = process.env.BACKUP_DIR
+  ? resolve(process.env.BACKUP_DIR)
+  : resolve(process.cwd(), "server", "backups");
+const BACKUP_INTERVAL_MS = Math.max(5, Number(process.env.BACKUP_INTERVAL_MINUTES || 30)) * 60 * 1000;
+
+let dbPool = null;
+let dbReadyPromise = null;
 
 const DEFAULT_USERS = [
   {
@@ -59,6 +73,58 @@ const DEFAULT_USERS = [
   }
 ];
 
+function normalizeAppState(input = {}) {
+  return {
+    customers: Array.isArray(input.customers) ? input.customers : [],
+    schedules: Array.isArray(input.schedules) ? input.schedules : [],
+    inventoryItems: Array.isArray(input.inventoryItems) ? input.inventoryItems : [],
+    inventoryTransactions: Array.isArray(input.inventoryTransactions) ? input.inventoryTransactions : [],
+    hrFiles: input.hrFiles && typeof input.hrFiles === "object" ? input.hrFiles : {},
+    updatedAt: Number(input.updatedAt) || 0
+  };
+}
+
+function normalizeState(raw = {}) {
+  return {
+    token: String(raw.token || ""),
+    chatId: String(raw.chatId || ""),
+    lastUpdateId: Number(raw.lastUpdateId || 0),
+    webhookBaseUrl: String(raw.webhookBaseUrl || ""),
+    webhookSecret: String(raw.webhookSecret || randomUUID().replace(/-/g, "")),
+    webhookPath: String(raw.webhookPath || ""),
+    updatedAt: Number(raw.updatedAt || 0),
+    reports: Array.isArray(raw.reports) ? raw.reports.slice(-MAX_REPORTS) : [],
+    users: normalizeUsersList(raw.users && Array.isArray(raw.users) && raw.users.length ? raw.users : DEFAULT_USERS),
+    kpiReports: normalizeKpiReportsList(raw.kpiReports),
+    appState: normalizeAppState(raw.appState)
+  };
+}
+
+async function ensureDbReady() {
+  if (!USE_POSTGRES) return;
+  if (dbReadyPromise) {
+    await dbReadyPromise;
+    return;
+  }
+
+  dbPool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: DATABASE_URL.includes("localhost") ? false : { rejectUnauthorized: false }
+  });
+
+  dbReadyPromise = (async () => {
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS app_kv (
+        key TEXT PRIMARY KEY,
+        value JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+  })();
+
+  await dbReadyPromise;
+}
+
 function ensureStateFile() {
   const dir = dirname(STATE_FILE);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -79,25 +145,13 @@ function ensureStateFile() {
   }
 }
 
-function readState() {
+function readStateFromFileSync() {
   ensureStateFile();
   try {
     const raw = JSON.parse(readFileSync(STATE_FILE, "utf8"));
-    const normalized = {
-      token: String(raw.token || ""),
-      chatId: String(raw.chatId || ""),
-      lastUpdateId: Number(raw.lastUpdateId || 0),
-      webhookBaseUrl: String(raw.webhookBaseUrl || ""),
-      webhookSecret: String(raw.webhookSecret || randomUUID().replace(/-/g, "")),
-      webhookPath: String(raw.webhookPath || ""),
-      updatedAt: Number(raw.updatedAt || 0),
-      reports: Array.isArray(raw.reports) ? raw.reports.slice(-MAX_REPORTS) : [],
-      users: normalizeUsersList(raw.users && Array.isArray(raw.users) && raw.users.length ? raw.users : DEFAULT_USERS),
-      kpiReports: normalizeKpiReportsList(raw.kpiReports)
-    };
-    return normalized;
+    return normalizeState(raw);
   } catch {
-    return {
+    return normalizeState({
       token: "",
       chatId: "",
       lastUpdateId: 0,
@@ -107,9 +161,68 @@ function readState() {
       updatedAt: 0,
       reports: [],
       users: DEFAULT_USERS,
-      kpiReports: []
-    };
+      kpiReports: [],
+      appState: {}
+    });
   }
+}
+
+function writeStateToFileSync(nextState) {
+  const safe = normalizeState({
+    ...nextState,
+    updatedAt: Number(nextState.updatedAt || Date.now())
+  });
+  writeFileSync(STATE_FILE, JSON.stringify(safe, null, 2), "utf8");
+  return safe;
+}
+
+async function readStateFromDb() {
+  await ensureDbReady();
+  const result = await dbPool.query("SELECT value FROM app_kv WHERE key = $1", [PG_STATE_KEY]);
+  if (!result.rows.length) {
+    const initial = normalizeState({
+      token: "",
+      chatId: "",
+      lastUpdateId: 0,
+      webhookBaseUrl: "",
+      webhookSecret: randomUUID().replace(/-/g, ""),
+      webhookPath: "",
+      updatedAt: 0,
+      reports: [],
+      users: DEFAULT_USERS,
+      kpiReports: [],
+      appState: {}
+    });
+    await writeStateToDb(initial);
+    return initial;
+  }
+  return normalizeState(result.rows[0].value || {});
+}
+
+async function writeStateToDb(nextState) {
+  await ensureDbReady();
+  const safe = normalizeState({
+    ...nextState,
+    updatedAt: Number(nextState.updatedAt || Date.now())
+  });
+  await dbPool.query(
+    `INSERT INTO app_kv(key, value, updated_at)
+     VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (key)
+     DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [PG_STATE_KEY, JSON.stringify(safe)]
+  );
+  return safe;
+}
+
+async function readState() {
+  if (USE_POSTGRES) return readStateFromDb();
+  return readStateFromFileSync();
+}
+
+async function writeState(nextState) {
+  if (USE_POSTGRES) return writeStateToDb(nextState);
+  return writeStateToFileSync(nextState);
 }
 
 function normalizeUser(input = {}) {
@@ -153,23 +266,6 @@ function normalizeKpiReport(input = {}) {
 function normalizeKpiReportsList(list) {
   if (!Array.isArray(list)) return [];
   return list.map((item) => normalizeKpiReport(item)).slice(-MAX_REPORTS);
-}
-
-function writeState(nextState) {
-  const safe = {
-    token: String(nextState.token || ""),
-    chatId: String(nextState.chatId || ""),
-    lastUpdateId: Number(nextState.lastUpdateId || 0),
-    webhookBaseUrl: String(nextState.webhookBaseUrl || ""),
-    webhookSecret: String(nextState.webhookSecret || randomUUID().replace(/-/g, "")),
-    webhookPath: String(nextState.webhookPath || ""),
-    updatedAt: Number(nextState.updatedAt || Date.now()),
-    reports: Array.isArray(nextState.reports) ? nextState.reports.slice(-MAX_REPORTS) : [],
-    users: normalizeUsersList(nextState.users && Array.isArray(nextState.users) && nextState.users.length ? nextState.users : DEFAULT_USERS),
-    kpiReports: normalizeKpiReportsList(nextState.kpiReports)
-  };
-  writeFileSync(STATE_FILE, JSON.stringify(safe, null, 2), "utf8");
-  return safe;
 }
 
 function sendJson(res, status, payload) {
@@ -351,7 +447,7 @@ async function fetchTelegramUpdates(state) {
 }
 
 async function pollTelegramUpdatesOnce() {
-  const state = readState();
+  const state = await readState();
   if (!state.token || !state.chatId) return;
 
   try {
@@ -362,7 +458,7 @@ async function pollTelegramUpdatesOnce() {
       state.lastUpdateId = Math.max(Number(state.lastUpdateId || 0), Number(update.update_id || 0));
       appendTelegramReport(state, update);
     });
-    writeState(state);
+    await writeState(state);
   } catch (error) {
     if (error.code === 409) {
       try {
@@ -371,7 +467,7 @@ async function pollTelegramUpdatesOnce() {
           await deleteTelegramWebhook(state.token);
           state.webhookBaseUrl = "";
           state.webhookPath = "";
-          writeState(state);
+          await writeState(state);
         }
       } catch (cleanupError) {
         console.error("[telegram-webhook-bridge] failed to recover from webhook conflict:", cleanupError.message);
@@ -379,6 +475,18 @@ async function pollTelegramUpdatesOnce() {
       return;
     }
     console.error("[telegram-webhook-bridge] polling error:", error.message);
+  }
+}
+
+async function writeBackupSnapshot() {
+  try {
+    const state = await readState();
+    await mkdir(BACKUP_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filePath = resolve(BACKUP_DIR, `nora-state-${stamp}.json`);
+    await writeFile(filePath, JSON.stringify(state, null, 2), "utf8");
+  } catch (error) {
+    console.error("[telegram-webhook-bridge] backup snapshot failed:", error.message);
   }
 }
 
@@ -397,7 +505,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (method === "GET" && url.pathname === "/api/users") {
-    const state = readState();
+    const state = await readState();
     sendJson(res, 200, state.users || []);
     return;
   }
@@ -405,7 +513,7 @@ const server = createServer(async (req, res) => {
   if ((method === "PUT" || method === "POST") && url.pathname === "/api/users") {
     try {
       const payload = await parseJsonBody(req);
-      const state = readState();
+      const state = await readState();
       const incomingUsers = pickUsersPayload(payload);
       const nextUsers = normalizeUsersList(incomingUsers);
       if (!nextUsers.length) {
@@ -414,7 +522,7 @@ const server = createServer(async (req, res) => {
       }
       state.users = nextUsers;
       state.updatedAt = Date.now();
-      const saved = writeState(state);
+      const saved = await writeState(state);
       sendJson(res, 200, { ok: true, count: saved.users.length });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Save users failed" });
@@ -423,7 +531,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (method === "GET" && url.pathname === "/api/reports") {
-    const state = readState();
+    const state = await readState();
     sendJson(res, 200, state.kpiReports || []);
     return;
   }
@@ -431,12 +539,12 @@ const server = createServer(async (req, res) => {
   if (method === "PUT" && url.pathname === "/api/reports") {
     try {
       const payload = await parseJsonBody(req);
-      const state = readState();
+      const state = await readState();
       const incomingReports = pickReportsPayload(payload);
       const nextReports = normalizeKpiReportsList(incomingReports);
       state.kpiReports = nextReports;
       state.updatedAt = Date.now();
-      const saved = writeState(state);
+      const saved = await writeState(state);
       sendJson(res, 200, { ok: true, count: saved.kpiReports.length });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Save reports failed" });
@@ -447,7 +555,7 @@ const server = createServer(async (req, res) => {
   if (method === "POST" && url.pathname === "/api/reports") {
     try {
       const payload = await parseJsonBody(req);
-      const state = readState();
+      const state = await readState();
       const incoming = Array.isArray(payload)
         ? pickReportsPayload(payload)
         : (payload && Array.isArray(payload.reports) ? payload.reports : [payload]);
@@ -458,7 +566,7 @@ const server = createServer(async (req, res) => {
       }
       state.kpiReports = [...(state.kpiReports || []), ...normalized].slice(-MAX_REPORTS);
       state.updatedAt = Date.now();
-      const saved = writeState(state);
+      const saved = await writeState(state);
       sendJson(res, 200, { ok: true, count: saved.kpiReports.length });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Append report failed" });
@@ -469,7 +577,7 @@ const server = createServer(async (req, res) => {
   if (method === "POST" && url.pathname === "/api/telegram/config") {
     try {
       const payload = await parseJsonBody(req);
-      const state = readState();
+      const state = await readState();
       const token = String(payload.token || "").trim();
       const chatId = String(payload.chatId || "").trim();
       const webhookBaseUrl = String(payload.webhookBaseUrl || "").trim().replace(/\/+$/, "");
@@ -497,7 +605,7 @@ const server = createServer(async (req, res) => {
         state.webhookPath = "";
       }
 
-      const saved = writeState(state);
+      const saved = await writeState(state);
       sendJson(res, 200, {
         ok: true,
         configured: Boolean(saved.token && saved.chatId),
@@ -513,7 +621,7 @@ const server = createServer(async (req, res) => {
 
   if (method === "GET" && url.pathname === "/api/telegram/pending") {
     try {
-      const state = readState();
+      const state = await readState();
       const since = Number(url.searchParams.get("since") || 0);
       const includeAll = url.searchParams.get("all") === "1";
       const filtered = includeAll
@@ -540,7 +648,7 @@ const server = createServer(async (req, res) => {
 
   if (method === "POST" && url.pathname.startsWith("/api/telegram/webhook/")) {
     try {
-      const state = readState();
+      const state = await readState();
       const incomingSecret = url.pathname.split("/").pop() || "";
       if (!incomingSecret || incomingSecret !== state.webhookSecret) {
         sendJson(res, 403, { ok: false, error: "Invalid webhook secret" });
@@ -550,10 +658,62 @@ const server = createServer(async (req, res) => {
       const update = await parseJsonBody(req);
       state.lastUpdateId = Math.max(Number(state.lastUpdateId || 0), Number(update?.update_id || 0));
       const result = appendTelegramReport(state, update);
-      writeState(state);
+      await writeState(state);
       sendJson(res, 200, { ok: true, accepted: result.saved, ignored: result.ignored });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Webhook processing failed" });
+    }
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/app-state") {
+    try {
+      const state = await readState();
+      sendJson(res, 200, state.appState || normalizeAppState());
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Read app state failed" });
+    }
+    return;
+  }
+
+  if ((method === "PUT" || method === "POST") && url.pathname === "/api/app-state") {
+    try {
+      const payload = await parseJsonBody(req);
+      const state = await readState();
+      state.appState = normalizeAppState(payload);
+      state.appState.updatedAt = Date.now();
+      state.updatedAt = Date.now();
+      const saved = await writeState(state);
+      sendJson(res, 200, {
+        ok: true,
+        updatedAt: saved.appState.updatedAt,
+        counts: {
+          customers: saved.appState.customers.length,
+          schedules: saved.appState.schedules.length,
+          inventoryItems: saved.appState.inventoryItems.length,
+          inventoryTransactions: saved.appState.inventoryTransactions.length
+        }
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Save app state failed" });
+    }
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/storage/status") {
+    try {
+      const state = await readState();
+      const payloadSizeBytes = Buffer.byteLength(JSON.stringify(state), "utf8");
+      sendJson(res, 200, {
+        ok: true,
+        mode: USE_POSTGRES ? "postgres" : "json-file",
+        stateFile: USE_POSTGRES ? null : STATE_FILE,
+        payloadSizeBytes,
+        backupDir: BACKUP_DIR,
+        backupIntervalMinutes: Math.round(BACKUP_INTERVAL_MS / 60000)
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Storage status failed" });
     }
     return;
   }
@@ -563,6 +723,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`[telegram-webhook-bridge] listening on http://${HOST}:${PORT}`);
+  console.log(`[telegram-webhook-bridge] storage mode: ${USE_POSTGRES ? "postgres" : "json-file"}`);
 });
 
 setInterval(() => {
@@ -574,3 +735,9 @@ setInterval(() => {
 pollTelegramUpdatesOnce().catch((error) => {
   console.error("[telegram-webhook-bridge] initial polling failure:", error.message);
 });
+
+setInterval(() => {
+  writeBackupSnapshot().catch((error) => {
+    console.error("[telegram-webhook-bridge] backup interval failure:", error.message);
+  });
+}, BACKUP_INTERVAL_MS);
