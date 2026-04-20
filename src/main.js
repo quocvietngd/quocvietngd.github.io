@@ -2582,6 +2582,8 @@ let usersSyncTimer = null;
 let usersSyncPromise = null;
 let usersSyncListenersBound = false;
 const USERS_AUTO_SYNC_INTERVAL = 20000;
+let cloudStorageStatus = { checkedAt: 0, durable: null, mode: "unknown", reason: "" };
+let cloudStorageWarningShown = false;
 let criticalStateSyncQueueTimer = null;
 let criticalStatePullTimer = null;
 let criticalStateSyncInFlight = false;
@@ -2805,6 +2807,86 @@ function getAppStateSyncEndpoint() {
   return deriveAppStateEndpoint(usersEndpoint);
 }
 
+function deriveStorageStatusEndpoint(usersEndpoint) {
+  const normalized = String(usersEndpoint || "").trim().replace(/\/+$/g, "");
+  if (!normalized) return "";
+  if (/\/storage\/status$/i.test(normalized)) return normalized;
+  if (/\/users?$/i.test(normalized)) return normalized.replace(/\/users?$/i, "/storage/status");
+  return `${normalized}/storage/status`;
+}
+
+function isDurableStorageStatus(status = {}) {
+  if (status?.durable === true) return true;
+  if (String(status?.mode || "").toLowerCase() === "postgres") return true;
+  const stateFile = String(status?.stateFile || "");
+  return stateFile.startsWith("/var/data/");
+}
+
+function getUnsafeCloudStorageMessage(status = {}) {
+  const mode = String(status?.mode || "json-file");
+  const stateFile = String(status?.stateFile || "");
+  if (mode === "postgres") return "Cloud backend chưa xác nhận durable=true.";
+  if (stateFile) return `Cloud backend dang luu tam o ${stateFile}.`;
+  return "Cloud backend chua o che do luu tru ben vung.";
+}
+
+function notifyUnsafeCloudStorage(reason, showToastMessage = false) {
+  const message = reason || "Cloud backend chua o che do luu tru ben vung.";
+  if (els.submitStatus) {
+    els.submitStatus.textContent = `${message} Tam thoi chi giu local de tranh mat du lieu.`;
+  }
+  if (showToastMessage || !cloudStorageWarningShown) {
+    showToast(`${message} Tam thoi chi giu local de tranh mat du lieu.`, "warning");
+  }
+  cloudStorageWarningShown = true;
+}
+
+async function ensureDurableCloudStorage(showWarning = false, forceRefresh = false) {
+  const usersEndpoint = getUsersSyncEndpoint();
+  if (!usersEndpoint) return true;
+
+  const now = Date.now();
+  if (!forceRefresh && cloudStorageStatus.checkedAt && now - cloudStorageStatus.checkedAt < 60000) {
+    if (cloudStorageStatus.durable === false && showWarning) {
+      notifyUnsafeCloudStorage(cloudStorageStatus.reason, true);
+    }
+    return cloudStorageStatus.durable !== false;
+  }
+
+  const endpointUrl = deriveStorageStatusEndpoint(usersEndpoint);
+  if (!endpointUrl) return true;
+
+  try {
+    const response = await fetch(endpointUrl, { method: "GET", cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Không thể kiểm tra storage status (${response.status})`);
+    }
+    const status = await response.json();
+    const durable = isDurableStorageStatus(status);
+    cloudStorageStatus = {
+      checkedAt: now,
+      durable,
+      mode: String(status?.mode || "unknown"),
+      reason: durable ? "" : getUnsafeCloudStorageMessage(status)
+    };
+    if (!durable && showWarning) {
+      notifyUnsafeCloudStorage(cloudStorageStatus.reason, true);
+    }
+    return durable;
+  } catch (err) {
+    cloudStorageStatus = {
+      checkedAt: now,
+      durable: false,
+      mode: "unknown",
+      reason: err.message || "Không thể kiểm tra cloud storage"
+    };
+    if (showWarning) {
+      notifyUnsafeCloudStorage(cloudStorageStatus.reason, true);
+    }
+    return false;
+  }
+}
+
 function countObjectKeys(value) {
   if (!value || typeof value !== "object") return 0;
   return Object.keys(value).length;
@@ -2973,6 +3055,11 @@ async function syncCriticalStateToRemote(showToastOnSuccess = false) {
   if (criticalStateSyncInFlight) return false;
   const endpointUrl = getAppStateSyncEndpoint();
   if (!endpointUrl) return false;
+  const storageReady = await ensureDurableCloudStorage(showToastOnSuccess);
+  if (!storageReady) {
+    localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
+    return false;
+  }
 
   criticalStateSyncInFlight = true;
   try {
@@ -3008,6 +3095,8 @@ function queueCriticalStateSync(storageKey) {
 async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   const endpointUrl = getAppStateSyncEndpoint();
   if (!endpointUrl) return false;
+  const storageReady = await ensureDurableCloudStorage(showToastOnSuccess);
+  if (!storageReady) return false;
 
   const hasPendingSync = Boolean(loadJSON(STORAGE.criticalStatePendingSync, false));
   if (hasPendingSync) {
@@ -3227,6 +3316,8 @@ async function syncUsersFromRemote(showToastOnSuccess = false) {
   usersSyncPromise = (async () => {
     const endpointUrl = getUsersSyncEndpoint();
     if (!endpointUrl) return false;
+    const storageReady = await ensureDurableCloudStorage(showToastOnSuccess);
+    if (!storageReady) return false;
     const remoteUsers = await fetchRemoteUsers(endpointUrl);
     if (!remoteUsers.length) return false;
 
@@ -3273,6 +3364,13 @@ async function persistUsersToRemote(actionLabel = "") {
   saveJSON(STORAGE.usersPendingSync, true);
   const endpointUrl = getUsersSyncEndpoint();
   if (!endpointUrl) return true;
+  const storageReady = await ensureDurableCloudStorage(true);
+  if (!storageReady) {
+    if (actionLabel) {
+      logActivity("Nhân sự", "Cloud chưa bền vững", actionLabel);
+    }
+    return false;
+  }
   try {
     await pushRemoteUsers(endpointUrl, users);
     const remoteUsers = await fetchRemoteUsers(endpointUrl);
@@ -3297,7 +3395,10 @@ async function persistUsersToRemote(actionLabel = "") {
 function syncUsersToRemoteInBackground(actionLabel = "") {
   const endpointUrl = getUsersSyncEndpoint();
   if (!endpointUrl) return;
-  pushRemoteUsers(endpointUrl, users).catch((err) => {
+  ensureDurableCloudStorage(false).then((storageReady) => {
+    if (!storageReady) return;
+    return pushRemoteUsers(endpointUrl, users);
+  }).catch((err) => {
     showToast(`Chưa đồng bộ cloud users: ${err.message}`, "warning");
     if (actionLabel) {
       logActivity("Nhân sự", "Cảnh báo đồng bộ cloud", `${actionLabel} | ${err.message}`);
@@ -11544,6 +11645,9 @@ els.testTelegramBtn.addEventListener("click", async () => {
 startTelegramRealtimeSync();
 
 loadRuntimeUsersSyncConfig().then(() => {
+  ensureDurableCloudStorage(true).catch(() => {
+    // Keep local fallback when cloud storage status cannot be verified.
+  });
   syncUsersFromRemote(false).then((updated) => {
     if (updated && authState.loggedIn) renderUserTable();
   }).catch(() => {
