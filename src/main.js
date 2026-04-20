@@ -268,6 +268,10 @@ function normalizePageKey(input) {
 }
 
 function getPageKeyFromLocation() {
+  const hashSegment = window.location.hash.replace(/^#\/?/, "").split(/[/?#]/)[0] || "";
+  const pageFromHash = normalizePageKey(hashSegment);
+  if (pageFromHash) return pageFromHash;
+
   const pathSegment = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/")[0] || "";
   const pageFromPath = normalizePageKey(pathSegment);
   if (pageFromPath) return pageFromPath;
@@ -279,18 +283,21 @@ function getPageKeyFromLocation() {
 }
 
 function getPagePath(pageKey) {
-  return pageKey === "home" ? "/" : `/${pageKey}`;
+  return pageKey === "home" ? "#/" : `#/${pageKey}`;
 }
 
 function syncUrlWithPage(pageKey, options = {}) {
   const { replace = false } = options;
-  const desiredPath = getPagePath(pageKey);
-  if (window.location.pathname === desiredPath) return;
+  const desiredHash = getPagePath(pageKey);
+  const normalizedCurrentHash = window.location.hash || "#/";
+  if (normalizedCurrentHash === desiredHash && window.location.pathname === "/") return;
+
+  const desiredUrl = `/${window.location.search}${desiredHash}`;
   if (replace) {
-    window.history.replaceState({ pageKey }, "", desiredPath);
+    window.history.replaceState({ pageKey }, "", desiredUrl);
     return;
   }
-  window.history.pushState({ pageKey }, "", desiredPath);
+  window.history.pushState({ pageKey }, "", desiredUrl);
 }
 
 const seedUsers = [

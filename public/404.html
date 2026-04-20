@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Redirecting...</title>
+    <script>
+      (function () {
+        var knownRoutes = [
+          "news",
+          "home",
+          "metrics",
+          "hr",
+          "customers",
+          "schedule",
+          "care",
+          "accounting",
+          "inventory",
+          "reports",
+          "workflow",
+          "policy",
+          "activity",
+          "access"
+        ];
+
+        var path = window.location.pathname.replace(/^\/+|\/+$/g, "");
+        var firstSegment = (path.split("/")[0] || "").toLowerCase();
+
+        if (knownRoutes.indexOf(firstSegment) !== -1) {
+          window.location.replace("/#/" + firstSegment + window.location.search);
+          return;
+        }
+
+        window.location.replace("/");
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>
