@@ -10,6 +10,7 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT || process.env.TELEGRAM_WEBHOOK_PORT || 8787);
 const HOST = process.env.TELEGRAM_WEBHOOK_HOST || "0.0.0.0";
 const RENDER_DISK_ROOT = "/var/data";
+const RENDER_DISK_PATH = resolve(RENDER_DISK_ROOT);
 const DEFAULT_STATE_FILE = existsSync(RENDER_DISK_ROOT)
   ? resolve(RENDER_DISK_ROOT, "telegram-bridge-state.json")
   : resolve(process.cwd(), "server", "telegram-bridge-state.json");
@@ -20,6 +21,7 @@ const MAX_REPORTS = 2000;
 const MAX_USERS = 500;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const USE_POSTGRES = Boolean(DATABASE_URL);
+const PERSISTENCE_MODE = String(process.env.PERSISTENCE_MODE || "auto").trim().toLowerCase();
 const PG_STATE_KEY = "global_state";
 const DEFAULT_BACKUP_DIR = existsSync(RENDER_DISK_ROOT)
   ? resolve(RENDER_DISK_ROOT, "backups")
@@ -28,9 +30,31 @@ const BACKUP_DIR = process.env.BACKUP_DIR
   ? resolve(process.env.BACKUP_DIR)
   : DEFAULT_BACKUP_DIR;
 const BACKUP_INTERVAL_MS = Math.max(5, Number(process.env.BACKUP_INTERVAL_MINUTES || 30)) * 60 * 1000;
+const IS_RENDER_DISK_ATTACHED = existsSync(RENDER_DISK_ROOT);
+const IS_STATE_FILE_ON_RENDER_DISK = STATE_FILE === RENDER_DISK_PATH || STATE_FILE.startsWith(`${RENDER_DISK_PATH}/`);
+const IS_DURABLE_FILE_MODE = !USE_POSTGRES && IS_RENDER_DISK_ATTACHED && IS_STATE_FILE_ON_RENDER_DISK;
+const IS_DURABLE_STORAGE = USE_POSTGRES || IS_DURABLE_FILE_MODE;
 
 let dbPool = null;
 let dbReadyPromise = null;
+
+function assertPersistenceConfig() {
+  if (!["auto", "durable-only", "postgres-only", "disk-only"].includes(PERSISTENCE_MODE)) {
+    throw new Error(`Unsupported PERSISTENCE_MODE: ${PERSISTENCE_MODE}`);
+  }
+
+  if (PERSISTENCE_MODE === "postgres-only" && !USE_POSTGRES) {
+    throw new Error("PERSISTENCE_MODE=postgres-only nhưng DATABASE_URL chưa được cấu hình.");
+  }
+
+  if (PERSISTENCE_MODE === "disk-only" && !IS_DURABLE_FILE_MODE) {
+    throw new Error(`PERSISTENCE_MODE=disk-only nhưng STATE_FILE hiện tại không nằm trên ổ bền vững: ${STATE_FILE}`);
+  }
+
+  if (PERSISTENCE_MODE === "durable-only" && !IS_DURABLE_STORAGE) {
+    throw new Error(`PERSISTENCE_MODE=durable-only nhưng storage hiện tại chưa bền vững: ${USE_POSTGRES ? "postgres" : STATE_FILE}`);
+  }
+}
 
 const DEFAULT_USERS = [
   {
@@ -739,7 +763,10 @@ const server = createServer(async (req, res) => {
       const payloadSizeBytes = Buffer.byteLength(JSON.stringify(state), "utf8");
       sendJson(res, 200, {
         ok: true,
+        persistenceMode: PERSISTENCE_MODE,
         mode: USE_POSTGRES ? "postgres" : "json-file",
+        durable: IS_DURABLE_STORAGE,
+        renderDiskMounted: IS_RENDER_DISK_ATTACHED,
         stateFile: USE_POSTGRES ? null : STATE_FILE,
         payloadSizeBytes,
         backupDir: BACKUP_DIR,
@@ -754,23 +781,35 @@ const server = createServer(async (req, res) => {
   sendJson(res, 404, { ok: false, error: "Not found" });
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`[telegram-webhook-bridge] listening on http://${HOST}:${PORT}`);
-  console.log(`[telegram-webhook-bridge] storage mode: ${USE_POSTGRES ? "postgres" : "json-file"}`);
-});
+async function bootstrap() {
+  assertPersistenceConfig();
+  await readState();
 
-setInterval(() => {
+  server.listen(PORT, HOST, () => {
+    console.log(`[telegram-webhook-bridge] listening on http://${HOST}:${PORT}`);
+    console.log(`[telegram-webhook-bridge] persistence mode: ${PERSISTENCE_MODE}`);
+    console.log(`[telegram-webhook-bridge] storage mode: ${USE_POSTGRES ? "postgres" : "json-file"}`);
+    console.log(`[telegram-webhook-bridge] durable storage: ${IS_DURABLE_STORAGE ? "yes" : "no"}`);
+  });
+
+  setInterval(() => {
+    pollTelegramUpdatesOnce().catch((error) => {
+      console.error("[telegram-webhook-bridge] unexpected polling failure:", error.message);
+    });
+  }, 10000);
+
   pollTelegramUpdatesOnce().catch((error) => {
-    console.error("[telegram-webhook-bridge] unexpected polling failure:", error.message);
+    console.error("[telegram-webhook-bridge] initial polling failure:", error.message);
   });
-}, 10000);
 
-pollTelegramUpdatesOnce().catch((error) => {
-  console.error("[telegram-webhook-bridge] initial polling failure:", error.message);
+  setInterval(() => {
+    writeBackupSnapshot().catch((error) => {
+      console.error("[telegram-webhook-bridge] backup interval failure:", error.message);
+    });
+  }, BACKUP_INTERVAL_MS);
+}
+
+bootstrap().catch((error) => {
+  console.error("[telegram-webhook-bridge] startup failed:", error.message);
+  process.exit(1);
 });
-
-setInterval(() => {
-  writeBackupSnapshot().catch((error) => {
-    console.error("[telegram-webhook-bridge] backup interval failure:", error.message);
-  });
-}, BACKUP_INTERVAL_MS);

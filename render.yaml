@@ -16,6 +16,8 @@ services:
         fromDatabase:
           name: nora-sync-postgres
           property: connectionString
+      - key: PERSISTENCE_MODE
+        value: postgres-only
       - key: BACKUP_INTERVAL_MINUTES
         value: 30
       - key: BACKUP_DIR
