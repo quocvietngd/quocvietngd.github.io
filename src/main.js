@@ -2765,12 +2765,30 @@ function getUsersSyncEndpoint() {
   return deriveUsersEndpoint(cfg.url);
 }
 
-const CRITICAL_STATE_KEYS = new Set([
+const APP_STATE_SYNC_KEYS = new Set([
   STORAGE.customers,
   STORAGE.schedule,
   STORAGE.inventoryItems,
   STORAGE.inventoryTransactions,
-  STORAGE.hrFiles
+  STORAGE.hrFiles,
+  STORAGE.customerCareProgress,
+  STORAGE.customerCareFilters,
+  STORAGE.activities,
+  STORAGE.recycleBin,
+  STORAGE.rolePermissions,
+  STORAGE.newsPosts,
+  STORAGE.newsPinned,
+  STORAGE.newsEvents,
+  STORAGE.accountingCashflow,
+  STORAGE.accountingCashflowFilters,
+  STORAGE.accountingAttendance,
+  STORAGE.accountingAttendanceSource,
+  STORAGE.accountingAttendanceFilters,
+  STORAGE.accountingServicePayrollFilters,
+  STORAGE.nurseReportOverrides,
+  STORAGE.telegramSource,
+  STORAGE.dataSource,
+  STORAGE.reports
 ]);
 
 function deriveAppStateEndpoint(usersEndpoint) {
@@ -2787,34 +2805,87 @@ function getAppStateSyncEndpoint() {
   return deriveAppStateEndpoint(usersEndpoint);
 }
 
+function countObjectKeys(value) {
+  if (!value || typeof value !== "object") return 0;
+  return Object.keys(value).length;
+}
+
 function hasLocalCriticalData() {
   return (
     (Array.isArray(customers) && customers.length > 0) ||
     (Array.isArray(schedules) && schedules.length > 0) ||
     (Array.isArray(inventoryItems) && inventoryItems.length > 0) ||
     (Array.isArray(inventoryTransactions) && inventoryTransactions.length > 0) ||
-    (hrFiles && Object.keys(hrFiles).length > 0)
+    countObjectKeys(hrFiles) > 0 ||
+    countObjectKeys(customerCareProgress) > 0 ||
+    (Array.isArray(activityLogs) && activityLogs.length > 0) ||
+    (Array.isArray(recycleBin) && recycleBin.length > 0) ||
+    (Array.isArray(newsPosts) && newsPosts.length > 0) ||
+    (Array.isArray(newsPinned) && newsPinned.length > 0) ||
+    (Array.isArray(newsEvents) && newsEvents.length > 0) ||
+    (Array.isArray(accountingCashflowEntries) && accountingCashflowEntries.length > 0) ||
+    (Array.isArray(accountingAttendanceEntries) && accountingAttendanceEntries.length > 0) ||
+    countObjectKeys(nurseReportOverrides) > 0 ||
+    (Array.isArray(reports) && reports.length > 0)
   );
 }
 
 function buildCriticalStatePayload() {
   return {
+    schemaVersion: 2,
     customers: Array.isArray(customers) ? customers : [],
     schedules: Array.isArray(schedules) ? schedules : [],
     inventoryItems: Array.isArray(inventoryItems) ? inventoryItems : [],
     inventoryTransactions: Array.isArray(inventoryTransactions) ? inventoryTransactions : [],
     hrFiles: hrFiles && typeof hrFiles === "object" ? hrFiles : {},
+    customerCareProgress: customerCareProgress && typeof customerCareProgress === "object" ? customerCareProgress : {},
+    customerCareFilters: customerCareFilterState && typeof customerCareFilterState === "object" ? customerCareFilterState : {},
+    activities: Array.isArray(activityLogs) ? activityLogs : [],
+    recycleBin: Array.isArray(recycleBin) ? recycleBin : [],
+    rolePermissions: rolePermissionsState && typeof rolePermissionsState === "object" ? rolePermissionsState : {},
+    newsPosts: Array.isArray(newsPosts) ? newsPosts : [],
+    newsPinned: Array.isArray(newsPinned) ? newsPinned : [],
+    newsEvents: Array.isArray(newsEvents) ? newsEvents : [],
+    accountingCashflow: Array.isArray(accountingCashflowEntries) ? accountingCashflowEntries : [],
+    accountingCashflowFilters: accountingCashflowFilterState && typeof accountingCashflowFilterState === "object" ? accountingCashflowFilterState : {},
+    accountingAttendance: Array.isArray(accountingAttendanceEntries) ? accountingAttendanceEntries : [],
+    accountingAttendanceSource: accountingAttendanceSource && typeof accountingAttendanceSource === "object" ? accountingAttendanceSource : {},
+    accountingAttendanceFilters: accountingAttendanceFilterState && typeof accountingAttendanceFilterState === "object" ? accountingAttendanceFilterState : {},
+    accountingServicePayrollFilters: accountingServicePayrollFilterState && typeof accountingServicePayrollFilterState === "object" ? accountingServicePayrollFilterState : {},
+    nurseReportOverrides: nurseReportOverrides && typeof nurseReportOverrides === "object" ? nurseReportOverrides : {},
+    telegramSource: telegramSourceConfig && typeof telegramSourceConfig === "object" ? telegramSourceConfig : {},
+    dataSourceConfig: dataSourceConfig && typeof dataSourceConfig === "object" ? dataSourceConfig : { type: "local", url: "" },
+    reports: Array.isArray(reports) ? reports : [],
     updatedAt: Date.now()
   };
 }
 
 function normalizeRemoteCriticalState(raw = {}) {
   return {
+    schemaVersion: Number(raw.schemaVersion) || 1,
     customers: Array.isArray(raw.customers) ? raw.customers : [],
     schedules: Array.isArray(raw.schedules) ? raw.schedules : [],
     inventoryItems: Array.isArray(raw.inventoryItems) ? raw.inventoryItems : [],
     inventoryTransactions: Array.isArray(raw.inventoryTransactions) ? raw.inventoryTransactions : [],
     hrFiles: raw.hrFiles && typeof raw.hrFiles === "object" ? raw.hrFiles : {},
+    customerCareProgress: raw.customerCareProgress && typeof raw.customerCareProgress === "object" ? raw.customerCareProgress : {},
+    customerCareFilters: raw.customerCareFilters && typeof raw.customerCareFilters === "object" ? raw.customerCareFilters : {},
+    activities: Array.isArray(raw.activities) ? raw.activities : [],
+    recycleBin: Array.isArray(raw.recycleBin) ? raw.recycleBin : [],
+    rolePermissions: raw.rolePermissions && typeof raw.rolePermissions === "object" ? raw.rolePermissions : {},
+    newsPosts: Array.isArray(raw.newsPosts) ? raw.newsPosts : [],
+    newsPinned: Array.isArray(raw.newsPinned) ? raw.newsPinned : [],
+    newsEvents: Array.isArray(raw.newsEvents) ? raw.newsEvents : [],
+    accountingCashflow: Array.isArray(raw.accountingCashflow) ? raw.accountingCashflow : [],
+    accountingCashflowFilters: raw.accountingCashflowFilters && typeof raw.accountingCashflowFilters === "object" ? raw.accountingCashflowFilters : {},
+    accountingAttendance: Array.isArray(raw.accountingAttendance) ? raw.accountingAttendance : [],
+    accountingAttendanceSource: raw.accountingAttendanceSource && typeof raw.accountingAttendanceSource === "object" ? raw.accountingAttendanceSource : {},
+    accountingAttendanceFilters: raw.accountingAttendanceFilters && typeof raw.accountingAttendanceFilters === "object" ? raw.accountingAttendanceFilters : {},
+    accountingServicePayrollFilters: raw.accountingServicePayrollFilters && typeof raw.accountingServicePayrollFilters === "object" ? raw.accountingServicePayrollFilters : {},
+    nurseReportOverrides: raw.nurseReportOverrides && typeof raw.nurseReportOverrides === "object" ? raw.nurseReportOverrides : {},
+    telegramSource: raw.telegramSource && typeof raw.telegramSource === "object" ? raw.telegramSource : {},
+    dataSourceConfig: raw.dataSourceConfig && typeof raw.dataSourceConfig === "object" ? raw.dataSourceConfig : { type: "local", url: "" },
+    reports: Array.isArray(raw.reports) ? raw.reports : [],
     updatedAt: Number(raw.updatedAt) || 0
   };
 }
@@ -2824,8 +2895,62 @@ function getRemoteCriticalStateRowCount(remoteState) {
     (remoteState.customers?.length || 0) +
     (remoteState.schedules?.length || 0) +
     (remoteState.inventoryItems?.length || 0) +
-    (remoteState.inventoryTransactions?.length || 0)
+    (remoteState.inventoryTransactions?.length || 0) +
+    countObjectKeys(remoteState.hrFiles) +
+    countObjectKeys(remoteState.customerCareProgress) +
+    (remoteState.activities?.length || 0) +
+    (remoteState.recycleBin?.length || 0) +
+    (remoteState.newsPosts?.length || 0) +
+    (remoteState.newsPinned?.length || 0) +
+    (remoteState.newsEvents?.length || 0) +
+    (remoteState.accountingCashflow?.length || 0) +
+    (remoteState.accountingAttendance?.length || 0) +
+    countObjectKeys(remoteState.nurseReportOverrides) +
+    (remoteState.reports?.length || 0)
   );
+}
+
+function flushCriticalStateToRemoteWithBeacon() {
+  const endpointUrl = getAppStateSyncEndpoint();
+  if (!endpointUrl || typeof navigator.sendBeacon !== "function") return false;
+
+  const pending = Boolean(loadJSON(STORAGE.criticalStatePendingSync, false));
+  if (!pending) return false;
+
+  try {
+    const payload = JSON.stringify(buildCriticalStatePayload());
+    const blob = new Blob([payload], { type: "application/json" });
+    const sent = navigator.sendBeacon(endpointUrl, blob);
+    if (sent) {
+      localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
+    }
+    return sent;
+  } catch {
+    return false;
+  }
+}
+
+async function tryFlushCriticalStateWithKeepalive() {
+  const endpointUrl = getAppStateSyncEndpoint();
+  if (!endpointUrl) return false;
+  const pending = Boolean(loadJSON(STORAGE.criticalStatePendingSync, false));
+  if (!pending) return false;
+
+  try {
+    const response = await fetch(endpointUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildCriticalStatePayload()),
+      keepalive: true
+    });
+    if (response.ok) {
+      localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
+      return true;
+    }
+  } catch {
+    // Best-effort flush on background transitions.
+  }
+  return false;
 }
 
 async function fetchRemoteCriticalState(endpointUrl) {
@@ -2854,7 +2979,7 @@ async function syncCriticalStateToRemote(showToastOnSuccess = false) {
     await pushRemoteCriticalState(endpointUrl);
     localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
     if (showToastOnSuccess) {
-      showToast("Đã đồng bộ dữ liệu khách hàng/lịch/kho lên cloud.", "success");
+      showToast("Đã đồng bộ toàn bộ dữ liệu nghiệp vụ lên cloud.", "success");
     }
     return true;
   } catch (err) {
@@ -2870,7 +2995,7 @@ async function syncCriticalStateToRemote(showToastOnSuccess = false) {
 
 function queueCriticalStateSync(storageKey) {
   if (isApplyingRemoteCriticalState) return;
-  if (!CRITICAL_STATE_KEYS.has(storageKey)) return;
+  if (!APP_STATE_SYNC_KEYS.has(storageKey)) return;
   localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
   if (criticalStateSyncQueueTimer) clearTimeout(criticalStateSyncQueueTimer);
   criticalStateSyncQueueTimer = setTimeout(() => {
@@ -2920,19 +3045,70 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
       type: txn.type === "out" ? "out" : "in"
     }));
     hrFiles = remoteState.hrFiles;
+    customerCareProgress = remoteState.customerCareProgress;
+    customerCareFilterState = normalizeCustomerFilterState(remoteState.customerCareFilters);
+    activityLogs = remoteState.activities;
+    recycleBin = remoteState.recycleBin;
+    rolePermissionsState = normalizeRolePermissions(remoteState.rolePermissions, ROLES);
+    newsPosts = remoteState.newsPosts;
+    newsPinned = remoteState.newsPinned;
+    newsEvents = remoteState.newsEvents;
+    accountingCashflowEntries = remoteState.accountingCashflow.map((entry) => ({
+      ...entry,
+      amount: Math.max(0, Number(entry.amount) || 0),
+      createdAt: Number(entry.createdAt) || Date.now(),
+      type: entry.type === "expense" ? "expense" : "income",
+      status: entry.status || "pending"
+    }));
+    accountingCashflowFilterState = remoteState.accountingCashflowFilters;
+    accountingAttendanceEntries = remoteState.accountingAttendance.map((entry) => ({
+      ...entry,
+      workHours: Math.max(0, Number(entry.workHours) || 0),
+      overtimeHours: Math.max(0, Number(entry.overtimeHours) || 0),
+      lateMinutes: Math.max(0, Number(entry.lateMinutes) || 0),
+      date: String(entry.date || today).slice(0, 10)
+    }));
+    accountingAttendanceSource = normalizeAccountingAttendanceSource(remoteState.accountingAttendanceSource);
+    accountingAttendanceFilterState = normalizeAccountingAttendanceFilterState(remoteState.accountingAttendanceFilters);
+    accountingServicePayrollFilterState = normalizeAccountingServicePayrollFilterState(remoteState.accountingServicePayrollFilters);
+    nurseReportOverrides = remoteState.nurseReportOverrides;
+    telegramSourceConfig = remoteState.telegramSource;
+    dataSourceConfig = normalizeDataSourceConfig(remoteState.dataSourceConfig);
+    reports = remoteState.reports;
 
     saveJSON(STORAGE.customers, customers);
     saveJSON(STORAGE.schedule, schedules);
     saveJSON(STORAGE.inventoryItems, inventoryItems);
     saveJSON(STORAGE.inventoryTransactions, inventoryTransactions);
     saveJSON(STORAGE.hrFiles, hrFiles);
+    saveJSON(STORAGE.customerCareProgress, customerCareProgress);
+    saveJSON(STORAGE.customerCareFilters, customerCareFilterState);
+    saveJSON(STORAGE.activities, activityLogs);
+    saveJSON(STORAGE.recycleBin, recycleBin);
+    saveJSON(STORAGE.rolePermissions, rolePermissionsState);
+    saveJSON(STORAGE.newsPosts, newsPosts);
+    saveJSON(STORAGE.newsPinned, newsPinned);
+    saveJSON(STORAGE.newsEvents, newsEvents);
+    saveJSON(STORAGE.accountingCashflow, accountingCashflowEntries);
+    saveJSON(STORAGE.accountingCashflowFilters, accountingCashflowFilterState);
+    saveJSON(STORAGE.accountingAttendance, accountingAttendanceEntries);
+    saveJSON(STORAGE.accountingAttendanceSource, accountingAttendanceSource);
+    saveJSON(STORAGE.accountingAttendanceFilters, accountingAttendanceFilterState);
+    saveJSON(STORAGE.accountingServicePayrollFilters, accountingServicePayrollFilterState);
+    saveJSON(STORAGE.nurseReportOverrides, nurseReportOverrides);
+    saveJSON(STORAGE.telegramSource, telegramSourceConfig);
+    saveJSON(STORAGE.dataSource, dataSourceConfig);
+    saveJSON(STORAGE.reports, reports);
     localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
   } finally {
     isApplyingRemoteCriticalState = false;
   }
 
+  applyDataSourceConfigToInputs();
+  rememberUsersSyncEndpointFromSource();
+
   if (showToastOnSuccess) {
-    showToast("Đã tải dữ liệu khách hàng/lịch/kho từ cloud.", "success");
+    showToast("Đã tải toàn bộ dữ liệu nghiệp vụ từ cloud.", "success");
   }
   return true;
 }
@@ -2961,6 +3137,22 @@ function startCriticalStateAutoSync() {
     syncCriticalStateFromRemote(false).catch(() => {
       // Keep local fallback and retry.
     });
+  });
+
+  window.addEventListener("online", () => {
+    syncCriticalStateToRemote(false).catch(() => {
+      // Retry on next cycle if online sync fails.
+    });
+  });
+
+  window.addEventListener("pagehide", () => {
+    if (!flushCriticalStateToRemoteWithBeacon()) {
+      void tryFlushCriticalStateWithKeepalive();
+    }
+  });
+
+  window.addEventListener("beforeunload", () => {
+    flushCriticalStateToRemoteWithBeacon();
   });
 }
 

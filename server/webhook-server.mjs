@@ -82,11 +82,30 @@ const DEFAULT_USERS = [
 
 function normalizeAppState(input = {}) {
   return {
+    schemaVersion: Number(input.schemaVersion) || 1,
     customers: Array.isArray(input.customers) ? input.customers : [],
     schedules: Array.isArray(input.schedules) ? input.schedules : [],
     inventoryItems: Array.isArray(input.inventoryItems) ? input.inventoryItems : [],
     inventoryTransactions: Array.isArray(input.inventoryTransactions) ? input.inventoryTransactions : [],
     hrFiles: input.hrFiles && typeof input.hrFiles === "object" ? input.hrFiles : {},
+    customerCareProgress: input.customerCareProgress && typeof input.customerCareProgress === "object" ? input.customerCareProgress : {},
+    customerCareFilters: input.customerCareFilters && typeof input.customerCareFilters === "object" ? input.customerCareFilters : {},
+    activities: Array.isArray(input.activities) ? input.activities : [],
+    recycleBin: Array.isArray(input.recycleBin) ? input.recycleBin : [],
+    rolePermissions: input.rolePermissions && typeof input.rolePermissions === "object" ? input.rolePermissions : {},
+    newsPosts: Array.isArray(input.newsPosts) ? input.newsPosts : [],
+    newsPinned: Array.isArray(input.newsPinned) ? input.newsPinned : [],
+    newsEvents: Array.isArray(input.newsEvents) ? input.newsEvents : [],
+    accountingCashflow: Array.isArray(input.accountingCashflow) ? input.accountingCashflow : [],
+    accountingCashflowFilters: input.accountingCashflowFilters && typeof input.accountingCashflowFilters === "object" ? input.accountingCashflowFilters : {},
+    accountingAttendance: Array.isArray(input.accountingAttendance) ? input.accountingAttendance : [],
+    accountingAttendanceSource: input.accountingAttendanceSource && typeof input.accountingAttendanceSource === "object" ? input.accountingAttendanceSource : {},
+    accountingAttendanceFilters: input.accountingAttendanceFilters && typeof input.accountingAttendanceFilters === "object" ? input.accountingAttendanceFilters : {},
+    accountingServicePayrollFilters: input.accountingServicePayrollFilters && typeof input.accountingServicePayrollFilters === "object" ? input.accountingServicePayrollFilters : {},
+    nurseReportOverrides: input.nurseReportOverrides && typeof input.nurseReportOverrides === "object" ? input.nurseReportOverrides : {},
+    telegramSource: input.telegramSource && typeof input.telegramSource === "object" ? input.telegramSource : {},
+    dataSourceConfig: input.dataSourceConfig && typeof input.dataSourceConfig === "object" ? input.dataSourceConfig : { type: "local", url: "" },
+    reports: Array.isArray(input.reports) ? input.reports : [],
     updatedAt: Number(input.updatedAt) || 0
   };
 }
@@ -698,7 +717,14 @@ const server = createServer(async (req, res) => {
           customers: saved.appState.customers.length,
           schedules: saved.appState.schedules.length,
           inventoryItems: saved.appState.inventoryItems.length,
-          inventoryTransactions: saved.appState.inventoryTransactions.length
+          inventoryTransactions: saved.appState.inventoryTransactions.length,
+          activities: saved.appState.activities.length,
+          recycleBin: saved.appState.recycleBin.length,
+          newsPosts: saved.appState.newsPosts.length,
+          newsEvents: saved.appState.newsEvents.length,
+          accountingCashflow: saved.appState.accountingCashflow.length,
+          accountingAttendance: saved.appState.accountingAttendance.length,
+          reports: saved.appState.reports.length
         }
       });
     } catch (error) {
