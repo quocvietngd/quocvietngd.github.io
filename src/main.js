@@ -182,6 +182,7 @@ const STORAGE = {
   reports: "nora_reports_v1",
   dataSource: "nora_data_source_v1",
   usersSyncEndpoint: "nora_users_sync_endpoint_v1",
+  usersPendingSync: "nora_users_pending_sync_v1",
   auth: "nora_auth_v1",
   loginPrefs: "nora_login_prefs_v1",
   users: "nora_users_v1",
@@ -2816,8 +2817,25 @@ async function syncUsersFromRemote(showToastOnSuccess = false) {
     if (!endpointUrl) return false;
     const remoteUsers = await fetchRemoteUsers(endpointUrl);
     if (!remoteUsers.length) return false;
+
+    const hasPendingUsersSync = Boolean(loadJSON(STORAGE.usersPendingSync, false));
+    if (hasPendingUsersSync && users.length && remoteUsers.length < users.length) {
+      try {
+        await pushRemoteUsers(endpointUrl, users);
+        saveJSON(STORAGE.usersPendingSync, false);
+        if (showToastOnSuccess) {
+          showToast("Đã khôi phục users local lên cloud thành công.", "success");
+        }
+        return true;
+      } catch (err) {
+        showToast(`Cloud users chưa cập nhật, tạm giữ dữ liệu local để tránh mất dữ liệu: ${err.message}`, "warning");
+        return false;
+      }
+    }
+
     users = remoteUsers;
     saveJSON(STORAGE.users, users);
+    saveJSON(STORAGE.usersPendingSync, false);
     const forcedLogout = enforceActiveSessionAccess();
     if (forcedLogout) return true;
     if (showToastOnSuccess) {
@@ -2835,10 +2853,12 @@ async function syncUsersFromRemote(showToastOnSuccess = false) {
 
 async function persistUsersToRemote(actionLabel = "") {
   saveJSON(STORAGE.users, users);
+  saveJSON(STORAGE.usersPendingSync, true);
   const endpointUrl = getUsersSyncEndpoint();
   if (!endpointUrl) return true;
   try {
     await pushRemoteUsers(endpointUrl, users);
+    saveJSON(STORAGE.usersPendingSync, false);
     return true;
   } catch (err) {
     showToast(`Đã lưu local nhưng chưa đồng bộ cloud: ${err.message}`, "warning");
