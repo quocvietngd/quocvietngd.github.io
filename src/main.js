@@ -2893,7 +2893,11 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
 
   const remoteState = await fetchRemoteCriticalState(endpointUrl);
   const remoteRows = getRemoteCriticalStateRowCount(remoteState);
-  if (remoteRows === 0 && hasLocalCriticalData()) return false;
+  if (remoteRows === 0 && hasLocalCriticalData()) {
+    const pushed = await syncCriticalStateToRemote(showToastOnSuccess);
+    if (!pushed) return false;
+    return true;
+  }
 
   isApplyingRemoteCriticalState = true;
   try {
@@ -2982,6 +2986,20 @@ function sanitizeUsersForRemote(list) {
   return list.map((user) => normalizeRemoteUser(user));
 }
 
+function isDefaultUsersSnapshot(list = []) {
+  if (!Array.isArray(list)) return false;
+  if (list.length > 3) return false;
+  const usernames = new Set(list.map((user) => String(user.username || "").toLowerCase()));
+  return usernames.has("admin") && usernames.has("ceo") && usernames.has("head-tech");
+}
+
+function hasRicherLocalUsers(localList = [], remoteList = []) {
+  if (!Array.isArray(localList) || !Array.isArray(remoteList)) return false;
+  if (localList.length <= remoteList.length) return false;
+  const remoteUsernames = new Set(remoteList.map((u) => String(u.username || "").toLowerCase()));
+  return localList.some((u) => !remoteUsernames.has(String(u.username || "").toLowerCase()));
+}
+
 async function fetchRemoteUsers(endpointUrl) {
   const response = await fetch(endpointUrl, { method: "GET" });
   if (!response.ok) throw new Error(`Không thể GET users (${response.status})`);
@@ -3021,7 +3039,12 @@ async function syncUsersFromRemote(showToastOnSuccess = false) {
     if (!remoteUsers.length) return false;
 
     const hasPendingUsersSync = Boolean(loadJSON(STORAGE.usersPendingSync, false));
-    if (hasPendingUsersSync && users.length && remoteUsers.length < users.length) {
+    const shouldRecoverFromReset =
+      users.length &&
+      hasRicherLocalUsers(users, remoteUsers) &&
+      isDefaultUsersSnapshot(remoteUsers);
+
+    if ((hasPendingUsersSync && users.length && remoteUsers.length < users.length) || shouldRecoverFromReset) {
       try {
         await pushRemoteUsers(endpointUrl, users);
         saveJSON(STORAGE.usersPendingSync, false);
