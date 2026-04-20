@@ -3060,6 +3060,14 @@ async function persistUsersToRemote(actionLabel = "") {
   if (!endpointUrl) return true;
   try {
     await pushRemoteUsers(endpointUrl, users);
+    const remoteUsers = await fetchRemoteUsers(endpointUrl);
+    const localSignature = JSON.stringify(sanitizeUsersForRemote(users));
+    const remoteSignature = JSON.stringify(sanitizeUsersForRemote(remoteUsers));
+    if (localSignature !== remoteSignature) {
+      throw new Error("Cloud chua xac nhan du lieu users moi nhat");
+    }
+    users = remoteUsers;
+    saveJSON(STORAGE.users, users);
     saveJSON(STORAGE.usersPendingSync, false);
     return true;
   } catch (err) {
