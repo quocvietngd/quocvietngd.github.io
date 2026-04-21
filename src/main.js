@@ -1394,7 +1394,12 @@ app.innerHTML = `
               </select>
             </div>
           </div>
-          <div class="muted" id="inventoryFilterSummary" style="font-size:0.83rem;margin-top:8px;"></div>
+          <div style="margin-top:10px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div class="muted" id="inventoryFilterSummary" style="font-size:0.83rem;"></div>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:6px 16px;font-size:0.88rem;">
+              💰 Tổng giá trị tồn kho: <strong id="inventoryTotalValue">0 đ</strong>
+            </div>
+          </div>
           <span class="alert" id="inventoryStatusMessage"></span>
 
           <div class="tables" style="margin-top:10px;">
@@ -1409,6 +1414,7 @@ app.innerHTML = `
                   <th>Số lượng</th>
                   <th>Nhà cung cấp</th>
                   <th>Hạn sử dụng</th>
+                  <th>Giá trị tồn</th>
                   <th>Trạng thái</th>
                   <th>Cảnh báo</th>
                   <th>Cập nhật</th>
@@ -2360,6 +2366,7 @@ const els = {
   inventoryFilterStatus: document.querySelector("#inventoryFilterStatus"),
   inventoryFilterStock: document.querySelector("#inventoryFilterStock"),
   inventoryFilterSummary: document.querySelector("#inventoryFilterSummary"),
+  inventoryTotalValue: document.querySelector("#inventoryTotalValue"),
   inventoryStatusMessage: document.querySelector("#inventoryStatusMessage"),
   inventoryStatsStart: document.querySelector("#inventoryStatsStart"),
   inventoryStatsEnd: document.querySelector("#inventoryStatsEnd"),
@@ -5448,9 +5455,11 @@ function renderInventoryStatsAndHistory() {
 function renderInventoryTable() {
   const filtered = getFilteredInventoryItems();
   els.inventoryFilterSummary.textContent = `Hiển thị ${filtered.length}/${inventoryItems.length} vật tư`;
+  const totalValue = inventoryItems.reduce((sum, item) => sum + (item.purchasePrice || 0) * (item.quantity || 0), 0);
+  els.inventoryTotalValue.textContent = formatCurrency(totalValue);
 
   if (filtered.length === 0) {
-    els.inventoryBody.innerHTML = '<tr><td colspan="12" style="text-align:center;">Không có vật tư phù hợp bộ lọc.</td></tr>';
+    els.inventoryBody.innerHTML = '<tr><td colspan="13" style="text-align:center;">Không có vật tư phù hợp bộ lọc.</td></tr>';
     return;
   }
 
@@ -5479,6 +5488,7 @@ function renderInventoryTable() {
         <td><strong>${item.quantity}</strong></td>
         <td class="muted" style="font-size:0.85rem;">${item.supplier || "—"}</td>
         <td class="muted" style="font-size:0.85rem;">${(function(){ if (!item.expiryDate) return '—'; const d = new Date(item.expiryDate); const now = new Date(); const expired = d < now; const soon = !expired && (d - Date.now() < 30*24*3600*1000); const color = expired ? '#b91c1c' : (soon ? '#c2410c' : 'inherit'); const fw = (expired || soon) ? '600' : '400'; return '<span style="color:' + color + ';font-weight:' + fw + '">' + item.expiryDate + '</span>'; })()}</td>
+        <td style="font-size:0.88rem;font-weight:600;color:#166534;">${formatCurrency(item.purchasePrice * item.quantity)}</td>
         <td><span style="${productStatusStyle}border-radius:10px;padding:2px 8px;font-size:0.78rem;font-weight:600;">${getInventoryStatusLabel(item.status)}</span></td>
         <td>
           <span style="${stockStyle}border-radius:10px;padding:2px 8px;font-size:0.78rem;font-weight:600;">${getInventoryStockLabel(stockLevel)}</span>
@@ -5495,7 +5505,7 @@ function renderInventoryTable() {
           </div>
         </td>
       </tr>
-      ${stockLevel === "low" || stockLevel === "out" ? `<tr><td colspan="12" style="background:#fffbeb;font-size:0.82rem;">${lowWarning}</td></tr>` : ""}
+      ${stockLevel === "low" || stockLevel === "out" ? `<tr><td colspan="13" style="background:#fffbeb;font-size:0.82rem;">${lowWarning}</td></tr>` : ""}
       `;
     })
     .join("");
@@ -5553,7 +5563,7 @@ function exportFilteredInventoryToExcel() {
     return;
   }
 
-  const header = ["Mã sản phẩm", "Tên sản phẩm", "Giá nhập", "Giá bán", "Số lượng", "Nhà cung cấp", "Hạn sử dụng", "Trạng thái", "Tồn kho", "Ngưỡng cảnh báo", "Cập nhật"];
+  const header = ["Mã sản phẩm", "Tên sản phẩm", "Giá nhập", "Giá bán", "Số lượng", "Nhà cung cấp", "Hạn sử dụng", "Giá trị tồn", "Trạng thái", "Tồn kho", "Ngưỡng cảnh báo", "Cập nhật"];
   const records = rows.map((item) => {
     const stockLevel = getInventoryStockLevel(item);
     return [
@@ -5564,6 +5574,7 @@ function exportFilteredInventoryToExcel() {
       item.quantity,
       item.supplier || "",
       item.expiryDate || "",
+      item.purchasePrice * item.quantity,
       getInventoryStatusLabel(item.status),
       getInventoryStockLabel(stockLevel),
       item.alertThreshold,
