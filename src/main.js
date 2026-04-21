@@ -1407,6 +1407,8 @@ app.innerHTML = `
                   <th>Giá nhập</th>
                   <th>Giá bán</th>
                   <th>Số lượng</th>
+                  <th>Nhà cung cấp</th>
+                  <th>Hạn sử dụng</th>
                   <th>Trạng thái</th>
                   <th>Cảnh báo</th>
                   <th>Cập nhật</th>
@@ -1496,6 +1498,14 @@ app.innerHTML = `
                 <div>
                   <label>Ngưỡng cảnh báo gần hết</label>
                   <input id="inventoryAlertThreshold" type="number" min="0" step="1" placeholder="20" />
+                </div>
+                <div>
+                  <label>Nhà cung cấp</label>
+                  <input id="inventorySupplier" placeholder="Tên nhà cung cấp" />
+                </div>
+                <div>
+                  <label>Hạn sử dụng</label>
+                  <input id="inventoryExpiryDate" type="date" />
                 </div>
                 <div>
                   <label>Trạng thái</label>
@@ -2366,6 +2376,8 @@ const els = {
   inventoryModalBackdrop: document.querySelector("#inventoryModalBackdrop"),
   closeInventoryModalBtn: document.querySelector("#closeInventoryModalBtn"),
   inventoryModalTitle: document.querySelector("#inventoryModalTitle"),
+  inventorySupplier: document.querySelector("#inventorySupplier"),
+  inventoryExpiryDate: document.querySelector("#inventoryExpiryDate"),
   inventoryProductCode: document.querySelector("#inventoryProductCode"),
   inventoryProductName: document.querySelector("#inventoryProductName"),
   inventoryPurchasePrice: document.querySelector("#inventoryPurchasePrice"),
@@ -5438,7 +5450,7 @@ function renderInventoryTable() {
   els.inventoryFilterSummary.textContent = `Hiển thị ${filtered.length}/${inventoryItems.length} vật tư`;
 
   if (filtered.length === 0) {
-    els.inventoryBody.innerHTML = '<tr><td colspan="10" style="text-align:center;">Không có vật tư phù hợp bộ lọc.</td></tr>';
+    els.inventoryBody.innerHTML = '<tr><td colspan="12" style="text-align:center;">Không có vật tư phù hợp bộ lọc.</td></tr>';
     return;
   }
 
@@ -5465,6 +5477,8 @@ function renderInventoryTable() {
         <td>${formatCurrency(item.purchasePrice)}</td>
         <td>${formatCurrency(item.salePrice)}</td>
         <td><strong>${item.quantity}</strong></td>
+        <td class="muted" style="font-size:0.85rem;">${item.supplier || "—"}</td>
+        <td class="muted" style="font-size:0.85rem;">${(function(){ if (!item.expiryDate) return '—'; const d = new Date(item.expiryDate); const now = new Date(); const expired = d < now; const soon = !expired && (d - Date.now() < 30*24*3600*1000); const color = expired ? '#b91c1c' : (soon ? '#c2410c' : 'inherit'); const fw = (expired || soon) ? '600' : '400'; return '<span style="color:' + color + ';font-weight:' + fw + '">' + item.expiryDate + '</span>'; })()}</td>
         <td><span style="${productStatusStyle}border-radius:10px;padding:2px 8px;font-size:0.78rem;font-weight:600;">${getInventoryStatusLabel(item.status)}</span></td>
         <td>
           <span style="${stockStyle}border-radius:10px;padding:2px 8px;font-size:0.78rem;font-weight:600;">${getInventoryStockLabel(stockLevel)}</span>
@@ -5481,7 +5495,7 @@ function renderInventoryTable() {
           </div>
         </td>
       </tr>
-      ${stockLevel === "low" || stockLevel === "out" ? `<tr><td colspan="10" style="background:#fffbeb;font-size:0.82rem;">${lowWarning}</td></tr>` : ""}
+      ${stockLevel === "low" || stockLevel === "out" ? `<tr><td colspan="12" style="background:#fffbeb;font-size:0.82rem;">${lowWarning}</td></tr>` : ""}
       `;
     })
     .join("");
@@ -5494,6 +5508,8 @@ function resetInventoryForm() {
   els.inventoryProductCode.value = "";
   els.inventoryProductName.value = "";
   els.inventoryPurchasePrice.value = "";
+  els.inventorySupplier.value = "";
+  els.inventoryExpiryDate.value = "";
   els.inventorySalePrice.value = "";
   els.inventoryQuantity.value = "";
   els.inventoryAlertThreshold.value = "20";
@@ -5537,7 +5553,7 @@ function exportFilteredInventoryToExcel() {
     return;
   }
 
-  const header = ["Mã sản phẩm", "Tên sản phẩm", "Giá nhập", "Giá bán", "Số lượng", "Trạng thái", "Tồn kho", "Ngưỡng cảnh báo", "Cập nhật"];
+  const header = ["Mã sản phẩm", "Tên sản phẩm", "Giá nhập", "Giá bán", "Số lượng", "Nhà cung cấp", "Hạn sử dụng", "Trạng thái", "Tồn kho", "Ngưỡng cảnh báo", "Cập nhật"];
   const records = rows.map((item) => {
     const stockLevel = getInventoryStockLevel(item);
     return [
@@ -5546,6 +5562,8 @@ function exportFilteredInventoryToExcel() {
       item.purchasePrice,
       item.salePrice,
       item.quantity,
+      item.supplier || "",
+      item.expiryDate || "",
       getInventoryStatusLabel(item.status),
       getInventoryStockLabel(stockLevel),
       item.alertThreshold,
@@ -9678,6 +9696,8 @@ els.saveInventoryBtn.addEventListener("click", () => {
   const quantity = Number(els.inventoryQuantity.value);
   const alertThreshold = Number(els.inventoryAlertThreshold.value);
   const status = els.inventoryProductStatus.value;
+  const supplier = els.inventorySupplier.value.trim();
+  const expiryDate = els.inventoryExpiryDate.value;
 
   if (!productCode || !productName) {
     els.inventoryModalStatus.textContent = "Vui lòng nhập mã sản phẩm và tên sản phẩm.";
@@ -9707,6 +9727,8 @@ els.saveInventoryBtn.addEventListener("click", () => {
         quantity,
         alertThreshold,
         status,
+        supplier,
+        expiryDate,
         updatedAt: Date.now()
       };
     });
@@ -9721,6 +9743,8 @@ els.saveInventoryBtn.addEventListener("click", () => {
       quantity,
       alertThreshold,
       status,
+      supplier,
+      expiryDate,
       updatedAt: Date.now()
     });
     logActivity("Kho", "Thêm vật tư", `${productCode} | ${productName}`);
@@ -9772,6 +9796,8 @@ els.inventoryBody.addEventListener("click", (event) => {
     els.inventorySalePrice.value = String(item.salePrice);
     els.inventoryQuantity.value = String(item.quantity);
     els.inventoryAlertThreshold.value = String(item.alertThreshold);
+    els.inventorySupplier.value = item.supplier || "";
+    els.inventoryExpiryDate.value = item.expiryDate || "";
     els.inventoryProductStatus.value = item.status || "active";
     els.inventoryModalStatus.textContent = "";
     els.inventoryModal.classList.remove("hidden");
