@@ -18,6 +18,7 @@ const STATE_FILE = process.env.STATE_FILE
   ? resolve(process.env.STATE_FILE)
   : DEFAULT_STATE_FILE;
 const MAX_REPORTS = 2000;
+const MAX_TELEGRAM_DEBUG_EVENTS = 100;
 const MAX_USERS = 500;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const USE_POSTGRES = Boolean(DATABASE_URL);
@@ -144,9 +145,25 @@ function normalizeState(raw = {}) {
     webhookPath: String(raw.webhookPath || ""),
     updatedAt: Number(raw.updatedAt || 0),
     reports: Array.isArray(raw.reports) ? raw.reports.slice(-MAX_REPORTS) : [],
+    telegramDebug: normalizeTelegramDebug(raw.telegramDebug),
     users: normalizeUsersList(raw.users && Array.isArray(raw.users) && raw.users.length ? raw.users : DEFAULT_USERS),
     kpiReports: normalizeKpiReportsList(raw.kpiReports),
     appState: normalizeAppState(raw.appState)
+  };
+}
+
+function normalizeTelegramDebug(input = {}) {
+  return {
+    acceptedCount: Number(input.acceptedCount || 0),
+    ignoredCount: Number(input.ignoredCount || 0),
+    duplicateCount: Number(input.duplicateCount || 0),
+    parseFailedCount: Number(input.parseFailedCount || 0),
+    disallowedChatCount: Number(input.disallowedChatCount || 0),
+    emptyMessageCount: Number(input.emptyMessageCount || 0),
+    lastAcceptedAt: Number(input.lastAcceptedAt || 0),
+    lastIgnoredAt: Number(input.lastIgnoredAt || 0),
+    lastReason: String(input.lastReason || ""),
+    droppedMessages: Array.isArray(input.droppedMessages) ? input.droppedMessages.slice(0, MAX_TELEGRAM_DEBUG_EVENTS) : []
   };
 }
 
@@ -408,6 +425,20 @@ function detectTelegramRoute(values, hashtags) {
   return "";
 }
 
+function inferTelegramRoute(values) {
+  const keys = new Set(Object.keys(values || {}).map((key) => normalizeVietnamese(key)));
+  const hasAny = (list) => list.some((item) => keys.has(normalizeVietnamese(item)));
+
+  if (hasAny(["marketing", "mkt", "marketer", "ngansach", "budget", "adspend", "mess", "luongmess"])) return "marketing";
+  if (hasAny(["consultant", "tuvan", "tv"])) return "consultant";
+  if (hasAny(["telesale", "sale", "ts"])) return "telesale";
+  if (hasAny(["dieuduong", "nurse", "dd"])) return "nurse";
+
+  // Backward compatibility: format cu chi co ten/khach/ngay/gio thi mac dinh dieu duong
+  if (hasAny(["ten", "nhanvien"]) && hasAny(["khach", "khachhang", "customer", "tenkhach"])) return "nurse";
+  return "";
+}
+
 function firstTelegramValue(values, keys) {
   for (const key of keys) {
     const normalizedKey = normalizeVietnamese(key);
@@ -419,7 +450,7 @@ function firstTelegramValue(values, keys) {
 }
 
 function parseTelegramReportMessage(text) {
-  if (!text || !String(text).includes("#")) return null;
+  if (!text) return null;
 
   const lines = String(text).split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
   const values = {};
@@ -434,12 +465,14 @@ function parseTelegramReportMessage(text) {
     values[key] = value;
   }
 
-  const route = detectTelegramRoute(values, hashtags);
+  if (!Object.keys(values).length) return null;
+
+  const route = detectTelegramRoute(values, hashtags) || inferTelegramRoute(values);
   if (!route) return null;
 
   const registrationDate = normalizeDate(firstTelegramValue(values, ["ngay", "date"]));
   const appointmentTime = String(firstTelegramValue(values, ["gio", "time"]) || "").trim();
-  const customerName = String(firstTelegramValue(values, ["khach", "khachhang", "customer", "tenkhach"]) || "").trim();
+  const customerName = String(firstTelegramValue(values, ["khach", "khachhang", "customer", "tenkhach", "kh", "hoten", "tenkhachhang", "hotenkhach"]) || "").trim();
   const phone = String(firstTelegramValue(values, ["sdt", "sodienthoai", "phone"]) || "").trim();
   const service = String(firstTelegramValue(values, ["dichvu", "service"]) || "").trim();
   const note = String(firstTelegramValue(values, ["ghichu", "note"]) || "").trim();
@@ -465,7 +498,7 @@ function parseTelegramReportMessage(text) {
   };
 
   if (route === "nurse") {
-    const nurse = String(firstTelegramValue(values, ["ten", "dieuduong", "nurse", "nhanvien"]) || "").trim();
+    const nurse = String(firstTelegramValue(values, ["ten", "dieuduong", "nurse", "nhanvien", "dd"]) || "").trim();
     if (!nurse || !customerName) return null;
     return {
       ...base,
@@ -563,10 +596,40 @@ async function getWebhookInfo(token) {
 function appendTelegramReport(state, update) {
   const message = update?.message;
   const chatId = String(message?.chat?.id || "");
-  if (!message || !message.text || !isTelegramChatAllowed(state, chatId)) return { saved: false, ignored: true };
+  const debug = normalizeTelegramDebug(state.telegramDebug);
+
+  const markIgnored = (reason, counterKey) => {
+    const event = {
+      at: Date.now(),
+      reason,
+      updateId: String(update?.update_id || ""),
+      chatId,
+      chatTitle: String(message?.chat?.title || message?.chat?.username || "").trim(),
+      textPreview: String(message?.text || "").slice(0, 280)
+    };
+    debug.ignoredCount += 1;
+    if (counterKey && typeof debug[counterKey] === "number") debug[counterKey] += 1;
+    debug.lastIgnoredAt = event.at;
+    debug.lastReason = reason;
+    debug.droppedMessages = [event, ...(debug.droppedMessages || [])].slice(0, MAX_TELEGRAM_DEBUG_EVENTS);
+    state.telegramDebug = debug;
+  };
+
+  if (!message || !message.text) {
+    markIgnored("empty_message", "emptyMessageCount");
+    return { saved: false, ignored: true, reason: "empty_message" };
+  }
+
+  if (!isTelegramChatAllowed(state, chatId)) {
+    markIgnored("chat_not_allowed", "disallowedChatCount");
+    return { saved: false, ignored: true, reason: "chat_not_allowed" };
+  }
 
   const raw = parseTelegramReportMessage(message.text);
-  if (!raw) return { saved: false, ignored: true };
+  if (!raw) {
+    markIgnored("parse_failed", "parseFailedCount");
+    return { saved: false, ignored: true, reason: "parse_failed" };
+  }
 
   raw.telegramUpdateId = String(update.update_id || `${Date.now()}`);
   raw.telegramChatId = chatId;
@@ -581,9 +644,14 @@ function appendTelegramReport(state, update) {
   if (!existing.has(report.id)) {
     state.reports = [...(state.reports || []), report].slice(-MAX_REPORTS);
     state.updatedAt = Date.now();
+    debug.acceptedCount += 1;
+    debug.lastAcceptedAt = Date.now();
+    state.telegramDebug = debug;
     return { saved: true, ignored: false };
   }
-  return { saved: false, ignored: false };
+  debug.duplicateCount += 1;
+  state.telegramDebug = debug;
+  return { saved: false, ignored: false, reason: "duplicate_update" };
 }
 
 async function fetchTelegramUpdates(state) {
@@ -654,7 +722,52 @@ const server = createServer(async (req, res) => {
   }
 
   if (method === "GET" && url.pathname === "/api/telegram/health") {
-    sendJson(res, 200, { ok: true, service: "telegram-webhook-bridge" });
+    const state = await readState();
+    const debug = normalizeTelegramDebug(state.telegramDebug);
+    const reports = Array.isArray(state.reports) ? state.reports : [];
+    const lastReportAt = reports.length ? Number(reports[reports.length - 1]?.receivedAt || 0) : 0;
+    sendJson(res, 200, {
+      ok: true,
+      service: "telegram-webhook-bridge",
+      configured: Boolean(state.token && state.chatId),
+      reportsCount: reports.length,
+      lastReportAt,
+      debug: {
+        acceptedCount: debug.acceptedCount,
+        ignoredCount: debug.ignoredCount,
+        duplicateCount: debug.duplicateCount,
+        parseFailedCount: debug.parseFailedCount,
+        disallowedChatCount: debug.disallowedChatCount,
+        emptyMessageCount: debug.emptyMessageCount,
+        lastAcceptedAt: debug.lastAcceptedAt,
+        lastIgnoredAt: debug.lastIgnoredAt,
+        lastReason: debug.lastReason
+      }
+    });
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/telegram/debug") {
+    try {
+      const state = await readState();
+      const debug = normalizeTelegramDebug(state.telegramDebug);
+      sendJson(res, 200, {
+        ok: true,
+        configured: Boolean(state.token && state.chatId),
+        chatId: state.chatId,
+        reportsCount: Array.isArray(state.reports) ? state.reports.length : 0,
+        debug,
+        latestReports: (state.reports || []).slice(-5).map((item) => ({
+          id: String(item.id || ""),
+          receivedAt: Number(item.receivedAt || 0),
+          source: String(item?.raw?.source || ""),
+          customerName: String(item?.raw?.customerName || ""),
+          telegramRoute: String(item?.raw?.telegramRoute || "")
+        }))
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Read telegram debug failed" });
+    }
     return;
   }
 
