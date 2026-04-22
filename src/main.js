@@ -2728,7 +2728,12 @@ let accountingServicePayrollFilterState = normalizeAccountingServicePayrollFilte
   end: today
 }));
 let nurseReportOverrides = loadJSON(STORAGE.nurseReportOverrides, {});
-let telegramSourceConfig = loadJSON(STORAGE.telegramSource, { token: "", chatId: "", webhookBaseUrl: "", lastUpdateId: 0, lastSyncedAt: 0 });
+const _rawTelegramSourceConfig = loadJSON(STORAGE.telegramSource, { token: "", chatId: "", webhookBaseUrl: "", lastUpdateId: 0, lastSyncedAt: 0 });
+// Migrate: nếu bridgeApiUrl đang trỏ localhost, xóa để dùng default Render URL
+if (_rawTelegramSourceConfig.bridgeApiUrl && /localhost|127\.0\.0\.1/.test(_rawTelegramSourceConfig.bridgeApiUrl)) {
+  delete _rawTelegramSourceConfig.bridgeApiUrl;
+}
+let telegramSourceConfig = _rawTelegramSourceConfig;
 let attendanceAutoSyncTimer = null;
 let attendanceSyncInProgress = false;
 
@@ -11707,10 +11712,7 @@ function startTelegramRealtimeSync() {
 els.syncTelegramBtn.addEventListener("click", async () => {
   if (!can("canSyncData")) { showToast("Bạn không có quyền đồng bộ dữ liệu.", "warning"); return; }
   saveTelegramInputs();
-  if (!telegramSourceConfig.token || !telegramSourceConfig.chatId) {
-    showToast("Vui lòng nhập Bot Token và Chat ID.", "warning");
-    return;
-  }
+  const hasDirectConfig = telegramSourceConfig.token && telegramSourceConfig.chatId;
   els.syncTelegramBtn.disabled = true;
   els.telegramSyncStatus.textContent = "Đang đồng bộ dữ liệu Telegram...";
   try {
@@ -11719,6 +11721,7 @@ els.syncTelegramBtn.addEventListener("click", async () => {
       result = await runTelegramRealtimeSync(false, { fullSync: true });
     } catch (bridgeErr) {
       // Fallback: direct Telegram polling if bridge server is not available.
+      if (!hasDirectConfig) throw bridgeErr;
       const direct = await fetchAndParseTelegramMessagesDirect();
       result = { importedRows: direct.importedRows, fetchedRows: direct.parsedMessages, pendingCount: 0, configured: false };
     }
