@@ -212,41 +212,6 @@ const STORAGE = {
   newsEvents: "nora_news_events_v1"
 };
 
-const TELEGRAM_CHANNEL_DEFAULTS = {
-  nurse: { token: "", chatId: "", webhookBaseUrl: "", lastUpdateId: 0, lastSyncedAt: 0 },
-  marketing: { token: "", chatId: "", webhookBaseUrl: "", lastUpdateId: 0, lastSyncedAt: 0 }
-};
-
-function normalizeTelegramChannelConfig(raw = {}) {
-  return {
-    token: String(raw.token || "").trim(),
-    chatId: String(raw.chatId || "").trim(),
-    webhookBaseUrl: String(raw.webhookBaseUrl || "").trim(),
-    lastUpdateId: Number(raw.lastUpdateId || 0),
-    lastSyncedAt: Number(raw.lastSyncedAt || 0)
-  };
-}
-
-function normalizeTelegramSourceConfig(raw = {}) {
-  const source = raw && typeof raw === "object" ? raw : {};
-  const channelsRaw = source.channels && typeof source.channels === "object" ? source.channels : {};
-  const legacyNurse = {
-    token: source.token,
-    chatId: source.chatId,
-    webhookBaseUrl: source.webhookBaseUrl,
-    lastUpdateId: source.lastUpdateId,
-    lastSyncedAt: source.lastSyncedAt
-  };
-
-  return {
-    bridgeApiUrl: String(source.bridgeApiUrl || "").trim(),
-    channels: {
-      nurse: normalizeTelegramChannelConfig({ ...TELEGRAM_CHANNEL_DEFAULTS.nurse, ...legacyNurse, ...(channelsRaw.nurse || {}) }),
-      marketing: normalizeTelegramChannelConfig({ ...TELEGRAM_CHANNEL_DEFAULTS.marketing, ...(channelsRaw.marketing || {}) })
-    }
-  };
-}
-
 const LOGO_CANDIDATES = [
   "/nora-care-logo.png",
   "/nora-care-logo.jpg",
@@ -2165,36 +2130,17 @@ app.innerHTML = `
               <button class="btn secondary" type="button" id="testTelegramBtn">Kết nối realtime</button>
             </div>
             <div class="muted" style="margin-top:6px;font-size:0.8rem;" id="telegramSyncStatus">Chưa đồng bộ lần nào.</div>
-            <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #dbe7ff;">
-              <h4 style="margin:0 0 6px;font-size:0.95rem;">Telegram Marketing (bot riêng)</h4>
-              <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr auto auto;align-items:end;">
-                <div>
-                  <label>Bot Token Marketing</label>
-                  <input id="telegramMarketingBotToken" type="password" placeholder="123456789:AAxxxxxxxxxxxxxx" />
-                </div>
-                <div>
-                  <label>Chat ID nhóm Marketing</label>
-                  <input id="telegramMarketingChatId" placeholder="-1001234567890" />
-                </div>
-                <div>
-                  <label>Webhook Public URL (https)</label>
-                  <input id="telegramMarketingWebhookBaseUrl" placeholder="https://your-public-domain.com" />
-                </div>
-                <button class="btn secondary" type="button" id="syncTelegramMarketingBtn">Đọc báo cáo Marketing</button>
-                <button class="btn secondary" type="button" id="testTelegramMarketingBtn">Kết nối realtime MKT</button>
-              </div>
-              <div class="muted" style="margin-top:6px;font-size:0.8rem;" id="telegramMarketingSyncStatus">Chưa đồng bộ lần nào.</div>
-            </div>
             <details style="margin-top:10px;">
               <summary style="cursor:pointer;font-weight:600;font-size:0.85rem;">📋 Hướng dẫn tạo bot và mẫu tin báo cáo</summary>
               <div class="muted" style="margin-top:8px;font-size:0.82rem;line-height:1.7;">
                 <strong>Bước 1:</strong> Nhắn @BotFather trên Telegram → /newbot → lấy Token.<br />
                 <strong>Bước 2:</strong> Thêm bot vào nhóm chat của điều dưỡng, cấp quyền đọc tin nhắn.<br />
-                <strong>Bước 3:</strong> Lấy Chat ID: gọi <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code> sau khi nhóm đã nhắn 1 tin.<br />
+                <strong>Bước 3:</strong> Lấy Chat ID: gọi <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code> sau khi nhóm đã nhắn 1 tin. Có thể nhập nhiều Chat ID, ngăn cách bằng dấu phẩy.<br />
                 <strong>Bước 4:</strong> Nhập Webhook Public URL (địa chỉ HTTPS Telegram truy cập được, ví dụ domain server hoặc tunnel URL).<br />
                 <strong>Bước 5:</strong> Bấm <strong>Kết nối realtime</strong> để đăng ký webhook.<br />
                 <strong>Bước 6:</strong> Điều dưỡng gửi tin theo mẫu dưới đây, hệ thống tự động nhận và cập nhật định kỳ.<br /><br />
-                <strong>Mẫu tin báo cáo ca (gửi vào nhóm):</strong><br />
+                <strong>Mẫu hashtag phân luồng:</strong> <code>#dieuduong</code>, <code>#mkt</code>, <code>#tuvan</code>, <code>#telesale</code> (mỗi tin chỉ nên có 1 hashtag chính).<br />
+                <strong>Mẫu tin điều dưỡng (gửi vào nhóm):</strong><br />
                 <code style="display:block;background:#f8fafc;border:1px solid #dde5f0;border-radius:6px;padding:8px 10px;margin-top:4px;white-space:pre-wrap;">#baocao
 ten: Nguyễn Thị Yến
 ngay: 15/04/2026
@@ -2204,9 +2150,18 @@ dichvu: Chăm sóc mẹ bầu
 thoiluong: 90
 khoangcach: 12
 trangthai: hoàn tất</code>
+                <strong>Mẫu tin marketing:</strong><br />
+                <code style="display:block;background:#f8fafc;border:1px solid #dde5f0;border-radius:6px;padding:8px 10px;margin-top:4px;white-space:pre-wrap;">#mkt
+ten: Lan Anh
+ngay: 23/04/2026
+khach: Lead Facebook
+sdt: 0912345678
+ngansach: 1500000
+mess: 42
+hopdong: 5000000</code>
                 <br />Các trường bắt buộc: <strong>ten</strong> (điều dưỡng), <strong>ngay</strong>, <strong>khach</strong>.<br />
                 Trường tuỳ chọn: gio, dichvu, thoiluong (phút), khoangcach (km), trangthai.<br />
-                Mỗi ca là 1 tin nhắn riêng bắt đầu bằng <strong>#baocao</strong>.
+                Mỗi báo cáo là 1 tin nhắn riêng và phải có hashtag phân luồng.
               </div>
             </details>
           </div>
@@ -2467,15 +2422,9 @@ const els = {
   telegramBotToken: document.querySelector("#telegramBotToken"),
   telegramChatId: document.querySelector("#telegramChatId"),
   telegramWebhookBaseUrl: document.querySelector("#telegramWebhookBaseUrl"),
-  telegramMarketingBotToken: document.querySelector("#telegramMarketingBotToken"),
-  telegramMarketingChatId: document.querySelector("#telegramMarketingChatId"),
-  telegramMarketingWebhookBaseUrl: document.querySelector("#telegramMarketingWebhookBaseUrl"),
   syncTelegramBtn: document.querySelector("#syncTelegramBtn"),
   testTelegramBtn: document.querySelector("#testTelegramBtn"),
   telegramSyncStatus: document.querySelector("#telegramSyncStatus"),
-  syncTelegramMarketingBtn: document.querySelector("#syncTelegramMarketingBtn"),
-  testTelegramMarketingBtn: document.querySelector("#testTelegramMarketingBtn"),
-  telegramMarketingSyncStatus: document.querySelector("#telegramMarketingSyncStatus"),
   workflowSection: document.querySelector("#workflowSection"),
   workflowSystemView: document.querySelector("#workflowSystemView"),
   workflowDetailView: document.querySelector("#workflowDetailView"),
@@ -2779,7 +2728,7 @@ let accountingServicePayrollFilterState = normalizeAccountingServicePayrollFilte
   end: today
 }));
 let nurseReportOverrides = loadJSON(STORAGE.nurseReportOverrides, {});
-let telegramSourceConfig = normalizeTelegramSourceConfig(loadJSON(STORAGE.telegramSource, {}));
+let telegramSourceConfig = loadJSON(STORAGE.telegramSource, { token: "", chatId: "", webhookBaseUrl: "", lastUpdateId: 0, lastSyncedAt: 0 });
 let attendanceAutoSyncTimer = null;
 let attendanceSyncInProgress = false;
 
@@ -3241,7 +3190,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     accountingAttendanceFilterState = normalizeAccountingAttendanceFilterState(remoteState.accountingAttendanceFilters);
     accountingServicePayrollFilterState = normalizeAccountingServicePayrollFilterState(remoteState.accountingServicePayrollFilters);
     nurseReportOverrides = remoteState.nurseReportOverrides;
-    telegramSourceConfig = normalizeTelegramSourceConfig(remoteState.telegramSource);
+    telegramSourceConfig = remoteState.telegramSource;
     dataSourceConfig = normalizeDataSourceConfig(remoteState.dataSourceConfig);
     reports = remoteState.reports;
 
@@ -5321,8 +5270,6 @@ function setAuthUI() {
   els.pdfBtn.disabled = !can("canExportPdf");
   if (els.syncTelegramBtn) els.syncTelegramBtn.disabled = !can("canSyncData");
   if (els.testTelegramBtn) els.testTelegramBtn.disabled = !can("canSyncData");
-  if (els.syncTelegramMarketingBtn) els.syncTelegramMarketingBtn.disabled = !can("canSyncData");
-  if (els.testTelegramMarketingBtn) els.testTelegramMarketingBtn.disabled = !can("canSyncData");
   const telegramSection = document.getElementById("telegramSourceSection");
   if (telegramSection) telegramSection.style.display = isAdmin ? "" : "none";
   els.submitReportBtn.disabled = !can("canSubmitReport");
@@ -6923,16 +6870,7 @@ function firstValue(obj, keys) {
 
 // ─── Telegram Integration ─────────────────────────────────────────────────────
 function saveTelegramSourceConfig() {
-  telegramSourceConfig = normalizeTelegramSourceConfig(telegramSourceConfig);
   saveJSON(STORAGE.telegramSource, telegramSourceConfig);
-}
-
-function getTelegramChannelConfig(channelKey) {
-  telegramSourceConfig = normalizeTelegramSourceConfig(telegramSourceConfig);
-  if (!telegramSourceConfig.channels[channelKey]) {
-    telegramSourceConfig.channels[channelKey] = normalizeTelegramChannelConfig(TELEGRAM_CHANNEL_DEFAULTS[channelKey] || {});
-  }
-  return telegramSourceConfig.channels[channelKey];
 }
 
 const TELEGRAM_BRIDGE_DEFAULT_API = "http://localhost:8787";
@@ -6960,9 +6898,11 @@ async function callTelegramBridge(path, options = {}) {
 function parseTelegramNurseMessage(text) {
   if (!text) return null;
   const lower = text.toLowerCase();
+  if (!lower.includes("#")) return null;
   const lines = text.split(/[\n\r]+/);
   const obj = {};
-  lines.forEach((line) => {
+  const tags = Array.from(new Set((text.match(/#[^\s#]+/g) || []).map((tag) => tag.replace(/^#/, "").trim().toLowerCase())));
+  lines.forEach(line => {
     const sep = line.indexOf(":");
     if (sep === -1) return;
     const key = line.slice(0, sep).trim().toLowerCase()
@@ -6972,74 +6912,80 @@ function parseTelegramNurseMessage(text) {
     if (key && val) obj[key] = val;
   });
 
-  const hasKeyword = lower.includes("#baocao") || lower.includes("#report");
-  const hasStructuredFields = Boolean(
-    obj["ten"] || obj["dieuduong"] || obj["nurse"] || obj["khach"] || obj["khachhang"] || obj["customer"]
-  );
-  if (!hasKeyword && !hasStructuredFields) return null;
+  const hasTag = (candidates) => candidates.some((tag) => tags.includes(tag));
+  const route = hasTag(["mkt", "marketing", "mk"])
+    ? "marketing"
+    : hasTag(["tuvan", "tv", "consultant"])
+      ? "consultant"
+      : hasTag(["telesale", "sale", "ts"])
+        ? "telesale"
+        : hasTag(["dieuduong", "dd", "baocao", "nurse"])
+          ? "nurse"
+          : "";
+  if (!route) return null;
 
-  return {
-    nurse: obj["ten"] || obj["dieududong"] || obj["dieudưỡng"] || "",
-    registrationDate: obj["ngay"] || obj["ngày"] || "",
-    appointmentTime: obj["gio"] || obj["giờ"] || "",
-    customerName: obj["khach"] || obj["ten khach"] || obj["hokh"] || "",
-    service: obj["dichvu"] || obj["dvu"] || "",
-    shiftMinutes: obj["thoiluong"] || obj["phut"] || obj["tluong"] || "",
-    distanceKm: obj["khoangcach"] || obj["km"] || obj["kcach"] || "",
-    status: obj["trangthai"] || obj["tthai"] || "completed",
-    note: obj["ghichu"] || obj["gchu"] || ""
-  };
-}
-
-function parseTelegramMarketingMessage(text) {
-  if (!text) return null;
-  const lower = text.toLowerCase();
-  const isMarketingReport = lower.includes("#mkt")
-    || lower.includes("#marketing")
-    || lower.includes("#baocao_marketing")
-    || lower.includes("#baocaomarketing");
-
-  const lines = text.split(/[\n\r]+/);
-  const obj = {};
-  lines.forEach((line) => {
-    const sep = line.indexOf(":");
-    if (sep === -1) return;
-    const key = line.slice(0, sep).trim().toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/\s+/g, "");
-    const val = line.slice(sep + 1).trim();
-    if (key && val) obj[key] = val;
-  });
-
-  const hasStructuredFields = Boolean(
-    obj["ngansach"] || obj["budget"] || obj["ads"] || obj["mess"] || obj["luongmess"] || obj["tuongtac"]
-    || obj["sdt"] || obj["sodienthoai"] || obj["doanhso"] || obj["revenue"] || obj["hopdong"] || obj["contracts"]
-    || obj["marketing"] || obj["marketer"] || obj["nhanvien"]
-  );
-  if (!isMarketingReport && !hasStructuredFields) return null;
-
-  return {
+  const base = {
     registrationDate: obj["ngay"] || obj["date"] || "",
-    marketingName: obj["ten"] || obj["marketing"] || obj["marketer"] || "",
-    marketingBudget: obj["ngansach"] || obj["budget"] || obj["ads"] || "0",
-    marketingMessCount: obj["mess"] || obj["luongmess"] || obj["tuongtac"] || "0",
-    marketingPhoneCount: obj["sdt"] || obj["sodienthoai"] || obj["phones"] || "0",
-    marketingBookedCount: obj["lich"] || obj["datlich"] || obj["booked"] || "0",
-    marketingContractCount: obj["hopdong"] || obj["contracts"] || obj["hd"] || "0",
-    marketingRevenue: obj["doanhso"] || obj["revenue"] || "0",
-    source: "Telegram Marketing"
+    appointmentTime: obj["gio"] || obj["time"] || "",
+    customerName: obj["khach"] || obj["khachhang"] || obj["customer"] || "",
+    phone: obj["sdt"] || obj["sodienthoai"] || obj["phone"] || "",
+    service: obj["dichvu"] || obj["service"] || "",
+    shiftMinutes: obj["thoiluong"] || obj["phut"] || obj["minutes"] || "",
+    distanceKm: obj["khoangcach"] || obj["km"] || obj["distance"] || "",
+    contractAmount: obj["hopdong"] || obj["contract"] || obj["doanhso"] || "",
+    status: obj["trangthai"] || obj["status"] || "completed",
+    note: obj["ghichu"] || obj["note"] || "",
+    telegramTags: tags,
+    telegramRoute: route,
+    source: "Telegram Webhook"
+  };
+
+  if (route === "nurse") {
+    return {
+      ...base,
+      nurse: obj["ten"] || obj["dieuduong"] || obj["nurse"] || "",
+      source: "Telegram Webhook #dieuduong"
+    };
+  }
+
+  if (route === "marketing") {
+    const marketingName = obj["ten"] || obj["marketing"] || obj["mkt"] || obj["marketer"] || "";
+    return {
+      ...base,
+      marketingName,
+      marketingStaff: marketingName,
+      marketingBudget: obj["ngansach"] || obj["budget"] || obj["ads"] || 0,
+      marketingMessCount: obj["mess"] || obj["luongmess"] || obj["interactions"] || 1,
+      source: "Telegram Marketing #mkt"
+    };
+  }
+
+  if (route === "consultant") {
+    return {
+      ...base,
+      consultant: obj["ten"] || obj["tuvan"] || obj["consultant"] || obj["tv"] || "",
+      source: "Telegram Tu Van #tuvan"
+    };
+  }
+
+  return {
+    ...base,
+    saleStaff: obj["ten"] || obj["telesale"] || obj["sale"] || obj["ts"] || "",
+    source: "Telegram Telesale #telesale"
   };
 }
 
-function parseTelegramMessageByChannel(channelKey, text) {
-  if (channelKey === "marketing") return parseTelegramMarketingMessage(text);
-  return parseTelegramNurseMessage(text);
+function parseTelegramAllowedChatIds(chatIdValue) {
+  return String(chatIdValue || "")
+    .split(/[\s,;|]+/)
+    .map((id) => id.trim())
+    .filter(Boolean);
 }
 
-async function fetchAndParseTelegramMessagesDirect(channelKey = "nurse") {
-  const channelCfg = getTelegramChannelConfig(channelKey);
-  const { token, chatId, lastUpdateId } = channelCfg;
+async function fetchAndParseTelegramMessagesDirect() {
+  const { token, chatId, lastUpdateId } = telegramSourceConfig;
   if (!token || !chatId) throw new Error("Chưa nhập Bot Token hoặc Chat ID.");
+  const allowedChatIds = parseTelegramAllowedChatIds(chatId);
   const offset = lastUpdateId ? lastUpdateId + 1 : undefined;
   const url = "https://api.telegram.org/bot" + token + "/getUpdates?limit=100" +
     (offset ? "&offset=" + offset : "");
@@ -7049,48 +6995,48 @@ async function fetchAndParseTelegramMessagesDirect(channelKey = "nurse") {
   if (!data.ok) throw new Error(data.description || "Telegram trả về lỗi.");
 
   const updates = data.result || [];
-  let maxUpdateId = channelCfg.lastUpdateId;
+  let maxUpdateId = telegramSourceConfig.lastUpdateId;
   const rawRows = [];
-  updates.forEach((u) => {
+  updates.forEach(u => {
     if (!u.message) return;
-    if (String(u.message.chat && u.message.chat.id) !== String(chatId)) return;
+    const incomingChatId = String(u.message.chat && u.message.chat.id);
+    if (!allowedChatIds.includes(incomingChatId)) return;
     if (u.update_id > maxUpdateId) maxUpdateId = u.update_id;
-    const parsed = parseTelegramMessageByChannel(channelKey, u.message.text || "");
-    if (parsed) rawRows.push({ ...parsed, telegramUpdateId: String(u.update_id || "") });
+    const parsed = parseTelegramNurseMessage(u.message.text || "");
+    if (parsed) rawRows.push({
+      ...parsed,
+      telegramUpdateId: String(u.update_id || ""),
+      telegramChatId: incomingChatId,
+      telegramChatTitle: String(u.message.chat?.title || u.message.chat?.username || "").trim()
+    });
   });
 
-  const imported = channelKey === "marketing"
-    ? mergeImportedMarketingSchedules(rawRows)
-    : mergeImportedSchedules(rawRows);
-  channelCfg.lastUpdateId = maxUpdateId;
-  channelCfg.lastSyncedAt = Date.now();
+  const imported = mergeImportedSchedules(rawRows);
+  telegramSourceConfig.lastUpdateId = maxUpdateId;
+  telegramSourceConfig.lastSyncedAt = Date.now();
   saveTelegramSourceConfig();
   return { totalUpdates: updates.length, importedRows: imported, parsedMessages: rawRows.length };
 }
 
-async function configureTelegramRealtimeWebhook(channelKey = "nurse") {
-  const channelCfg = getTelegramChannelConfig(channelKey);
-  const token = String(channelCfg.token || "").trim();
-  const chatId = String(channelCfg.chatId || "").trim();
-  const webhookBaseUrl = String(channelCfg.webhookBaseUrl || "").trim();
+async function configureTelegramRealtimeWebhook() {
+  const token = String(telegramSourceConfig.token || "").trim();
+  const chatId = String(telegramSourceConfig.chatId || "").trim();
+  const webhookBaseUrl = String(telegramSourceConfig.webhookBaseUrl || "").trim();
   if (!token || !chatId) throw new Error("Vui lòng nhập Bot Token và Chat ID.");
   return callTelegramBridge("/api/telegram/config", {
     method: "POST",
-    body: JSON.stringify({ channel: channelKey, token, chatId, webhookBaseUrl })
+    body: JSON.stringify({ token, chatId, webhookBaseUrl })
   });
 }
 
-async function pullTelegramWebhookReports(channelKey = "nurse", options = {}) {
+async function pullTelegramWebhookReports(options = {}) {
   const { fullSync = false } = options;
-  const channelCfg = getTelegramChannelConfig(channelKey);
-  const since = fullSync ? 0 : Number(channelCfg.lastSyncedAt || 0);
-  const data = await callTelegramBridge(`/api/telegram/pending?channel=${encodeURIComponent(channelKey)}&since=${since}${fullSync ? "&all=1" : ""}`);
+  const since = fullSync ? 0 : Number(telegramSourceConfig.lastSyncedAt || 0);
+  const data = await callTelegramBridge(`/api/telegram/pending?since=${since}${fullSync ? "&all=1" : ""}`);
   const rows = Array.isArray(data.rows) ? data.rows : [];
-  const importedRows = channelKey === "marketing"
-    ? (fullSync ? replaceMarketingTelegramSchedules(rows) : mergeImportedMarketingSchedules(rows))
-    : (fullSync ? replaceTelegramSchedules(rows) : mergeImportedSchedules(rows));
+  const importedRows = fullSync ? replaceTelegramSchedules(rows) : mergeImportedSchedules(rows);
   if (data.lastReceivedAt) {
-    channelCfg.lastSyncedAt = Math.max(Number(channelCfg.lastSyncedAt || 0), Number(data.lastReceivedAt || 0));
+    telegramSourceConfig.lastSyncedAt = Math.max(Number(telegramSourceConfig.lastSyncedAt || 0), Number(data.lastReceivedAt || 0));
     saveTelegramSourceConfig();
   }
   return {
@@ -7101,14 +7047,13 @@ async function pullTelegramWebhookReports(channelKey = "nurse", options = {}) {
   };
 }
 
-async function runTelegramRealtimeSync(channelKey = "nurse", silent = false, options = {}) {
+async function runTelegramRealtimeSync(silent = false, options = {}) {
   try {
-    const result = await pullTelegramWebhookReports(channelKey, options);
+    const result = await pullTelegramWebhookReports(options);
     if (!silent) {
-      const label = channelKey === "marketing" ? "báo cáo Marketing" : "ca điều dưỡng";
       const msg = result.importedRows > 0
-        ? `Đã nhập ${result.importedRows} ${label} từ webhook Telegram.`
-        : `Không có ${label} mới từ Telegram.`;
+        ? `Đã nhập ${result.importedRows} ca từ webhook Telegram.`
+        : "Không có báo cáo Telegram mới.";
       showToast(msg, result.importedRows > 0 ? "success" : "info");
     }
     if (result.importedRows > 0) renderAll();
@@ -7204,118 +7149,21 @@ function mergeImportedSchedules(imported) {
   return list.length;
 }
 
-function normalizeImportedMarketingScheduleRow(raw) {
-  const sourceObj = {};
-  Object.keys(raw || {}).forEach((key) => {
-    sourceObj[String(key).toLowerCase().trim()] = raw[key];
-  });
-
-  const dateRaw = firstValue(sourceObj, ["registrationdate", "date", "ngay"]);
-  const normalizedDate = String(dateRaw || "").includes("-")
-    ? String(dateRaw).slice(0, 10)
-    : toDateKey(new Date(dateRaw || Date.now()));
-  const telegramUpdateId = String(firstValue(sourceObj, ["telegramupdateid"]) || "").trim();
-  const marketingName = String(firstValue(sourceObj, ["marketingname", "ten", "marketing", "marketer"]) || "").trim() || "Chưa gán";
-  const sourceText = String(firstValue(sourceObj, ["source"]) || "").toLowerCase();
-  const budget = Math.max(0, parseFlexibleNumber(firstValue(sourceObj, ["marketingbudget", "budget", "ngansach", "ads"])));
-  const messCount = Math.max(0, Math.round(parseFlexibleNumber(firstValue(sourceObj, ["marketingmesscount", "mess", "luongmess", "tuongtac"]))));
-  const phoneCount = Math.max(0, Math.round(parseFlexibleNumber(firstValue(sourceObj, ["marketingphonecount", "sdt", "sodienthoai", "phones"]))));
-  const bookedCount = Math.max(0, Math.round(parseFlexibleNumber(firstValue(sourceObj, ["marketingbookedcount", "lich", "datlich", "booked"]))));
-  const contractCount = Math.max(0, Math.round(parseFlexibleNumber(firstValue(sourceObj, ["marketingcontractcount", "hopdong", "contracts", "hd"]))));
-  const revenue = Math.max(0, parseFlexibleNumber(firstValue(sourceObj, ["marketingrevenue", "doanhso", "revenue", "contractamount"])));
-  const hasMarketingSource = sourceText.includes("telegram marketing") || sourceText.includes("#mkt") || sourceText.includes("#marketing");
-  const hasMarketingSignals = marketingName !== "Chưa gán" || budget > 0 || messCount > 0 || phoneCount > 0 || bookedCount > 0 || contractCount > 0 || revenue > 0;
-
-  if (!hasMarketingSource && !hasMarketingSignals) {
-    return null;
-  }
-
-  return {
-    id: telegramUpdateId ? `tgm-${telegramUpdateId}` : `tgm-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
-    registrationDate: normalizedDate,
-    appointmentTime: "",
-    customerName: `MKT ${marketingName}`,
-    phone: "",
-    address: "",
-    motherAge: "",
-    birthHistory: "",
-    babyBirthday: "",
-    priority: "",
-    service: "Báo cáo Marketing Telegram",
-    stage: "",
-    motherCondition: "",
-    babyCondition: "",
-    consultant: "",
-    nurse: "",
-    saleStaff: "",
-    experiencePrice: 0,
-    sessionDuration: "",
-    source: "Telegram Marketing",
-    marketingName,
-    marketingStaff: marketingName,
-    marketingBudget: budget,
-    marketingMessCount: messCount,
-    marketingPhoneCount: phoneCount,
-    marketingBookedCount: bookedCount,
-    marketingContractCount: contractCount,
-    marketingRevenue: revenue,
-    contractAmount: revenue,
-    shiftMinutes: 0,
-    distanceKm: 0,
-    renewContractAmount: 0,
-    productSalesAmount: 0,
-    hotBonus: 0,
-    monthlyCompetitionBonus: 0,
-    socialInsuranceDeduction: 0,
-    trainingDeduction: 0,
-    unionDeduction: 0,
-    violationDeduction: 0,
-    telegramUpdateId,
-    status: bookedCount > 0 || contractCount > 0 ? "completed" : "pending",
-    note: "Nhập từ bot Telegram Marketing",
-    updatedAt: Date.now(),
-    createdAt: Date.now()
-  };
-}
-
-function mergeImportedMarketingSchedules(imported) {
-  const existingIds = new Set((schedules || []).map((item) => String(item.id || "")));
-  const list = imported
-    .map(normalizeImportedMarketingScheduleRow)
-    .filter(Boolean)
-    .filter((item) => {
-      const key = String(item.id || "");
-      if (!key || !existingIds.has(key)) {
-        if (key) existingIds.add(key);
-        return true;
-      }
-      return false;
-    });
-  if (!list.length) return 0;
-  schedules = [...list, ...schedules];
-  saveJSON(STORAGE.schedule, schedules);
-  return list.length;
-}
-
-function isNurseTelegramScheduleRow(item) {
-  const id = String(item.id || "");
-  const source = String(item.source || "").toLowerCase();
-  return id.startsWith("tg-") || source.includes("telegram webhook") || source === "telegram";
-}
-
-function isMarketingTelegramScheduleRow(item) {
-  const id = String(item.id || "");
-  const source = String(item.source || "").toLowerCase();
-  return id.startsWith("tgm-") || source.includes("telegram marketing");
-}
-
 function replaceTelegramSchedules(imported) {
   const normalizedTelegramRows = imported.map(normalizeImportedScheduleRow).filter(Boolean);
   const incomingTelegramIds = new Set(normalizedTelegramRows.map((item) => String(item.id || "")).filter(Boolean));
-  const existingTelegramRows = (schedules || []).filter((item) => isNurseTelegramScheduleRow(item));
+  const existingTelegramRows = (schedules || []).filter((item) => {
+    const id = String(item.id || "");
+    const source = String(item.source || "").toLowerCase();
+    return id.startsWith("tg-") || source.includes("telegram");
+  });
   const existingTelegramIds = new Set(existingTelegramRows.map((item) => String(item.id || "")).filter(Boolean));
 
-  const nonTelegramRows = (schedules || []).filter((item) => !isNurseTelegramScheduleRow(item));
+  const nonTelegramRows = (schedules || []).filter((item) => {
+    const id = String(item.id || "");
+    const source = String(item.source || "").toLowerCase();
+    return !(id.startsWith("tg-") || source.includes("telegram"));
+  });
   schedules = [...normalizedTelegramRows, ...nonTelegramRows];
   saveJSON(STORAGE.schedule, schedules);
 
@@ -7325,25 +7173,6 @@ function replaceTelegramSchedules(imported) {
   });
   existingTelegramIds.forEach((id) => {
     if (!incomingTelegramIds.has(id)) changedCount += 1;
-  });
-  return changedCount;
-}
-
-function replaceMarketingTelegramSchedules(imported) {
-  const normalizedRows = imported.map(normalizeImportedMarketingScheduleRow).filter(Boolean);
-  const incomingIds = new Set(normalizedRows.map((item) => String(item.id || "")).filter(Boolean));
-  const existingRows = (schedules || []).filter((item) => isMarketingTelegramScheduleRow(item));
-  const existingIds = new Set(existingRows.map((item) => String(item.id || "")).filter(Boolean));
-  const nonMarketingRows = (schedules || []).filter((item) => !isMarketingTelegramScheduleRow(item));
-  schedules = [...normalizedRows, ...nonMarketingRows];
-  saveJSON(STORAGE.schedule, schedules);
-
-  let changedCount = 0;
-  incomingIds.forEach((id) => {
-    if (!existingIds.has(id)) changedCount += 1;
-  });
-  existingIds.forEach((id) => {
-    if (!incomingIds.has(id)) changedCount += 1;
   });
   return changedCount;
 }
@@ -7845,47 +7674,24 @@ function getMarketingReportRows(start, end) {
     }
 
     const row = bucket.get(key);
-    const explicitMess = Math.max(0, Math.round(parseFlexibleNumber(item.marketingMessCount || 0)));
-    const explicitPhones = Math.max(0, Math.round(parseFlexibleNumber(item.marketingPhoneCount || 0)));
-    const explicitBooked = Math.max(0, Math.round(parseFlexibleNumber(item.marketingBookedCount || 0)));
-    const explicitContracts = Math.max(0, Math.round(parseFlexibleNumber(item.marketingContractCount || 0)));
-    const explicitRevenue = Math.max(0, parseFlexibleNumber(item.marketingRevenue || 0));
-
     row.budget += getMarketingBudget(item);
-    row.messCount += explicitMess > 0 ? explicitMess : 1;
-    if (explicitPhones > 0) {
-      row.phones.add(`bulk-${key}-${row.phones.size}-${explicitPhones}`);
-      row.__explicitPhones = (row.__explicitPhones || 0) + explicitPhones;
-    } else {
-      const phone = String(item.phone || "").trim();
-      if (phone) row.phones.add(phone);
-    }
+    row.messCount += 1;
+    const phone = String(item.phone || "").trim();
+    if (phone) row.phones.add(phone);
 
-    if (explicitBooked > 0) {
-      row.bookedCount += explicitBooked;
-    } else {
-      const isBooked = item.status === "confirmed" || item.status === "completed";
-      if (isBooked) row.bookedCount += 1;
-    }
+    const isBooked = item.status === "confirmed" || item.status === "completed";
+    if (isBooked) row.bookedCount += 1;
 
-    if (explicitContracts > 0) {
-      row.contractCount += explicitContracts;
-    } else {
-      const contractAmount = Number(item.contractAmount) || 0;
-      if (contractAmount > 0) row.contractCount += 1;
-    }
-
-    if (explicitRevenue > 0) {
-      row.revenue += explicitRevenue;
-    } else {
-      const contractAmount = Number(item.contractAmount) || 0;
-      if (contractAmount > 0) row.revenue += contractAmount;
+    const contractAmount = Number(item.contractAmount) || 0;
+    if (contractAmount > 0) {
+      row.contractCount += 1;
+      row.revenue += contractAmount;
     }
   });
 
   let result = Array.from(bucket.values())
     .map((row) => {
-      const phoneCount = Math.max(row.phones.size, Number(row.__explicitPhones || 0));
+      const phoneCount = row.phones.size;
       const costPerMess = row.messCount ? row.budget / row.messCount : 0;
       const costPerPhone = phoneCount ? row.budget / phoneCount : 0;
       const costPerBooked = row.bookedCount ? row.budget / row.bookedCount : 0;
@@ -8675,17 +8481,9 @@ function renderReportsPage() {
 
 async function syncTelegramBeforeNurseReportRender() {
   if (!authState.loggedIn) return;
-  const result = await runTelegramRealtimeSync("nurse", true, { fullSync: true });
+  const result = await runTelegramRealtimeSync(true, { fullSync: true });
   if (result?.error) {
     showToast(`Không thể tự đồng bộ Telegram: ${result.error}`, "warning");
-  }
-}
-
-async function syncTelegramBeforeMarketingReportRender() {
-  if (!authState.loggedIn) return;
-  const result = await runTelegramRealtimeSync("marketing", true, { fullSync: true });
-  if (result?.error) {
-    showToast(`Không thể tự đồng bộ Telegram Marketing: ${result.error}`, "warning");
   }
 }
 
@@ -8698,9 +8496,6 @@ async function openReportDepartment(departmentKey) {
       showToast("Đã tự đặt bộ lọc báo cáo điều dưỡng về phạm vi tháng hiện tại.", "info");
     }
     await syncTelegramBeforeNurseReportRender();
-  }
-  if (departmentKey === "marketing") {
-    await syncTelegramBeforeMarketingReportRender();
   }
   activeReportDepartment = departmentKey;
   renderReportsPage();
@@ -11863,48 +11658,24 @@ els.testConnectionBtn.addEventListener("click", async () => {
 
 // ─── Populate Telegram inputs from saved config ─────────────────────────────
 function populateTelegramInputs() {
-  const nurseCfg = getTelegramChannelConfig("nurse");
-  const marketingCfg = getTelegramChannelConfig("marketing");
-
-  if (els.telegramBotToken) els.telegramBotToken.value = nurseCfg.token || "";
-  if (els.telegramChatId) els.telegramChatId.value = nurseCfg.chatId || "";
-  if (els.telegramWebhookBaseUrl) els.telegramWebhookBaseUrl.value = nurseCfg.webhookBaseUrl || "";
-  if (els.telegramMarketingBotToken) els.telegramMarketingBotToken.value = marketingCfg.token || "";
-  if (els.telegramMarketingChatId) els.telegramMarketingChatId.value = marketingCfg.chatId || "";
-  if (els.telegramMarketingWebhookBaseUrl) els.telegramMarketingWebhookBaseUrl.value = marketingCfg.webhookBaseUrl || "";
-
+  if (els.telegramBotToken) els.telegramBotToken.value = telegramSourceConfig.token || "";
+  if (els.telegramChatId) els.telegramChatId.value = telegramSourceConfig.chatId || "";
+  if (els.telegramWebhookBaseUrl) els.telegramWebhookBaseUrl.value = telegramSourceConfig.webhookBaseUrl || "";
   if (els.telegramSyncStatus) {
-    if (nurseCfg.lastSyncedAt) {
-      const d = new Date(nurseCfg.lastSyncedAt);
+    if (telegramSourceConfig.lastSyncedAt) {
+      const d = new Date(telegramSourceConfig.lastSyncedAt);
       els.telegramSyncStatus.textContent = `Đồng bộ lần cuối: ${d.toLocaleString("vi-VN")}`;
     } else {
       els.telegramSyncStatus.textContent = "Chưa đồng bộ lần nào.";
-    }
-  }
-
-  if (els.telegramMarketingSyncStatus) {
-    if (marketingCfg.lastSyncedAt) {
-      const d = new Date(marketingCfg.lastSyncedAt);
-      els.telegramMarketingSyncStatus.textContent = `Đồng bộ lần cuối: ${d.toLocaleString("vi-VN")}`;
-    } else {
-      els.telegramMarketingSyncStatus.textContent = "Chưa đồng bộ lần nào.";
     }
   }
 }
 populateTelegramInputs();
 
 function saveTelegramInputs() {
-  const nurseCfg = getTelegramChannelConfig("nurse");
-  const marketingCfg = getTelegramChannelConfig("marketing");
-
-  if (els.telegramBotToken) nurseCfg.token = els.telegramBotToken.value.trim();
-  if (els.telegramChatId) nurseCfg.chatId = els.telegramChatId.value.trim();
-  if (els.telegramWebhookBaseUrl) nurseCfg.webhookBaseUrl = els.telegramWebhookBaseUrl.value.trim();
-
-  if (els.telegramMarketingBotToken) marketingCfg.token = els.telegramMarketingBotToken.value.trim();
-  if (els.telegramMarketingChatId) marketingCfg.chatId = els.telegramMarketingChatId.value.trim();
-  if (els.telegramMarketingWebhookBaseUrl) marketingCfg.webhookBaseUrl = els.telegramMarketingWebhookBaseUrl.value.trim();
-
+  if (els.telegramBotToken) telegramSourceConfig.token = els.telegramBotToken.value.trim();
+  if (els.telegramChatId) telegramSourceConfig.chatId = els.telegramChatId.value.trim();
+  if (els.telegramWebhookBaseUrl) telegramSourceConfig.webhookBaseUrl = els.telegramWebhookBaseUrl.value.trim();
   saveTelegramSourceConfig();
 }
 
@@ -11919,27 +11690,16 @@ function startTelegramRealtimeSync() {
   stopTelegramRealtimeSync();
   (async () => {
     if (!authState.loggedIn) return;
-    const nurseResult = await runTelegramRealtimeSync("nurse", true, { fullSync: true });
-    if (nurseResult && nurseResult.importedRows > 0 && els.telegramSyncStatus) {
-      els.telegramSyncStatus.textContent = `✓ Đã nhập ${nurseResult.importedRows} ca từ queue Telegram (${new Date().toLocaleTimeString("vi-VN")})`;
-    }
-
-    const marketingResult = await runTelegramRealtimeSync("marketing", true, { fullSync: true });
-    if (marketingResult && marketingResult.importedRows > 0 && els.telegramMarketingSyncStatus) {
-      els.telegramMarketingSyncStatus.textContent = `✓ Đã nhập ${marketingResult.importedRows} dòng marketing (${new Date().toLocaleTimeString("vi-VN")})`;
+    const result = await runTelegramRealtimeSync(true, { fullSync: true });
+    if (result && result.importedRows > 0 && els.telegramSyncStatus) {
+      els.telegramSyncStatus.textContent = `✓ Đã nhập ${result.importedRows} ca từ queue Telegram (${new Date().toLocaleTimeString("vi-VN")})`;
     }
   })();
-
   telegramRealtimeSyncTimer = setInterval(async () => {
     if (!authState.loggedIn) return;
-    const nurseResult = await runTelegramRealtimeSync("nurse", true);
-    if (nurseResult && nurseResult.importedRows > 0 && els.telegramSyncStatus) {
-      els.telegramSyncStatus.textContent = `✓ Realtime: đã nhập ${nurseResult.importedRows} ca mới (${new Date().toLocaleTimeString("vi-VN")})`;
-    }
-
-    const marketingResult = await runTelegramRealtimeSync("marketing", true);
-    if (marketingResult && marketingResult.importedRows > 0 && els.telegramMarketingSyncStatus) {
-      els.telegramMarketingSyncStatus.textContent = `✓ Realtime MKT: đã nhập ${marketingResult.importedRows} dòng mới (${new Date().toLocaleTimeString("vi-VN")})`;
+    const result = await runTelegramRealtimeSync(true);
+    if (result && result.importedRows > 0 && els.telegramSyncStatus) {
+      els.telegramSyncStatus.textContent = `✓ Realtime: đã nhập ${result.importedRows} ca mới (${new Date().toLocaleTimeString("vi-VN")})`;
     }
   }, 15000);
 }
@@ -11947,8 +11707,7 @@ function startTelegramRealtimeSync() {
 els.syncTelegramBtn.addEventListener("click", async () => {
   if (!can("canSyncData")) { showToast("Bạn không có quyền đồng bộ dữ liệu.", "warning"); return; }
   saveTelegramInputs();
-  const nurseCfg = getTelegramChannelConfig("nurse");
-  if (!nurseCfg.token || !nurseCfg.chatId) {
+  if (!telegramSourceConfig.token || !telegramSourceConfig.chatId) {
     showToast("Vui lòng nhập Bot Token và Chat ID.", "warning");
     return;
   }
@@ -11957,10 +11716,10 @@ els.syncTelegramBtn.addEventListener("click", async () => {
   try {
     let result;
     try {
-      result = await runTelegramRealtimeSync("nurse", false, { fullSync: true });
+      result = await runTelegramRealtimeSync(false, { fullSync: true });
     } catch (bridgeErr) {
       // Fallback: direct Telegram polling if bridge server is not available.
-      const direct = await fetchAndParseTelegramMessagesDirect("nurse");
+      const direct = await fetchAndParseTelegramMessagesDirect();
       result = { importedRows: direct.importedRows, fetchedRows: direct.parsedMessages, pendingCount: 0, configured: false };
     }
     const msg = `Đã nhập ${result.importedRows} ca mới (${result.fetchedRows} bản ghi nhận về).`;
@@ -11977,87 +11736,23 @@ els.syncTelegramBtn.addEventListener("click", async () => {
 
 els.testTelegramBtn.addEventListener("click", async () => {
   saveTelegramInputs();
-  const nurseCfg = getTelegramChannelConfig("nurse");
-  if (!nurseCfg.token || !nurseCfg.chatId) {
+  if (!telegramSourceConfig.token || !telegramSourceConfig.chatId) {
     showToast("Vui lòng nhập Bot Token và Chat ID.", "warning");
     return;
   }
   showToast("Đang cấu hình webhook realtime...", "info");
   try {
-    const data = await configureTelegramRealtimeWebhook("nurse");
+    const data = await configureTelegramRealtimeWebhook();
     const webhookUrl = data.webhookUrl || "(chưa đăng ký webhook, thiếu Public URL)";
     const pending = Number(data.pendingCount || 0);
     els.telegramSyncStatus.textContent = `Webhook sẵn sàng. Queue hiện tại: ${pending}.`;
     showToast(`Realtime đã bật. Webhook: ${webhookUrl}`, "success");
     startTelegramRealtimeSync();
-    await runTelegramRealtimeSync("nurse", false, { fullSync: true });
+    await runTelegramRealtimeSync(false, { fullSync: true });
   } catch (err) {
     showToast(`Lỗi Telegram: ${err.message}`, "error");
   }
 });
-
-if (els.syncTelegramMarketingBtn) {
-  els.syncTelegramMarketingBtn.addEventListener("click", async () => {
-    if (!can("canSyncData")) { showToast("Bạn không có quyền đồng bộ dữ liệu.", "warning"); return; }
-    saveTelegramInputs();
-    const marketingCfg = getTelegramChannelConfig("marketing");
-    if (!marketingCfg.token || !marketingCfg.chatId) {
-      showToast("Vui lòng nhập Bot Token Marketing và Chat ID nhóm Marketing.", "warning");
-      return;
-    }
-    els.syncTelegramMarketingBtn.disabled = true;
-    if (els.telegramMarketingSyncStatus) {
-      els.telegramMarketingSyncStatus.textContent = "Đang đồng bộ dữ liệu Telegram Marketing...";
-    }
-    try {
-      let result;
-      try {
-        result = await runTelegramRealtimeSync("marketing", false, { fullSync: true });
-      } catch (bridgeErr) {
-        const direct = await fetchAndParseTelegramMessagesDirect("marketing");
-        result = { importedRows: direct.importedRows, fetchedRows: direct.parsedMessages, pendingCount: 0, configured: false };
-      }
-      const msg = `Đã nhập ${result.importedRows} dòng báo cáo Marketing (${result.fetchedRows} bản ghi nhận về).`;
-      if (els.telegramMarketingSyncStatus) {
-        els.telegramMarketingSyncStatus.textContent = `✓ ${msg} (${new Date().toLocaleTimeString("vi-VN")})`;
-      }
-      showToast(msg, result.importedRows > 0 ? "success" : "info");
-      if (result.importedRows > 0) renderAll();
-    } catch (err) {
-      if (els.telegramMarketingSyncStatus) {
-        els.telegramMarketingSyncStatus.textContent = `Lỗi: ${err.message}`;
-      }
-      showToast(`Lỗi Telegram Marketing: ${err.message}`, "error");
-    } finally {
-      els.syncTelegramMarketingBtn.disabled = false;
-    }
-  });
-}
-
-if (els.testTelegramMarketingBtn) {
-  els.testTelegramMarketingBtn.addEventListener("click", async () => {
-    saveTelegramInputs();
-    const marketingCfg = getTelegramChannelConfig("marketing");
-    if (!marketingCfg.token || !marketingCfg.chatId) {
-      showToast("Vui lòng nhập Bot Token Marketing và Chat ID nhóm Marketing.", "warning");
-      return;
-    }
-    showToast("Đang cấu hình webhook realtime Marketing...", "info");
-    try {
-      const data = await configureTelegramRealtimeWebhook("marketing");
-      const webhookUrl = data.webhookUrl || "(chưa đăng ký webhook, thiếu Public URL)";
-      const pending = Number(data.pendingCount || 0);
-      if (els.telegramMarketingSyncStatus) {
-        els.telegramMarketingSyncStatus.textContent = `Webhook Marketing sẵn sàng. Queue hiện tại: ${pending}.`;
-      }
-      showToast(`Realtime Marketing đã bật. Webhook: ${webhookUrl}`, "success");
-      startTelegramRealtimeSync();
-      await runTelegramRealtimeSync("marketing", false, { fullSync: true });
-    } catch (err) {
-      showToast(`Lỗi Telegram Marketing: ${err.message}`, "error");
-    }
-  });
-}
 
 startTelegramRealtimeSync();
 

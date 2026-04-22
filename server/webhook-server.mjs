@@ -23,8 +23,6 @@ const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const USE_POSTGRES = Boolean(DATABASE_URL);
 const PERSISTENCE_MODE = String(process.env.PERSISTENCE_MODE || "auto").trim().toLowerCase();
 const PG_STATE_KEY = "global_state";
-const DEFAULT_TELEGRAM_CHANNEL = "nurse";
-const SUPPORTED_TELEGRAM_CHANNELS = new Set(["nurse", "marketing"]);
 const DEFAULT_BACKUP_DIR = existsSync(RENDER_DISK_ROOT)
   ? resolve(RENDER_DISK_ROOT, "backups")
   : resolve(process.cwd(), "server", "backups");
@@ -136,12 +134,7 @@ function normalizeAppState(input = {}) {
   };
 }
 
-function normalizeTelegramChannelKey(input) {
-  const value = String(input || DEFAULT_TELEGRAM_CHANNEL).trim().toLowerCase();
-  return value || DEFAULT_TELEGRAM_CHANNEL;
-}
-
-function getDefaultTelegramChannelState(raw = {}) {
+function normalizeState(raw = {}) {
   return {
     token: String(raw.token || ""),
     chatId: String(raw.chatId || ""),
@@ -150,61 +143,7 @@ function getDefaultTelegramChannelState(raw = {}) {
     webhookSecret: String(raw.webhookSecret || randomUUID().replace(/-/g, "")),
     webhookPath: String(raw.webhookPath || ""),
     updatedAt: Number(raw.updatedAt || 0),
-    reports: Array.isArray(raw.reports) ? raw.reports.slice(-MAX_REPORTS) : []
-  };
-}
-
-function normalizeTelegramChannels(raw = {}) {
-  const normalized = {};
-  const source = raw && typeof raw === "object" ? raw : {};
-  const legacyNurse = {
-    token: source.token,
-    chatId: source.chatId,
-    lastUpdateId: source.lastUpdateId,
-    webhookBaseUrl: source.webhookBaseUrl,
-    webhookSecret: source.webhookSecret,
-    webhookPath: source.webhookPath,
-    updatedAt: source.updatedAt,
-    reports: source.reports
-  };
-  const channelSource = source.telegramChannels && typeof source.telegramChannels === "object"
-    ? source.telegramChannels
-    : {};
-
-  SUPPORTED_TELEGRAM_CHANNELS.forEach((channelKey) => {
-    const rawChannel = channelSource[channelKey] && typeof channelSource[channelKey] === "object"
-      ? channelSource[channelKey]
-      : (channelKey === DEFAULT_TELEGRAM_CHANNEL ? legacyNurse : {});
-    normalized[channelKey] = getDefaultTelegramChannelState(rawChannel);
-  });
-
-  return normalized;
-}
-
-function getTelegramChannelState(state, channelKey) {
-  const normalizedKey = normalizeTelegramChannelKey(channelKey);
-  if (!state.telegramChannels || typeof state.telegramChannels !== "object") {
-    state.telegramChannels = normalizeTelegramChannels(state);
-  }
-  if (!state.telegramChannels[normalizedKey]) {
-    state.telegramChannels[normalizedKey] = getDefaultTelegramChannelState();
-  }
-  return state.telegramChannels[normalizedKey];
-}
-
-function normalizeState(raw = {}) {
-  const telegramChannels = normalizeTelegramChannels(raw);
-  const nurseChannel = telegramChannels[DEFAULT_TELEGRAM_CHANNEL] || getDefaultTelegramChannelState();
-  return {
-    token: String(nurseChannel.token || ""),
-    chatId: String(nurseChannel.chatId || ""),
-    lastUpdateId: Number(nurseChannel.lastUpdateId || 0),
-    webhookBaseUrl: String(nurseChannel.webhookBaseUrl || ""),
-    webhookSecret: String(nurseChannel.webhookSecret || randomUUID().replace(/-/g, "")),
-    webhookPath: String(nurseChannel.webhookPath || ""),
-    updatedAt: Number(raw.updatedAt || nurseChannel.updatedAt || 0),
-    reports: Array.isArray(nurseChannel.reports) ? nurseChannel.reports.slice(-MAX_REPORTS) : [],
-    telegramChannels,
+    reports: Array.isArray(raw.reports) ? raw.reports.slice(-MAX_REPORTS) : [],
     users: normalizeUsersList(raw.users && Array.isArray(raw.users) && raw.users.length ? raw.users : DEFAULT_USERS),
     kpiReports: normalizeKpiReportsList(raw.kpiReports),
     appState: normalizeAppState(raw.appState)
@@ -435,12 +374,56 @@ function parseFlexibleNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseTelegramAllowedChatIds(chatIdValue) {
+  return String(chatIdValue || "")
+    .split(/[\s,;|]+/)
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function isTelegramChatAllowed(state, chatId) {
+  const allowed = parseTelegramAllowedChatIds(state?.chatId || "");
+  if (!allowed.length) return false;
+  return allowed.includes(String(chatId || ""));
+}
+
+function extractTelegramHashtags(text) {
+  const matches = String(text || "").match(/#[^\s#]+/g) || [];
+  const unique = new Set();
+  matches.forEach((tag) => {
+    const normalized = normalizeVietnamese(tag.replace(/^#/, ""));
+    if (normalized) unique.add(normalized);
+  });
+  return Array.from(unique);
+}
+
+function detectTelegramRoute(values, hashtags) {
+  const all = new Set([...(hashtags || []), ...Object.keys(values || {}).map((key) => normalizeVietnamese(key))]);
+
+  const hasAny = (keys) => keys.some((key) => all.has(normalizeVietnamese(key)));
+  if (hasAny(["mkt", "marketing", "mk"])) return "marketing";
+  if (hasAny(["tuvan", "tuvan", "tv", "consultant"])) return "consultant";
+  if (hasAny(["telesale", "sale", "ts"])) return "telesale";
+  if (hasAny(["dieuduong", "dieu_duong", "dd", "nurse", "baocao"])) return "nurse";
+  return "";
+}
+
+function firstTelegramValue(values, keys) {
+  for (const key of keys) {
+    const normalizedKey = normalizeVietnamese(key);
+    if (values[normalizedKey] !== undefined && values[normalizedKey] !== null && String(values[normalizedKey]).trim() !== "") {
+      return values[normalizedKey];
+    }
+  }
+  return "";
+}
+
 function parseTelegramReportMessage(text) {
-  if (!text) return null;
-  const lowered = String(text).toLowerCase();
+  if (!text || !String(text).includes("#")) return null;
 
   const lines = String(text).split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
   const values = {};
+  const hashtags = extractTelegramHashtags(text);
 
   for (const line of lines) {
     const separatorIndex = line.indexOf(":");
@@ -451,88 +434,80 @@ function parseTelegramReportMessage(text) {
     values[key] = value;
   }
 
-  const hasKeyword = lowered.includes("#baocao") || lowered.includes("#report");
-  const hasStructuredFields = Boolean(
-    values.ten || values.dieuduong || values.nurse || values.khach || values.khachhang || values.customer
-  );
-  if (!hasKeyword && !hasStructuredFields) return null;
+  const route = detectTelegramRoute(values, hashtags);
+  if (!route) return null;
 
-  const nurse = values.ten || values.dieuduong || values.nurse || "";
-  const customerName = values.khach || values.khachhang || values.customer || "";
+  const registrationDate = normalizeDate(firstTelegramValue(values, ["ngay", "date"]));
+  const appointmentTime = String(firstTelegramValue(values, ["gio", "time"]) || "").trim();
+  const customerName = String(firstTelegramValue(values, ["khach", "khachhang", "customer", "tenkhach"]) || "").trim();
+  const phone = String(firstTelegramValue(values, ["sdt", "sodienthoai", "phone"]) || "").trim();
+  const service = String(firstTelegramValue(values, ["dichvu", "service"]) || "").trim();
+  const note = String(firstTelegramValue(values, ["ghichu", "note"]) || "").trim();
+  const status = String(firstTelegramValue(values, ["trangthai", "status"]) || "completed").trim() || "completed";
+  const shiftMinutes = parseFlexibleNumber(firstTelegramValue(values, ["thoiluong", "phut", "minutes"]));
+  const distanceKm = parseFlexibleNumber(firstTelegramValue(values, ["khoangcach", "km", "distance"]));
+  const contractAmount = parseFlexibleNumber(firstTelegramValue(values, ["hopdong", "contract", "contractamount", "doanhso"]));
 
-  if (!nurse || !customerName) return null;
-
-  return {
-    nurse,
-    registrationDate: normalizeDate(values.ngay || values.date || ""),
-    appointmentTime: values.gio || values.time || "",
+  const base = {
+    registrationDate,
+    appointmentTime,
     customerName,
-    service: values.dichvu || values.service || "",
-    shiftMinutes: parseFlexibleNumber(values.thoiluong || values.phut || values.minutes || 0),
-    distanceKm: parseFlexibleNumber(values.khoangcach || values.km || 0),
-    status: values.trangthai || values.status || "completed",
-    note: values.ghichu || values.note || "",
+    phone,
+    service,
+    status,
+    note,
+    shiftMinutes,
+    distanceKm,
+    contractAmount,
+    telegramTags: hashtags,
+    telegramRoute: route,
     source: "Telegram Webhook"
   };
-}
 
-function parseTelegramMarketingMessage(text) {
-  const value = String(text || "");
-  if (!value) return null;
-  const lowered = value.toLowerCase();
-  const hasKeyword = lowered.includes("#mkt")
-    || lowered.includes("#marketing")
-    || lowered.includes("#baocao_marketing")
-    || lowered.includes("#baocaomarketing");
-  const lines = value.split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
-  const fields = {};
-  for (const line of lines) {
-    const separatorIndex = line.indexOf(":");
-    if (separatorIndex === -1) continue;
-    const key = normalizeVietnamese(line.slice(0, separatorIndex));
-    const fieldValue = line.slice(separatorIndex + 1).trim();
-    if (!key || !fieldValue) continue;
-    fields[key] = fieldValue;
+  if (route === "nurse") {
+    const nurse = String(firstTelegramValue(values, ["ten", "dieuduong", "nurse", "nhanvien"]) || "").trim();
+    if (!nurse || !customerName) return null;
+    return {
+      ...base,
+      nurse,
+      source: "Telegram Webhook #dieuduong"
+    };
   }
 
-  const hasStructuredFields = Boolean(
-    fields.ngansach || fields.budget || fields.ads || fields.mess || fields.luongmess || fields.tuongtac
-    || fields.sdt || fields.sodienthoai || fields.doanhso || fields.revenue || fields.hopdong || fields.contracts
-    || fields.marketing || fields.marketer || fields.nhanvien
-  );
-  if (!hasKeyword && !hasStructuredFields) return null;
-
-  const reportDate = normalizeDate(fields.ngay || fields.date || "");
-  const marketingName = fields.ten || fields.marketing || fields.marketer || fields.nhanvien || "";
-  const budget = parseFlexibleNumber(fields.ngansach || fields.budget || fields.ads || fields.adspend || 0);
-  const messCount = Math.max(0, Math.round(parseFlexibleNumber(fields.mess || fields.luongmess || fields.tuongtac || 0)));
-  const phoneCount = Math.max(0, Math.round(parseFlexibleNumber(fields.sdt || fields.sodienthoai || fields.phone || fields.phones || 0)));
-  const bookedCount = Math.max(0, Math.round(parseFlexibleNumber(fields.lich || fields.datlich || fields.booked || 0)));
-  const contractCount = Math.max(0, Math.round(parseFlexibleNumber(fields.hopdong || fields.contracts || fields.hd || 0)));
-  const revenue = parseFlexibleNumber(fields.doanhso || fields.revenue || fields.giatridh || fields.giatrihopdong || 0);
-
-  if (!marketingName && messCount <= 0 && phoneCount <= 0 && bookedCount <= 0 && contractCount <= 0 && revenue <= 0 && budget <= 0) {
-    return null;
+  if (route === "marketing") {
+    const marketingName = String(firstTelegramValue(values, ["ten", "marketing", "mkt", "marketer", "nhanvien"]) || "").trim();
+    if (!marketingName || (!customerName && !phone)) return null;
+    return {
+      ...base,
+      marketingName,
+      marketingStaff: marketingName,
+      marketingBudget: parseFlexibleNumber(firstTelegramValue(values, ["ngansach", "budget", "ads", "adspend"])),
+      marketingMessCount: Math.max(1, parseFlexibleNumber(firstTelegramValue(values, ["mess", "luongmess", "interactions"])) || 1),
+      source: "Telegram Marketing #mkt"
+    };
   }
 
-  return {
-    registrationDate: reportDate,
-    marketingName: marketingName || "Chưa gán",
-    marketingBudget: budget,
-    marketingMessCount: messCount,
-    marketingPhoneCount: phoneCount,
-    marketingBookedCount: bookedCount,
-    marketingContractCount: contractCount,
-    marketingRevenue: revenue,
-    contractAmount: revenue,
-    source: "Telegram Marketing",
-    status: bookedCount > 0 || contractCount > 0 ? "completed" : "pending"
-  };
-}
+  if (route === "consultant") {
+    const consultant = String(firstTelegramValue(values, ["ten", "tuvan", "consultant", "tv", "nhanvien"]) || "").trim();
+    if (!consultant || !customerName) return null;
+    return {
+      ...base,
+      consultant,
+      source: "Telegram Tu Van #tuvan"
+    };
+  }
 
-function parseTelegramMessageByChannel(channelKey, text) {
-  if (channelKey === "marketing") return parseTelegramMarketingMessage(text);
-  return parseTelegramReportMessage(text);
+  if (route === "telesale") {
+    const saleStaff = String(firstTelegramValue(values, ["ten", "telesale", "sale", "ts", "nhanvien"]) || "").trim();
+    if (!saleStaff || (!customerName && !phone)) return null;
+    return {
+      ...base,
+      saleStaff,
+      source: "Telegram Telesale #telesale"
+    };
+  }
+
+  return null;
 }
 
 async function parseJsonBody(req) {
@@ -585,37 +560,36 @@ async function getWebhookInfo(token) {
   return payload.result || {};
 }
 
-function appendTelegramReport(state, update, channelKey = DEFAULT_TELEGRAM_CHANNEL) {
-  const channelState = getTelegramChannelState(state, channelKey);
+function appendTelegramReport(state, update) {
   const message = update?.message;
   const chatId = String(message?.chat?.id || "");
-  if (!message || !message.text || chatId !== String(channelState.chatId || "")) return { saved: false, ignored: true };
+  if (!message || !message.text || !isTelegramChatAllowed(state, chatId)) return { saved: false, ignored: true };
 
-  const raw = parseTelegramMessageByChannel(channelKey, message.text);
+  const raw = parseTelegramReportMessage(message.text);
   if (!raw) return { saved: false, ignored: true };
 
   raw.telegramUpdateId = String(update.update_id || `${Date.now()}`);
-  raw.telegramChannel = channelKey;
+  raw.telegramChatId = chatId;
+  raw.telegramChatTitle = String(message?.chat?.title || message?.chat?.username || "").trim();
   const report = {
-    id: `${channelKey}-${String(update.update_id || `${Date.now()}`)}`,
+    id: String(update.update_id || `${Date.now()}`),
     receivedAt: Date.now(),
     raw
   };
 
-  const existing = new Set((channelState.reports || []).map((item) => String(item.id)));
+  const existing = new Set((state.reports || []).map((item) => String(item.id)));
   if (!existing.has(report.id)) {
-    channelState.reports = [...(channelState.reports || []), report].slice(-MAX_REPORTS);
-    channelState.updatedAt = Date.now();
+    state.reports = [...(state.reports || []), report].slice(-MAX_REPORTS);
     state.updatedAt = Date.now();
     return { saved: true, ignored: false };
   }
   return { saved: false, ignored: false };
 }
 
-async function fetchTelegramUpdates(channelState) {
-  if (!channelState.token) return [];
-  const offset = Number(channelState.lastUpdateId || 0) > 0 ? Number(channelState.lastUpdateId) + 1 : undefined;
-  const endpoint = `https://api.telegram.org/bot${channelState.token}/getUpdates?limit=100${offset ? `&offset=${offset}` : ""}`;
+async function fetchTelegramUpdates(state) {
+  if (!state.token) return [];
+  const offset = Number(state.lastUpdateId || 0) > 0 ? Number(state.lastUpdateId) + 1 : undefined;
+  const endpoint = `https://api.telegram.org/bot${state.token}/getUpdates?limit=100${offset ? `&offset=${offset}` : ""}`;
   const response = await fetch(endpoint);
   const payload = await response.json();
   if (!response.ok || payload.ok === false) {
@@ -628,56 +602,34 @@ async function fetchTelegramUpdates(channelState) {
 
 async function pollTelegramUpdatesOnce() {
   const state = await readState();
-  const channels = state.telegramChannels && typeof state.telegramChannels === "object"
-    ? state.telegramChannels
-    : normalizeTelegramChannels(state);
-  state.telegramChannels = channels;
+  if (!state.token || !parseTelegramAllowedChatIds(state.chatId).length) return;
 
-  let hasChanges = false;
-  for (const [channelKey, channelState] of Object.entries(channels)) {
-    if (!channelState?.token || !channelState?.chatId) continue;
-    try {
-      const updates = await fetchTelegramUpdates(channelState);
-      if (!updates.length) continue;
-      updates.forEach((update) => {
-        channelState.lastUpdateId = Math.max(Number(channelState.lastUpdateId || 0), Number(update.update_id || 0));
-        const result = appendTelegramReport(state, update, channelKey);
-        if (result.saved) hasChanges = true;
-      });
-      hasChanges = true;
-    } catch (error) {
-      if (error.code === 409) {
-        try {
-          const webhookInfo = await getWebhookInfo(channelState.token);
-          if (webhookInfo?.last_error_message || Number(webhookInfo?.pending_update_count || 0) > 0) {
-            await deleteTelegramWebhook(channelState.token);
-            channelState.webhookBaseUrl = "";
-            channelState.webhookPath = "";
-            hasChanges = true;
-          }
-        } catch (cleanupError) {
-          console.error(`[telegram-webhook-bridge] failed to recover channel ${channelKey}:`, cleanupError.message);
-        }
-        continue;
-      }
-      console.error(`[telegram-webhook-bridge] polling error (${channelKey}):`, error.message);
-    }
-  }
+  try {
+    const updates = await fetchTelegramUpdates(state);
+    if (!updates.length) return;
 
-  if (hasChanges) {
-    state.updatedAt = Date.now();
+    updates.forEach((update) => {
+      state.lastUpdateId = Math.max(Number(state.lastUpdateId || 0), Number(update.update_id || 0));
+      appendTelegramReport(state, update);
+    });
     await writeState(state);
+  } catch (error) {
+    if (error.code === 409) {
+      try {
+        const webhookInfo = await getWebhookInfo(state.token);
+        if (webhookInfo?.last_error_message || Number(webhookInfo?.pending_update_count || 0) > 0) {
+          await deleteTelegramWebhook(state.token);
+          state.webhookBaseUrl = "";
+          state.webhookPath = "";
+          await writeState(state);
+        }
+      } catch (cleanupError) {
+        console.error("[telegram-webhook-bridge] failed to recover from webhook conflict:", cleanupError.message);
+      }
+      return;
+    }
+    console.error("[telegram-webhook-bridge] polling error:", error.message);
   }
-}
-
-function resolveRequestedChannel(url, payload = {}) {
-  const fromPayload = normalizeTelegramChannelKey(payload.channel || payload.channelKey);
-  const fromQuery = normalizeTelegramChannelKey(url.searchParams.get("channel"));
-  const channelKey = (payload.channel || payload.channelKey) ? fromPayload : fromQuery;
-  if (!SUPPORTED_TELEGRAM_CHANNELS.has(channelKey)) {
-    throw new Error(`Unsupported telegram channel: ${channelKey}`);
-  }
-  return channelKey;
 }
 
 async function writeBackupSnapshot() {
@@ -780,8 +732,6 @@ const server = createServer(async (req, res) => {
     try {
       const payload = await parseJsonBody(req);
       const state = await readState();
-      const channelKey = resolveRequestedChannel(url, payload);
-      const channelState = getTelegramChannelState(state, channelKey);
       const token = String(payload.token || "").trim();
       const chatId = String(payload.chatId || "").trim();
       const webhookBaseUrl = String(payload.webhookBaseUrl || "").trim().replace(/\/+$/, "");
@@ -791,33 +741,30 @@ const server = createServer(async (req, res) => {
         return;
       }
 
-      channelState.token = token;
-      channelState.chatId = chatId;
-      channelState.webhookBaseUrl = webhookBaseUrl;
-      channelState.updatedAt = Date.now();
+      state.token = token;
+      state.chatId = chatId;
+      state.webhookBaseUrl = webhookBaseUrl;
       state.updatedAt = Date.now();
-      if (!channelState.webhookSecret) channelState.webhookSecret = randomUUID().replace(/-/g, "");
+      if (!state.webhookSecret) state.webhookSecret = randomUUID().replace(/-/g, "");
 
       let webhookUrl = "";
       let webhookInfo = {};
       if (webhookBaseUrl) {
-        webhookUrl = `${webhookBaseUrl}/api/telegram/webhook/${channelKey}/${channelState.webhookSecret}`;
+        webhookUrl = `${webhookBaseUrl}/api/telegram/webhook/${state.webhookSecret}`;
         await setTelegramWebhook(token, webhookUrl);
         webhookInfo = await getWebhookInfo(token);
-        channelState.webhookPath = `/api/telegram/webhook/${channelKey}/${channelState.webhookSecret}`;
+        state.webhookPath = `/api/telegram/webhook/${state.webhookSecret}`;
       } else {
         await deleteTelegramWebhook(token);
-        channelState.webhookPath = "";
+        state.webhookPath = "";
       }
 
       const saved = await writeState(state);
-      const savedChannel = getTelegramChannelState(saved, channelKey);
       sendJson(res, 200, {
         ok: true,
-        channel: channelKey,
-        configured: Boolean(savedChannel.token && savedChannel.chatId),
+        configured: Boolean(saved.token && saved.chatId),
         webhookUrl,
-        pendingCount: (savedChannel.reports || []).length,
+        pendingCount: saved.reports.length,
         webhookInfo
       });
     } catch (error) {
@@ -829,20 +776,17 @@ const server = createServer(async (req, res) => {
   if (method === "GET" && url.pathname === "/api/telegram/pending") {
     try {
       const state = await readState();
-      const channelKey = resolveRequestedChannel(url, {});
-      const channelState = getTelegramChannelState(state, channelKey);
       const since = Number(url.searchParams.get("since") || 0);
       const includeAll = url.searchParams.get("all") === "1";
       const filtered = includeAll
-        ? (channelState.reports || [])
-        : (channelState.reports || []).filter((item) => Number(item.receivedAt || 0) > since);
+        ? (state.reports || [])
+        : (state.reports || []).filter((item) => Number(item.receivedAt || 0) > since);
       const lastReceivedAt = filtered.length
         ? Math.max(...filtered.map((item) => Number(item.receivedAt || 0)))
         : since;
       sendJson(res, 200, {
         ok: true,
-        channel: channelKey,
-        configured: Boolean(channelState.token && channelState.chatId),
+        configured: Boolean(state.token && state.chatId),
         pendingCount: filtered.length,
         rows: filtered.map((item) => ({
           ...item.raw,
@@ -859,27 +803,17 @@ const server = createServer(async (req, res) => {
   if (method === "POST" && url.pathname.startsWith("/api/telegram/webhook/")) {
     try {
       const state = await readState();
-      const segments = url.pathname.split("/").filter(Boolean);
-      const hasExplicitChannel = segments.length >= 5;
-      const channelKey = hasExplicitChannel
-        ? normalizeTelegramChannelKey(segments[3])
-        : DEFAULT_TELEGRAM_CHANNEL;
-      if (!SUPPORTED_TELEGRAM_CHANNELS.has(channelKey)) {
-        sendJson(res, 404, { ok: false, error: "Unknown telegram channel" });
-        return;
-      }
-      const incomingSecret = hasExplicitChannel ? segments[4] : segments[3];
-      const channelState = getTelegramChannelState(state, channelKey);
-      if (!incomingSecret || incomingSecret !== channelState.webhookSecret) {
+      const incomingSecret = url.pathname.split("/").pop() || "";
+      if (!incomingSecret || incomingSecret !== state.webhookSecret) {
         sendJson(res, 403, { ok: false, error: "Invalid webhook secret" });
         return;
       }
 
       const update = await parseJsonBody(req);
-      channelState.lastUpdateId = Math.max(Number(channelState.lastUpdateId || 0), Number(update?.update_id || 0));
-      const result = appendTelegramReport(state, update, channelKey);
+      state.lastUpdateId = Math.max(Number(state.lastUpdateId || 0), Number(update?.update_id || 0));
+      const result = appendTelegramReport(state, update);
       await writeState(state);
-      sendJson(res, 200, { ok: true, channel: channelKey, accepted: result.saved, ignored: result.ignored });
+      sendJson(res, 200, { ok: true, accepted: result.saved, ignored: result.ignored });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Webhook processing failed" });
     }
