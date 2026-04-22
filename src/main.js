@@ -6902,8 +6902,6 @@ async function callTelegramBridge(path, options = {}) {
 
 function parseTelegramNurseMessage(text) {
   if (!text) return null;
-  const lower = text.toLowerCase();
-  if (!lower.includes("#")) return null;
   const lines = text.split(/[\n\r]+/);
   const obj = {};
   const tags = Array.from(new Set((text.match(/#[^\s#]+/g) || []).map((tag) => tag.replace(/^#/, "").trim().toLowerCase())));
@@ -6918,6 +6916,7 @@ function parseTelegramNurseMessage(text) {
   });
 
   const hasTag = (candidates) => candidates.some((tag) => tags.includes(tag));
+  const hasAnyKey = (keys) => keys.some((key) => Object.prototype.hasOwnProperty.call(obj, key));
   const route = hasTag(["mkt", "marketing", "mk"])
     ? "marketing"
     : hasTag(["tuvan", "tv", "consultant"])
@@ -6926,7 +6925,15 @@ function parseTelegramNurseMessage(text) {
         ? "telesale"
         : hasTag(["dieuduong", "dd", "baocao", "nurse"])
           ? "nurse"
-          : "";
+          : hasAnyKey(["marketing", "mkt", "marketer", "ngansach", "budget", "ads", "mess", "luongmess"])
+            ? "marketing"
+            : hasAnyKey(["consultant", "tuvan", "tv"])
+              ? "consultant"
+              : hasAnyKey(["telesale", "sale", "ts"])
+                ? "telesale"
+                : hasAnyKey(["dieuduong", "nurse", "dd"]) || (hasAnyKey(["ten", "nhanvien"]) && hasAnyKey(["khach", "khachhang", "customer", "tenkhach"]))
+                  ? "nurse"
+                  : "";
   if (!route) return null;
 
   const base = {
