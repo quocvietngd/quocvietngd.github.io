@@ -6873,7 +6873,7 @@ function saveTelegramSourceConfig() {
   saveJSON(STORAGE.telegramSource, telegramSourceConfig);
 }
 
-const TELEGRAM_BRIDGE_DEFAULT_API = "http://localhost:8787";
+const TELEGRAM_BRIDGE_DEFAULT_API = "https://nora-sync-quocvietngd-2026.onrender.com";
 function getTelegramBridgeApiBase() {
   const configured = String(telegramSourceConfig.bridgeApiUrl || "").trim();
   return (configured || TELEGRAM_BRIDGE_DEFAULT_API).replace(/\/+$/, "");

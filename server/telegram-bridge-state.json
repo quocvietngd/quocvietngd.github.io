@@ -1,11 +1,11 @@
 {
   "token": "8609837486:AAHU03XBr83izxnOl8wAoJ3iC7UgWOoaN4A",
-  "chatId": "-5296647339",
-  "lastUpdateId": 147800176,
-  "webhookBaseUrl": "",
+  "chatId": "-5296647339,-4546556283",
+  "lastUpdateId": 404554236,
+  "webhookBaseUrl": "https://kind-terms-rest.loca.lt",
   "webhookSecret": "af0f3d03a19c4be3abddbef1387cfe96",
-  "webhookPath": "",
-  "updatedAt": 1776592475862,
+  "webhookPath": "/api/telegram/webhook/af0f3d03a19c4be3abddbef1387cfe96",
+  "updatedAt": 1776889871582,
   "reports": [
     {
       "id": "900001",
