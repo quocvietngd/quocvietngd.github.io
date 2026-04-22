@@ -8669,6 +8669,14 @@ async function syncTelegramBeforeNurseReportRender() {
   }
 }
 
+async function syncTelegramBeforeMarketingReportRender() {
+  if (!authState.loggedIn) return;
+  const result = await runTelegramRealtimeSync("marketing", true, { fullSync: true });
+  if (result?.error) {
+    showToast(`Không thể tự đồng bộ Telegram Marketing: ${result.error}`, "warning");
+  }
+}
+
 async function openReportDepartment(departmentKey) {
   if (!REPORT_DEPARTMENT_META[departmentKey]) return;
   if (departmentKey === "nurse") {
@@ -8678,6 +8686,9 @@ async function openReportDepartment(departmentKey) {
       showToast("Đã tự đặt bộ lọc báo cáo điều dưỡng về phạm vi tháng hiện tại.", "info");
     }
     await syncTelegramBeforeNurseReportRender();
+  }
+  if (departmentKey === "marketing") {
+    await syncTelegramBeforeMarketingReportRender();
   }
   activeReportDepartment = departmentKey;
   renderReportsPage();
