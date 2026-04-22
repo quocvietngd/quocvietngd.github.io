@@ -436,7 +436,8 @@ function parseFlexibleNumber(value) {
 }
 
 function parseTelegramReportMessage(text) {
-  if (!text || !String(text).toLowerCase().includes("#baocao")) return null;
+  if (!text) return null;
+  const lowered = String(text).toLowerCase();
 
   const lines = String(text).split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
   const values = {};
@@ -449,6 +450,12 @@ function parseTelegramReportMessage(text) {
     if (!key || !value) continue;
     values[key] = value;
   }
+
+  const hasKeyword = lowered.includes("#baocao") || lowered.includes("#report");
+  const hasStructuredFields = Boolean(
+    values.ten || values.dieuduong || values.nurse || values.khach || values.khachhang || values.customer
+  );
+  if (!hasKeyword && !hasStructuredFields) return null;
 
   const nurse = values.ten || values.dieuduong || values.nurse || "";
   const customerName = values.khach || values.khachhang || values.customer || "";
@@ -477,8 +484,6 @@ function parseTelegramMarketingMessage(text) {
     || lowered.includes("#marketing")
     || lowered.includes("#baocao_marketing")
     || lowered.includes("#baocaomarketing");
-  if (!hasKeyword) return null;
-
   const lines = value.split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
   const fields = {};
   for (const line of lines) {
@@ -489,6 +494,13 @@ function parseTelegramMarketingMessage(text) {
     if (!key || !fieldValue) continue;
     fields[key] = fieldValue;
   }
+
+  const hasStructuredFields = Boolean(
+    fields.ngansach || fields.budget || fields.ads || fields.mess || fields.luongmess || fields.tuongtac
+    || fields.sdt || fields.sodienthoai || fields.doanhso || fields.revenue || fields.hopdong || fields.contracts
+    || fields.marketing || fields.marketer || fields.nhanvien
+  );
+  if (!hasKeyword && !hasStructuredFields) return null;
 
   const reportDate = normalizeDate(fields.ngay || fields.date || "");
   const marketingName = fields.ten || fields.marketing || fields.marketer || fields.nhanvien || "";

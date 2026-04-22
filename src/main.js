@@ -6960,7 +6960,6 @@ async function callTelegramBridge(path, options = {}) {
 function parseTelegramNurseMessage(text) {
   if (!text) return null;
   const lower = text.toLowerCase();
-  if (!lower.includes("#baocao")) return null;
   const lines = text.split(/[\n\r]+/);
   const obj = {};
   lines.forEach((line) => {
@@ -6972,6 +6971,13 @@ function parseTelegramNurseMessage(text) {
     const val = line.slice(sep + 1).trim();
     if (key && val) obj[key] = val;
   });
+
+  const hasKeyword = lower.includes("#baocao") || lower.includes("#report");
+  const hasStructuredFields = Boolean(
+    obj["ten"] || obj["dieuduong"] || obj["nurse"] || obj["khach"] || obj["khachhang"] || obj["customer"]
+  );
+  if (!hasKeyword && !hasStructuredFields) return null;
+
   return {
     nurse: obj["ten"] || obj["dieududong"] || obj["dieudưỡng"] || "",
     registrationDate: obj["ngay"] || obj["ngày"] || "",
@@ -6992,7 +6998,6 @@ function parseTelegramMarketingMessage(text) {
     || lower.includes("#marketing")
     || lower.includes("#baocao_marketing")
     || lower.includes("#baocaomarketing");
-  if (!isMarketingReport) return null;
 
   const lines = text.split(/[\n\r]+/);
   const obj = {};
@@ -7005,6 +7010,13 @@ function parseTelegramMarketingMessage(text) {
     const val = line.slice(sep + 1).trim();
     if (key && val) obj[key] = val;
   });
+
+  const hasStructuredFields = Boolean(
+    obj["ngansach"] || obj["budget"] || obj["ads"] || obj["mess"] || obj["luongmess"] || obj["tuongtac"]
+    || obj["sdt"] || obj["sodienthoai"] || obj["doanhso"] || obj["revenue"] || obj["hopdong"] || obj["contracts"]
+    || obj["marketing"] || obj["marketer"] || obj["nhanvien"]
+  );
+  if (!isMarketingReport && !hasStructuredFields) return null;
 
   return {
     registrationDate: obj["ngay"] || obj["date"] || "",
