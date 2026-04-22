@@ -7204,14 +7204,17 @@ function normalizeImportedMarketingScheduleRow(raw) {
     : toDateKey(new Date(dateRaw || Date.now()));
   const telegramUpdateId = String(firstValue(sourceObj, ["telegramupdateid"]) || "").trim();
   const marketingName = String(firstValue(sourceObj, ["marketingname", "ten", "marketing", "marketer"]) || "").trim() || "Chưa gán";
+  const sourceText = String(firstValue(sourceObj, ["source"]) || "").toLowerCase();
   const budget = Math.max(0, parseFlexibleNumber(firstValue(sourceObj, ["marketingbudget", "budget", "ngansach", "ads"])));
   const messCount = Math.max(0, Math.round(parseFlexibleNumber(firstValue(sourceObj, ["marketingmesscount", "mess", "luongmess", "tuongtac"]))));
   const phoneCount = Math.max(0, Math.round(parseFlexibleNumber(firstValue(sourceObj, ["marketingphonecount", "sdt", "sodienthoai", "phones"]))));
   const bookedCount = Math.max(0, Math.round(parseFlexibleNumber(firstValue(sourceObj, ["marketingbookedcount", "lich", "datlich", "booked"]))));
   const contractCount = Math.max(0, Math.round(parseFlexibleNumber(firstValue(sourceObj, ["marketingcontractcount", "hopdong", "contracts", "hd"]))));
   const revenue = Math.max(0, parseFlexibleNumber(firstValue(sourceObj, ["marketingrevenue", "doanhso", "revenue", "contractamount"])));
+  const hasMarketingSource = sourceText.includes("telegram marketing") || sourceText.includes("#mkt") || sourceText.includes("#marketing");
+  const hasMarketingSignals = marketingName !== "Chưa gán" || budget > 0 || messCount > 0 || phoneCount > 0 || bookedCount > 0 || contractCount > 0 || revenue > 0;
 
-  if (!telegramUpdateId && !messCount && !phoneCount && !bookedCount && !contractCount && !revenue && !budget) {
+  if (!hasMarketingSource && !hasMarketingSignals) {
     return null;
   }
 
