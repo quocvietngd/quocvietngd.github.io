@@ -8,6 +8,7 @@ import pg from "pg";
 const { Pool } = pg;
 
 const PORT = Number(process.env.PORT || process.env.TELEGRAM_WEBHOOK_PORT || 8787);
+const BUILD_TS = "2026-04-23T08:40:00Z";
 const HOST = process.env.TELEGRAM_WEBHOOK_HOST || "0.0.0.0";
 const RENDER_DISK_ROOT = "/var/data";
 const RENDER_DISK_PATH = resolve(RENDER_DISK_ROOT);
@@ -794,6 +795,7 @@ const server = createServer(async (req, res) => {
     sendJson(res, 200, {
       ok: true,
       service: "telegram-webhook-bridge",
+      buildTs: BUILD_TS,
       configured: Boolean(state.token && state.chatId),
       reportsCount: reports.length,
       lastReportAt,
