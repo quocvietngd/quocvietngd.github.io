@@ -31,10 +31,10 @@ Project đã được cấu hình auto deploy lên GitHub Pages qua workflow:
 - [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml)
 
 Chinh sach repo (single source of truth):
-- Chi su dung 1 repo duy nhat: `quocvietngd/web-quan-tri`.
+- Chi su dung 1 repo duy nhat: `quocvietngd/quocvietngd.github.io`.
 - Khong push/deploy sang repo thu 2 de tranh lech phien ban.
 - Moi thay doi code va du lieu trien khai deu di qua branch `main` cua repo nay.
-- URL public chinh thuc: `https://quocvietngd.github.io/web-quan-tri/`.
+- URL public chinh thuc: `https://quocvietngd.github.io/`.
 - Backend realtime chinh thuc: `https://nora-sync-quocvietngd-2026-2.onrender.com`.
 
 Các bước bật public site:
@@ -46,7 +46,7 @@ Các bước bật public site:
 5. Có thể chỉnh sửa trực tuyến ngay trên GitHub (phím `.` hoặc nút Edit file), commit xong là web tự cập nhật.
 
 Ghi chú:
-- URL site chính thức của project: `https://quocvietngd.github.io/web-quan-tri/`.
+- URL site chính thức của project: `https://quocvietngd.github.io/`.
 - Build đã dùng `base: "./"` trong [vite.config.js](vite.config.js), nên hoạt động tốt trên GitHub Pages project URL.
 
 ## Telegram Realtime (Webhook)
@@ -104,7 +104,7 @@ Muc tieu: doi mat khau o 1 trinh duyet, tat ca trinh duyet/thiet bi khac tu dong
 Repo da co san file `render.yaml` de deploy len Render.
 
 One-click deploy:
-- `https://render.com/deploy?repo=https://github.com/quocvietngd/web-quan-tri`
+- `https://render.com/deploy?repo=https://github.com/quocvietngd/quocvietngd.github.io`
 
 Buoc nhanh:
 - Tao Web Service moi tren Render tu repo nay.
