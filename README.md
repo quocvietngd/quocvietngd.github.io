@@ -30,6 +30,11 @@ Dashboard web theo dõi chỉ số phòng ban cập nhật hằng ngày.
 Project đã được cấu hình auto deploy lên GitHub Pages qua workflow:
 - [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml)
 
+Chinh sach repo (single source of truth):
+- Chi su dung 1 repo duy nhat: `quocvietngd/web-quan-tri`.
+- Khong push/deploy sang repo thu 2 de tranh lech phien ban.
+- Moi thay doi code va du lieu trien khai deu di qua branch `main` cua repo nay.
+
 Các bước bật public site:
 
 1. Đẩy project lên GitHub repository (branch `main`).
