@@ -367,6 +367,15 @@ function normalizeVietnamese(input) {
     .trim();
 }
 
+function normalizeTelegramFieldKey(input) {
+  return normalizeVietnamese(
+    String(input || "")
+      .replace(/^[\s\-–—•●▪▫◦‣⁃·*]+/, "")
+      .replace(/[：]/g, ":")
+      .trim()
+  );
+}
+
 function normalizeDate(dateText) {
   const value = String(dateText || "").trim();
   if (!value) return new Date().toISOString().slice(0, 10);
@@ -460,7 +469,7 @@ function parseTelegramReportMessage(text) {
   for (const line of lines) {
     const separatorIndex = line.indexOf(":");
     if (separatorIndex === -1) continue;
-    const key = normalizeVietnamese(line.slice(0, separatorIndex));
+    const key = normalizeTelegramFieldKey(line.slice(0, separatorIndex));
     const value = line.slice(separatorIndex + 1).trim();
     if (!key || !value) continue;
     values[key] = value;

@@ -2733,6 +2733,10 @@ const _rawTelegramSourceConfig = loadJSON(STORAGE.telegramSource, { token: "", c
 if (_rawTelegramSourceConfig.bridgeApiUrl && /localhost|127\.0\.0\.1/.test(_rawTelegramSourceConfig.bridgeApiUrl)) {
   delete _rawTelegramSourceConfig.bridgeApiUrl;
 }
+// Migrate: chuyển bridge service cũ sang service hiện tại (-2)
+if (_rawTelegramSourceConfig.bridgeApiUrl && /nora-sync-quocvietngd-2026\.onrender\.com/.test(_rawTelegramSourceConfig.bridgeApiUrl)) {
+  _rawTelegramSourceConfig.bridgeApiUrl = "https://nora-sync-quocvietngd-2026-2.onrender.com";
+}
 let telegramSourceConfig = _rawTelegramSourceConfig;
 let attendanceAutoSyncTimer = null;
 let attendanceSyncInProgress = false;
@@ -6878,10 +6882,20 @@ function saveTelegramSourceConfig() {
   saveJSON(STORAGE.telegramSource, telegramSourceConfig);
 }
 
-const TELEGRAM_BRIDGE_DEFAULT_API = "https://nora-sync-quocvietngd-2026.onrender.com";
+const TELEGRAM_BRIDGE_DEFAULT_API = "https://nora-sync-quocvietngd-2026-2.onrender.com";
 function getTelegramBridgeApiBase() {
   const configured = String(telegramSourceConfig.bridgeApiUrl || "").trim();
   return (configured || TELEGRAM_BRIDGE_DEFAULT_API).replace(/\/+$/, "");
+}
+
+function normalizeTelegramFieldKey(input) {
+  return String(input || "")
+    .replace(/^[\s\-–—•●▪▫◦‣⁃·*]+/, "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "");
 }
 
 async function callTelegramBridge(path, options = {}) {
@@ -6908,9 +6922,7 @@ function parseTelegramNurseMessage(text) {
   lines.forEach(line => {
     const sep = line.indexOf(":");
     if (sep === -1) return;
-    const key = line.slice(0, sep).trim().toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .replace(/\s+/g, "");
+    const key = normalizeTelegramFieldKey(line.slice(0, sep));
     const val = line.slice(sep + 1).trim();
     if (key && val) obj[key] = val;
   });
