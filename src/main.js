@@ -6890,7 +6890,7 @@ function getTelegramBridgeApiBase() {
 
 function normalizeTelegramFieldKey(input) {
   return String(input || "")
-    .replace(/^[\s\-–—•●▪▫◦‣⁃·*]+/, "")
+    .replace(/^[^\p{L}\p{N}]+/u, "")
     .trim()
     .toLowerCase()
     .normalize("NFD")

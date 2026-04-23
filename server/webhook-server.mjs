@@ -371,7 +371,7 @@ function normalizeVietnamese(input) {
 function normalizeTelegramFieldKey(input) {
   return normalizeVietnamese(
     String(input || "")
-      .replace(/^[\s\-–—•●▪▫◦‣⁃·*]+/, "")
+      .replace(/^[^\p{L}\p{N}]+/u, "")
       .replace(/[：]/g, ":")
       .trim()
   );
