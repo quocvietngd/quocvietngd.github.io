@@ -6925,7 +6925,7 @@ function parseTelegramNurseMessage(text) {
         ? "telesale"
         : hasTag(["dieuduong", "dd", "baocao", "nurse"])
           ? "nurse"
-          : hasAnyKey(["marketing", "mkt", "marketer", "ngansach", "budget", "ads", "mess", "luongmess"])
+          : hasAnyKey(["marketing", "mkt", "marketer", "ngansach", "budget", "ads", "mess", "luongmess", "chiphi"])
             ? "marketing"
             : hasAnyKey(["consultant", "tuvan", "tv"])
               ? "consultant"
@@ -6939,50 +6939,113 @@ function parseTelegramNurseMessage(text) {
   const base = {
     registrationDate: obj["ngay"] || obj["date"] || "",
     appointmentTime: obj["gio"] || obj["time"] || "",
-    customerName: obj["khach"] || obj["khachhang"] || obj["customer"] || "",
+    customerName: obj["khach"] || obj["khachhang"] || obj["customer"] || obj["tenkhach"] || obj["tenkh"] || "",
     phone: obj["sdt"] || obj["sodienthoai"] || obj["phone"] || "",
     service: obj["dichvu"] || obj["service"] || "",
     shiftMinutes: obj["thoiluong"] || obj["phut"] || obj["minutes"] || "",
     distanceKm: obj["khoangcach"] || obj["km"] || obj["distance"] || "",
-    contractAmount: obj["hopdong"] || obj["contract"] || obj["doanhso"] || "",
+    contractAmount: obj["hopdong"] || obj["contract"] || obj["doanhso"] || obj["doanso"] || "",
     status: obj["trangthai"] || obj["status"] || "completed",
-    note: obj["ghichu"] || obj["note"] || "",
+    note: obj["ghichu"] || obj["note"] || obj["ghi"] || "",
     telegramTags: tags,
     telegramRoute: route,
     source: "Telegram Webhook"
   };
 
   if (route === "nurse") {
+    const nurse = obj["tenndd"] || obj["ten"] || obj["dieuduong"] || obj["nurse"] || obj["nhanvien"] || "";
+    const nhomDichVu = obj["dichvu"] || obj["service"] || "";
+    const tenkh = obj["tenkhach"] || obj["tenkh"] || obj["khach"] || obj["customer"] || "";
+    const mahd = obj["mahd"] || obj["mahopdong"] || "";
+    const sobuoi = obj["sobuoi"] || obj["buoi"] || "";
+    const khoangcach = obj["khoangcach"] || obj["km"] || obj["distance"] || "";
+    
+    if (!nurse) return null;
     return {
       ...base,
-      nurse: obj["ten"] || obj["dieuduong"] || obj["nurse"] || "",
+      nurse,
+      customerName: tenkh || customerName,
+      service: nhomDichVu || service,
+      formVersion: "nurse_v2",
+      mahd,
+      sobuoi,
+      khoangcach,
       source: "Telegram Webhook #dieuduong"
     };
   }
 
   if (route === "marketing") {
-    const marketingName = obj["ten"] || obj["marketing"] || obj["mkt"] || obj["marketer"] || "";
+    const marketingName = obj["tennv"] || obj["ten"] || obj["marketing"] || obj["mkt"] || obj["marketer"] || "";
+    const chiphi = parseFloat(String(obj["chiphi"] || obj["chiphí"] || obj["chi"] || obj["ngansach"] || 0).replace(/[^\d.-]/g, "")) || 0;
+    const mess = parseFloat(obj["mess"] || obj["luongmess"] || obj["interactions"] || 0) || 0;
+    const sdt = parseFloat(obj["sdt"] || obj["sodienthoai"] || obj["phone"] || 0) || 0;
+    const lich = parseFloat(obj["lich"] || obj["datlich"] || obj["booked"] || 0) || 0;
+    const hopdong = parseFloat(obj["hopdong"] || obj["hd"] || obj["contract"] || 0) || 0;
+    const doanso = parseFloat(String(obj["doanso"] || obj["doanhso"] || obj["revenue"] || 0).replace(/[^\d.-]/g, "")) || 0;
+    
+    if (!marketingName && mess <= 0 && sdt <= 0 && lich <= 0 && hopdong <= 0 && doanso <= 0 && chiphi <= 0) return null;
     return {
       ...base,
       marketingName,
       marketingStaff: marketingName,
-      marketingBudget: obj["ngansach"] || obj["budget"] || obj["ads"] || 0,
-      marketingMessCount: obj["mess"] || obj["luongmess"] || obj["interactions"] || 1,
-      source: "Telegram Marketing #mkt"
+      marketingBudget: chiphi,
+      marketingMessCount: Math.max(0, mess),
+      marketingPhoneCount: Math.max(0, sdt),
+      marketingBookedCount: Math.max(0, lich),
+      marketingContractCount: Math.max(0, hopdong),
+      marketingRevenue: doanso,
+      contractAmount: doanso,
+      formVersion: "marketing_v2",
+      source: "Telegram Marketing #marketing"
     };
   }
 
   if (route === "consultant") {
+    const consultant = obj["tentv"] || obj["ten"] || obj["tuvan"] || obj["consultant"] || obj["tv"] || "";
+    const tenkh = obj["tenkhach"] || obj["tenkh"] || obj["khach"] || obj["customer"] || "";
+    const kq = obj["ketqua"] || obj["kq"] || obj["result"] || "";
+    const mahd = obj["mahd"] || obj["mahopdong"] || "";
+    const sotien = parseFloat(String(obj["sotien"] || obj["so"] || obj["amount"] || obj["tien"] || 0).replace(/[^\d.-]/g, "")) || 0;
+    const pttt = obj["pttt"] || obj["phuongthuc"] || obj["method"] || "";
+    const ghichu = obj["ghichu"] || obj["note"] || obj["ghi"] || "";
+    
+    if (!consultant) return null;
     return {
       ...base,
-      consultant: obj["ten"] || obj["tuvan"] || obj["consultant"] || obj["tv"] || "",
+      consultant,
+      customerName: tenkh || customerName,
+      formVersion: "consultant_v2",
+      kq,
+      mahd,
+      sotien,
+      pttt,
+      note: ghichu || note,
+      contractAmount: sotien,
       source: "Telegram Tu Van #tuvan"
     };
   }
 
+  // Telesale route
+  const saleStaff = obj["tennv"] || obj["ten"] || obj["telesale"] || obj["sale"] || obj["ts"] || "";
+  const mess = parseFloat(obj["mess"] || obj["luongmess"] || obj["interactions"] || 0) || 0;
+  const sdt = parseFloat(obj["sdt"] || obj["sodienthoai"] || obj["phone"] || 0) || 0;
+  const lich = parseFloat(obj["lich"] || obj["datlich"] || obj["booked"] || 0) || 0;
+  const cahoanhuy = parseFloat(obj["cahoanhuy"] || obj["hoanhuy"] || obj["cancel"] || obj["huy"] || 0) || 0;
+  const hopdong = parseFloat(obj["hopdong"] || obj["hd"] || obj["contract"] || 0) || 0;
+  const doanso = parseFloat(String(obj["doanso"] || obj["doanhso"] || obj["revenue"] || 0).replace(/[^\d.-]/g, "")) || 0;
+  
+  if (!saleStaff && mess <= 0 && sdt <= 0 && lich <= 0 && hopdong <= 0 && doanso <= 0) return null;
   return {
     ...base,
-    saleStaff: obj["ten"] || obj["telesale"] || obj["sale"] || obj["ts"] || "",
+    saleStaff,
+    formVersion: "telesale_v2",
+    marketingMessCount: Math.max(0, mess),
+    marketingPhoneCount: Math.max(0, sdt),
+    marketingBookedCount: Math.max(0, lich),
+    caCancelled: Math.max(0, cahoanhuy),
+    marketingContractCount: Math.max(0, hopdong),
+    marketingRevenue: doanso,
+    contractAmount: doanso,
     source: "Telegram Telesale #telesale"
   };
 }

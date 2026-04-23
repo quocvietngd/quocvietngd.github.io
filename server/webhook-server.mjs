@@ -498,44 +498,99 @@ function parseTelegramReportMessage(text) {
   };
 
   if (route === "nurse") {
-    const nurse = String(firstTelegramValue(values, ["ten", "dieuduong", "nurse", "nhanvien", "dd"]) || "").trim();
-    if (!nurse || !customerName) return null;
+    const nurse = String(firstTelegramValue(values, ["tenndd", "ten", "dieuduong", "nurse", "nhanvien", "dd"]) || "").trim();
+    const nhomDichVu = String(firstTelegramValue(values, ["dichvu", "service"]) || "").trim();
+    const tenkh = String(firstTelegramValue(values, ["tenkhach", "tenkh", "khach", "khachhang", "customer"]) || "").trim();
+    const mahd = String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim();
+    const sobuoi = String(firstTelegramValue(values, ["sobuoi", "buoi"]) || "").trim();
+    const khoangcach = String(firstTelegramValue(values, ["khoangcach", "km", "distance"]) || "").trim();
+    
+    if (!nurse) return null;
     return {
       ...base,
       nurse,
+      customerName: tenkh || customerName,
+      service: nhomDichVu || service,
+      formVersion: "nurse_v2",
+      mahd,
+      sobuoi,
+      khoangcach,
       source: "Telegram Webhook #dieuduong"
     };
   }
 
   if (route === "marketing") {
-    const marketingName = String(firstTelegramValue(values, ["ten", "marketing", "mkt", "marketer", "nhanvien"]) || "").trim();
-    if (!marketingName || (!customerName && !phone)) return null;
+    const marketingName = String(firstTelegramValue(values, ["tennv", "ten", "marketing", "mkt", "marketer", "nhanvien"]) || "").trim();
+    const chiphí = parseFlexibleNumber(firstTelegramValue(values, ["chiphi", "chiphí", "chi", "ngansach", "budget"]));
+    const mess = parseFlexibleNumber(firstTelegramValue(values, ["mess", "luongmess", "interactions"])) || 0;
+    const sdt = parseFlexibleNumber(firstTelegramValue(values, ["sdt", "sodienthoai", "phone", "phones"])) || 0;
+    const lich = parseFlexibleNumber(firstTelegramValue(values, ["lich", "datlich", "booked"])) || 0;
+    const hopdong = parseFlexibleNumber(firstTelegramValue(values, ["hopdong", "hd", "contract"])) || 0;
+    const doanso = parseFlexibleNumber(firstTelegramValue(values, ["doanso", "doanhso", "revenue"])) || 0;
+    
+    if (!marketingName && mess <= 0 && sdt <= 0 && lich <= 0 && hopdong <= 0 && doanso <= 0 && chiphí <= 0) return null;
     return {
       ...base,
       marketingName,
       marketingStaff: marketingName,
-      marketingBudget: parseFlexibleNumber(firstTelegramValue(values, ["ngansach", "budget", "ads", "adspend"])),
-      marketingMessCount: Math.max(1, parseFlexibleNumber(firstTelegramValue(values, ["mess", "luongmess", "interactions"])) || 1),
-      source: "Telegram Marketing #mkt"
+      marketingBudget: chiphí || parseFlexibleNumber(firstTelegramValue(values, ["budget", "ads"])),
+      marketingMessCount: Math.max(0, mess),
+      marketingPhoneCount: Math.max(0, sdt),
+      marketingBookedCount: Math.max(0, lich),
+      marketingContractCount: Math.max(0, hopdong),
+      marketingRevenue: doanso,
+      contractAmount: doanso,
+      formVersion: "marketing_v2",
+      source: "Telegram Marketing #marketing"
     };
   }
 
   if (route === "consultant") {
-    const consultant = String(firstTelegramValue(values, ["ten", "tuvan", "consultant", "tv", "nhanvien"]) || "").trim();
-    if (!consultant || !customerName) return null;
+    const consultant = String(firstTelegramValue(values, ["tentv", "ten", "tuvan", "consultant", "tv", "nhanvien"]) || "").trim();
+    const tenkh = String(firstTelegramValue(values, ["tenkhach", "tenkh", "khach", "khachhang", "customer"]) || "").trim();
+    const kq = String(firstTelegramValue(values, ["ketqua", "kq", "result"]) || "").trim();
+    const mahd = String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim();
+    const sotien = parseFlexibleNumber(firstTelegramValue(values, ["sotien", "so", "amount", "tien"]));
+    const pttt = String(firstTelegramValue(values, ["pttt", "phuongthuc", "method"]) || "").trim();
+    const ghichu = String(firstTelegramValue(values, ["ghichu", "note", "ghi"]) || "").trim();
+    
+    if (!consultant) return null;
     return {
       ...base,
       consultant,
+      customerName: tenkh || customerName,
+      formVersion: "consultant_v2",
+      kq,
+      mahd,
+      sotien,
+      pttt,
+      note: ghichu || note,
+      contractAmount: sotien,
       source: "Telegram Tu Van #tuvan"
     };
   }
 
   if (route === "telesale") {
-    const saleStaff = String(firstTelegramValue(values, ["ten", "telesale", "sale", "ts", "nhanvien"]) || "").trim();
-    if (!saleStaff || (!customerName && !phone)) return null;
+    const saleStaff = String(firstTelegramValue(values, ["tennv", "ten", "telesale", "sale", "ts", "nhanvien"]) || "").trim();
+    const mess = parseFlexibleNumber(firstTelegramValue(values, ["mess", "luongmess", "interactions"])) || 0;
+    const sdt = parseFlexibleNumber(firstTelegramValue(values, ["sdt", "sodienthoai", "phone", "phones"])) || 0;
+    const lich = parseFlexibleNumber(firstTelegramValue(values, ["lich", "datlich", "booked"])) || 0;
+    const cahoanhuy = parseFlexibleNumber(firstTelegramValue(values, ["cahoanhuy", "hoanhuy", "cancel", "huy", "caho"])) || 0;
+    const hopdong = parseFlexibleNumber(firstTelegramValue(values, ["hopdong", "hd", "contract"])) || 0;
+    const doanso = parseFlexibleNumber(firstTelegramValue(values, ["doanso", "doanhso", "revenue"])) || 0;
+    
+    if (!saleStaff && mess <= 0 && sdt <= 0 && lich <= 0 && hopdong <= 0 && doanso <= 0) return null;
     return {
       ...base,
       saleStaff,
+      formVersion: "telesale_v2",
+      marketingMessCount: Math.max(0, mess),
+      marketingPhoneCount: Math.max(0, sdt),
+      marketingBookedCount: Math.max(0, lich),
+      caCancelled: Math.max(0, cahoanhuy),
+      marketingContractCount: Math.max(0, hopdong),
+      marketingRevenue: doanso,
+      contractAmount: doanso,
       source: "Telegram Telesale #telesale"
     };
   }
