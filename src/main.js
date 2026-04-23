@@ -6965,7 +6965,7 @@ function parseTelegramNurseMessage(text) {
   };
 
   if (route === "nurse") {
-    const nurse = obj["tenndd"] || obj["ten"] || obj["dieuduong"] || obj["nurse"] || obj["nhanvien"] || "";
+    const nurse = obj["tenndd"] || obj["tendd"] || obj["tendieuduong"] || obj["ten"] || obj["dieuduong"] || obj["nurse"] || obj["nhanvien"] || "";
     const nhomDichVu = obj["dichvu"] || obj["service"] || "";
     const tenkh = obj["tenkhach"] || obj["tenkh"] || obj["khach"] || obj["customer"] || "";
     const mahd = obj["mahd"] || obj["mahopdong"] || "";

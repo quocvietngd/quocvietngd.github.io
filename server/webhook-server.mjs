@@ -508,7 +508,7 @@ function parseTelegramReportMessage(text) {
   };
 
   if (route === "nurse") {
-    const nurse = String(firstTelegramValue(values, ["tenndd", "ten", "dieuduong", "nurse", "nhanvien", "dd"]) || "").trim();
+    const nurse = String(firstTelegramValue(values, ["tenndd", "tendd", "tendieuduong", "ten", "dieuduong", "nurse", "nhanvien", "dd"]) || "").trim();
     const nhomDichVu = String(firstTelegramValue(values, ["dichvu", "service"]) || "").trim();
     const tenkh = String(firstTelegramValue(values, ["tenkhach", "tenkh", "khach", "khachhang", "customer"]) || "").trim();
     const mahd = String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim();
