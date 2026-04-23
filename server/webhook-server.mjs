@@ -460,6 +460,14 @@ function firstTelegramValue(values, keys) {
   return "";
 }
 
+function firstTelegramValueByKeyRegex(values, regexList = []) {
+  for (const [key, value] of Object.entries(values || {})) {
+    if (value === undefined || value === null || String(value).trim() === "") continue;
+    if (regexList.some((rx) => rx.test(key))) return value;
+  }
+  return "";
+}
+
 function parseTelegramReportMessage(text) {
   if (!text) return null;
 
@@ -509,10 +517,18 @@ function parseTelegramReportMessage(text) {
   };
 
   if (route === "nurse") {
-    const nurse = String(firstTelegramValue(values, ["tenndd", "tendd", "tendieuduong", "ten", "dieuduong", "nurse", "nhanvien", "dd"]) || "").trim();
+    const nurse = String(
+      firstTelegramValue(values, ["tenndd", "tendd", "tendieuduong", "ten", "dieuduong", "nurse", "nhanvien", "dd"]) ||
+      firstTelegramValueByKeyRegex(values, [/^ten.*dd$/, /^ten.*dieu/, /^dd$/, /^dieuduong$/, /^ten(?!.*kh)/]) ||
+      ""
+    ).trim();
     const nhomDichVu = String(firstTelegramValue(values, ["dichvu", "service"]) || "").trim();
     const tenkh = String(firstTelegramValue(values, ["tenkhach", "tenkh", "khach", "khachhang", "customer"]) || "").trim();
-    const mahd = String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim();
+    const mahd = String(
+      firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) ||
+      firstTelegramValueByKeyRegex(values, [/^ma.*hd$/, /^ma.*hopdong$/, /^hd$/]) ||
+      ""
+    ).trim();
     const sobuoi = String(firstTelegramValue(values, ["sobuoi", "buoi"]) || "").trim();
     const khoangcach = String(firstTelegramValue(values, ["khoangcach", "km", "distance"]) || "").trim();
     

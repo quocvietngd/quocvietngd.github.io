@@ -6899,6 +6899,14 @@ function normalizeTelegramFieldKey(input) {
     .replace(/\s+/g, "");
 }
 
+function firstTelegramObjValueByKeyRegex(obj, regexList = []) {
+  for (const [key, value] of Object.entries(obj || {})) {
+    if (value === undefined || value === null || String(value).trim() === "") continue;
+    if (regexList.some((rx) => rx.test(key))) return value;
+  }
+  return "";
+}
+
 async function callTelegramBridge(path, options = {}) {
   const base = getTelegramBridgeApiBase();
   if (!base) throw new Error("Chưa cấu hình Telegram Bridge API URL.");
@@ -6966,10 +6974,11 @@ function parseTelegramNurseMessage(text) {
   };
 
   if (route === "nurse") {
-    const nurse = obj["tenndd"] || obj["tendd"] || obj["tendieuduong"] || obj["ten"] || obj["dieuduong"] || obj["nurse"] || obj["nhanvien"] || "";
+    const nurse = obj["tenndd"] || obj["tendd"] || obj["tendieuduong"] || obj["ten"] || obj["dieuduong"] || obj["nurse"] || obj["nhanvien"]
+      || firstTelegramObjValueByKeyRegex(obj, [/^ten.*dd$/, /^ten.*dieu/, /^dd$/, /^dieuduong$/, /^ten(?!.*kh)/]) || "";
     const nhomDichVu = obj["dichvu"] || obj["service"] || "";
     const tenkh = obj["tenkhach"] || obj["tenkh"] || obj["khach"] || obj["customer"] || "";
-    const mahd = obj["mahd"] || obj["mahopdong"] || "";
+    const mahd = obj["mahd"] || obj["mahopdong"] || firstTelegramObjValueByKeyRegex(obj, [/^ma.*hd$/, /^ma.*hopdong$/, /^hd$/]) || "";
     const sobuoi = obj["sobuoi"] || obj["buoi"] || "";
     const khoangcach = obj["khoangcach"] || obj["km"] || obj["distance"] || "";
     
