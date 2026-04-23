@@ -978,6 +978,23 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (method === "POST" && url.pathname === "/api/telegram/test-parse") {
+    try {
+      const payload = await parseJsonBody(req);
+      const text = String(payload.text || "");
+      const raw = parseTelegramReportMessage(text);
+      sendJson(res, 200, {
+        ok: true,
+        inputText: text.slice(0, 200),
+        parsed: raw ? Object.keys(raw).length : 0,
+        result: raw || { error: "parse returned null" }
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
   if (method === "POST" && url.pathname.startsWith("/api/telegram/webhook/")) {
     try {
       const state = await readState();
