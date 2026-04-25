@@ -6957,17 +6957,21 @@ function parseTelegramNurseMessage(text) {
                   : "";
   if (!route) return null;
 
+  const customerName = obj["khach"] || obj["khachhang"] || obj["customer"] || obj["tenkhach"] || obj["tenkh"] || "";
+  const service = obj["dichvu"] || obj["service"] || "";
+  const note = obj["ghichu"] || obj["note"] || obj["ghi"] || "";
+
   const base = {
     registrationDate: obj["ngay"] || obj["date"] || "",
     appointmentTime: obj["gio"] || obj["time"] || "",
-    customerName: obj["khach"] || obj["khachhang"] || obj["customer"] || obj["tenkhach"] || obj["tenkh"] || "",
+    customerName,
     phone: obj["sdt"] || obj["sodienthoai"] || obj["phone"] || "",
-    service: obj["dichvu"] || obj["service"] || "",
+    service,
     shiftMinutes: parseFlexibleNumber(obj["thoiluong"] || obj["phut"] || obj["minutes"] || 0) || extractMinutesFromText(obj["dichvu"] || obj["service"] || ""),
     distanceKm: obj["khoangcach"] || obj["km"] || obj["distance"] || "",
     contractAmount: obj["hopdong"] || obj["contract"] || obj["doanhso"] || obj["doanso"] || "",
     status: obj["trangthai"] || obj["status"] || "completed",
-    note: obj["ghichu"] || obj["note"] || obj["ghi"] || "",
+    note,
     telegramTags: tags,
     telegramRoute: route,
     source: "Telegram Webhook"
@@ -7057,15 +7061,6 @@ function parseTelegramNurseMessage(text) {
   const doanso = parseFloat(String(obj["doanso"] || obj["doanhso"] || obj["revenue"] || 0).replace(/[^\d.-]/g, "")) || 0;
   
   if (!saleStaff && mess <= 0 && sdt <= 0 && lich <= 0 && hopdong <= 0 && doanso <= 0) return null;
-  const serviceText = String(firstValue(sourceObj, ["service", "dịch vụ", "dich vu"]) || "").trim();
-  const sessionDurationText = String(firstValue(sourceObj, ["sessionduration", "thời gian", "thoi gian"]) || "").trim();
-  const noteText = String(firstValue(sourceObj, ["note", "ghi chú", "ghi chu"]) || "").trim();
-  const explicitShiftMinutes = parseFlexibleNumber(firstValue(sourceObj, ["shiftminutes", "minutes", "phut", "số phút", "so phut", "thời lượng ca", "thoi luong ca"]));
-  const inferredShiftMinutes = explicitShiftMinutes
-    || extractMinutesFromText(sessionDurationText)
-    || extractMinutesFromText(serviceText)
-    || extractMinutesFromText(noteText)
-    || 0;
 
   return {
     ...base,
@@ -7197,6 +7192,15 @@ function normalizeImportedScheduleRow(raw) {
   if (!customerName) return null;
 
   const telegramUpdateId = String(firstValue(sourceObj, ["telegramupdateid"]) || "").trim();
+  const serviceText = String(firstValue(sourceObj, ["service", "dịch vụ", "dich vu"]) || "").trim();
+  const sessionDurationText = String(firstValue(sourceObj, ["sessionduration", "thời gian", "thoi gian"]) || "").trim();
+  const noteText = String(firstValue(sourceObj, ["note", "ghi chú", "ghi chu"]) || "").trim();
+  const explicitShiftMinutes = parseFlexibleNumber(firstValue(sourceObj, ["shiftminutes", "minutes", "phut", "số phút", "so phut", "thời lượng ca", "thoi luong ca"]));
+  const inferredShiftMinutes = explicitShiftMinutes
+    || extractMinutesFromText(sessionDurationText)
+    || extractMinutesFromText(serviceText)
+    || extractMinutesFromText(noteText)
+    || 0;
 
   return {
     id: telegramUpdateId ? `tg-${telegramUpdateId}` : `sc-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
