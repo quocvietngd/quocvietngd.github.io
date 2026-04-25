@@ -8,8 +8,12 @@ import pg from "pg";
 const { Pool } = pg;
 
 const PORT = Number(process.env.PORT || process.env.TELEGRAM_WEBHOOK_PORT || 8787);
-const BUILD_TS = "2026-04-23T08:40:00Z";
+const BUILD_TS = new Date().toISOString();
 const HOST = process.env.TELEGRAM_WEBHOOK_HOST || "0.0.0.0";
+const ENV_TELEGRAM_TOKEN = String(process.env.TELEGRAM_TOKEN || "").trim();
+const ENV_TELEGRAM_CHAT_ID = String(process.env.TELEGRAM_CHAT_ID || "").trim();
+const ENV_WEBHOOK_SECRET = String(process.env.TELEGRAM_WEBHOOK_SECRET || "").trim();
+const ENV_WEBHOOK_BASE_URL = String(process.env.TELEGRAM_WEBHOOK_BASE_URL || "").trim().replace(/\/+$/, "");
 const RENDER_DISK_ROOT = "/var/data";
 const RENDER_DISK_PATH = resolve(RENDER_DISK_ROOT);
 const DEFAULT_STATE_FILE = existsSync(RENDER_DISK_ROOT)
@@ -137,13 +141,17 @@ function normalizeAppState(input = {}) {
 }
 
 function normalizeState(raw = {}) {
+  const token = String(raw.token || ENV_TELEGRAM_TOKEN || "");
+  const chatId = String(raw.chatId || ENV_TELEGRAM_CHAT_ID || "");
+  const webhookSecret = String(raw.webhookSecret || ENV_WEBHOOK_SECRET || randomUUID().replace(/-/g, ""));
+  const webhookBaseUrl = String(raw.webhookBaseUrl || ENV_WEBHOOK_BASE_URL || "");
   return {
-    token: String(raw.token || ""),
-    chatId: String(raw.chatId || ""),
+    token,
+    chatId,
     lastUpdateId: Number(raw.lastUpdateId || 0),
-    webhookBaseUrl: String(raw.webhookBaseUrl || ""),
-    webhookSecret: String(raw.webhookSecret || randomUUID().replace(/-/g, "")),
-    webhookPath: String(raw.webhookPath || ""),
+    webhookBaseUrl,
+    webhookSecret,
+    webhookPath: String(raw.webhookPath || (webhookBaseUrl && webhookSecret ? `/api/telegram/webhook/${webhookSecret}` : "")),
     updatedAt: Number(raw.updatedAt || 0),
     reports: Array.isArray(raw.reports) ? raw.reports.slice(-MAX_REPORTS) : [],
     telegramDebug: normalizeTelegramDebug(raw.telegramDebug),
@@ -1110,7 +1118,22 @@ const server = createServer(async (req, res) => {
 
 async function bootstrap() {
   assertPersistenceConfig();
-  await readState();
+  const state = await readState();
+
+  // Auto-register webhook on startup if ENV vars are set and webhook not yet registered
+  if (state.token && state.webhookBaseUrl && !state.webhookPath) {
+    try {
+      const webhookUrl = `${state.webhookBaseUrl}/api/telegram/webhook/${state.webhookSecret}`;
+      await setTelegramWebhook(state.token, webhookUrl);
+      state.webhookPath = `/api/telegram/webhook/${state.webhookSecret}`;
+      await writeState(state);
+      console.log(`[telegram-webhook-bridge] webhook registered: ${webhookUrl}`);
+    } catch (e) {
+      console.error("[telegram-webhook-bridge] webhook registration failed:", e.message);
+    }
+  } else if (state.token && state.webhookPath) {
+    console.log(`[telegram-webhook-bridge] webhook already set: ${state.webhookBaseUrl}${state.webhookPath}`);
+  }
 
   server.listen(PORT, HOST, () => {
     console.log(`[telegram-webhook-bridge] listening on http://${HOST}:${PORT}`);
