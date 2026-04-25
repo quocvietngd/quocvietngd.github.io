@@ -7769,7 +7769,7 @@ function renderNurseReportMatrix() {
 }
 
 function getMarketingOwnerName(item) {
-  const candidates = [item?.marketingStaff, item?.marketingName, item?.marketer, item?.ownerName];
+  const candidates = [item?.marketingStaff, item?.marketingName, item?.marketer, item?.ownerName, item?.customerName];
   const matched = candidates.map((value) => String(value || "").trim()).find(Boolean);
   if (matched) return matched;
   return "Chưa gán";
