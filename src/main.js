@@ -7260,22 +7260,46 @@ function normalizeImportedScheduleRow(raw) {
 }
 
 function mergeImportedSchedules(imported) {
-  const existingIds = new Set((schedules || []).map((item) => String(item.id || "")));
-  const list = imported
-    .map(normalizeImportedScheduleRow)
-    .filter(Boolean)
-    .filter((item) => {
-      const key = String(item.id || "");
-      if (!key || !existingIds.has(key)) {
-        if (key) existingIds.add(key);
-        return true;
-      }
-      return false;
-    });
-  if (!list.length) return 0;
-  schedules = [...list, ...schedules];
+  const normalized = imported.map(normalizeImportedScheduleRow).filter(Boolean);
+  if (!normalized.length) return 0;
+
+  const current = Array.isArray(schedules) ? schedules.slice() : [];
+  const indexById = new Map();
+  current.forEach((item, index) => {
+    const key = String(item?.id || "");
+    if (key) indexById.set(key, index);
+  });
+
+  let changedCount = 0;
+  const newRows = [];
+
+  normalized.forEach((item) => {
+    const key = String(item.id || "");
+    if (!key) return;
+
+    if (indexById.has(key)) {
+      const idx = indexById.get(key);
+      const previous = current[idx] || {};
+      current[idx] = {
+        ...previous,
+        ...item,
+        id: key,
+        createdAt: Number(previous.createdAt) || Number(item.createdAt) || Date.now(),
+        updatedAt: Date.now()
+      };
+      changedCount += 1;
+      return;
+    }
+
+    indexById.set(key, current.length + newRows.length);
+    newRows.push(item);
+    changedCount += 1;
+  });
+
+  if (!changedCount) return 0;
+  schedules = [...newRows, ...current];
   saveJSON(STORAGE.schedule, schedules);
-  return list.length;
+  return changedCount;
 }
 
 function replaceTelegramSchedules(imported) {

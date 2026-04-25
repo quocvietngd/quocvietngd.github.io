@@ -736,27 +736,69 @@ function appendTelegramReport(state, update) {
     return { saved: false, ignored: true, reason: "parse_failed" };
   }
 
+  const messageId = String(message?.message_id || "");
+  const messageKey = chatId && messageId ? `${chatId}:${messageId}` : "";
   raw.telegramUpdateId = String(update.update_id || `${Date.now()}`);
+  raw.telegramMessageId = messageId;
   raw.telegramChatId = chatId;
   raw.telegramChatTitle = String(message?.chat?.title || message?.chat?.username || "").trim();
+  const reports = Array.isArray(state.reports) ? state.reports : [];
+
+  const processedUpdateIds = new Set(
+    reports.map((item) => String(item?.raw?.telegramUpdateId || "")).filter(Boolean)
+  );
+  if (processedUpdateIds.has(raw.telegramUpdateId)) {
+    debug.duplicateCount += 1;
+    state.telegramDebug = debug;
+    return { saved: false, ignored: false, reason: "duplicate_update" };
+  }
+
+  const existingByMessageIndex = messageKey
+    ? reports.findIndex((item) => {
+        if (String(item?.messageKey || "") === messageKey) return true;
+        const itemChatId = String(item?.raw?.telegramChatId || "");
+        const itemMessageId = String(item?.raw?.telegramMessageId || "");
+        return itemChatId && itemMessageId && `${itemChatId}:${itemMessageId}` === messageKey;
+      })
+    : -1;
+
+  const fallbackId = String(update.update_id || `${Date.now()}`);
   const report = {
-    id: String(update.update_id || `${Date.now()}`),
+    id: messageKey || fallbackId,
+    messageKey,
     receivedAt: Date.now(),
     raw
   };
 
-  const existing = new Set((state.reports || []).map((item) => String(item.id)));
-  if (!existing.has(report.id)) {
-    state.reports = [...(state.reports || []), report].slice(-MAX_REPORTS);
+  if (existingByMessageIndex >= 0) {
+    const previous = reports[existingByMessageIndex] || {};
+    const merged = {
+      ...previous,
+      ...report,
+      id: String(previous.id || report.id),
+      messageKey: messageKey || String(previous.messageKey || ""),
+      receivedAt: Date.now(),
+      raw: {
+        ...(previous.raw || {}),
+        ...raw
+      }
+    };
+    const nextReports = reports.slice();
+    nextReports[existingByMessageIndex] = merged;
+    state.reports = nextReports.slice(-MAX_REPORTS);
+    state.updatedAt = Date.now();
+    debug.acceptedCount += 1;
+    debug.lastAcceptedAt = Date.now();
+    state.telegramDebug = debug;
+    return { saved: true, ignored: false, updated: true };
+  }
+
+  state.reports = [...reports, report].slice(-MAX_REPORTS);
     state.updatedAt = Date.now();
     debug.acceptedCount += 1;
     debug.lastAcceptedAt = Date.now();
     state.telegramDebug = debug;
     return { saved: true, ignored: false };
-  }
-  debug.duplicateCount += 1;
-  state.telegramDebug = debug;
-  return { saved: false, ignored: false, reason: "duplicate_update" };
 }
 
 async function fetchTelegramUpdates(state) {
