@@ -7218,6 +7218,7 @@ function normalizeImportedScheduleRow(raw) {
     || extractMinutesFromText(serviceText)
     || extractMinutesFromText(noteText)
     || 0;
+  const contractAmount = Number(firstValue(sourceObj, ["contractamount", "giá trị hợp đồng", "gia tri hop dong"]) || 0);
 
   return {
     id: telegramUpdateId ? `tg-${telegramUpdateId}` : `sc-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
@@ -7240,8 +7241,14 @@ function normalizeImportedScheduleRow(raw) {
     experiencePrice: Number(firstValue(sourceObj, ["experienceprice", "gia tn"]) || 0),
     sessionDuration: sessionDurationText || (inferredShiftMinutes > 0 ? `${inferredShiftMinutes}p` : ""),
     source: String(firstValue(sourceObj, ["source", "nguồn data", "nguon data"]) || "Nhập file").trim(),
-    contractAmount: Number(firstValue(sourceObj, ["contractamount", "giá trị hợp đồng", "gia tri hop dong"]) || 0),
+    contractAmount,
     shiftMinutes: inferredShiftMinutes,
+    marketingMessCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingmesscount", "messcount", "mess", "luongmess"])),
+    marketingPhoneCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingphonecount", "phonecount", "sdt", "sodienthoai"])),
+    marketingBookedCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingbookedcount", "bookedcount", "lich", "datlich"])),
+    marketingContractCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingcontractcount", "contractcount", "hopdong", "hd"])),
+    marketingRevenue: parseFlexibleNumber(firstValue(sourceObj, ["marketingrevenue", "revenue", "doanhso", "doanso"])) || contractAmount,
+    caCancelled: parseFlexibleNumber(firstValue(sourceObj, ["cacancelled", "cahoanhuy", "hoanhuy", "cancel"])),
     distanceKm: parseFlexibleNumber(firstValue(sourceObj, ["distancekm", "distance", "khoang cach", "khoảng cách", "quang duong", "quãng đường", "km"])),
     renewContractAmount: Number(firstValue(sourceObj, ["renewcontractamount", "tai ky", "tái ký", "gia tri tai ky", "giá trị tái ký"]) || 0),
     productSalesAmount: Number(firstValue(sourceObj, ["productsalesamount", "doanh so san pham", "doanh số sản phẩm", "ban san pham", "bán sản phẩm"]) || 0),
@@ -7829,6 +7836,7 @@ function getMarketingReportRows(start, end) {
         marketingName,
         budget: 0,
         messCount: 0,
+        phoneCountRaw: 0,
         phones: new Set(),
         bookedCount: 0,
         contractCount: 0,
@@ -7838,23 +7846,30 @@ function getMarketingReportRows(start, end) {
 
     const row = bucket.get(key);
     row.budget += getMarketingBudget(item);
-    row.messCount += 1;
+    const explicitMess = Math.max(0, parseFlexibleNumber(item.marketingMessCount));
+    const explicitPhone = Math.max(0, parseFlexibleNumber(item.marketingPhoneCount));
+    const explicitBooked = Math.max(0, parseFlexibleNumber(item.marketingBookedCount));
+    const explicitContract = Math.max(0, parseFlexibleNumber(item.marketingContractCount));
+    const explicitRevenue = Math.max(0, parseFlexibleNumber(item.marketingRevenue));
+
+    row.messCount += explicitMess > 0 ? explicitMess : 1;
+    row.phoneCountRaw += explicitPhone;
     const phone = String(item.phone || "").trim();
-    if (phone) row.phones.add(phone);
+    if (explicitPhone <= 0 && phone) row.phones.add(phone);
 
     const isBooked = item.status === "confirmed" || item.status === "completed";
-    if (isBooked) row.bookedCount += 1;
+    row.bookedCount += explicitBooked > 0 ? explicitBooked : (isBooked ? 1 : 0);
 
     const contractAmount = Number(item.contractAmount) || 0;
-    if (contractAmount > 0) {
-      row.contractCount += 1;
-      row.revenue += contractAmount;
+    if (explicitContract > 0 || explicitRevenue > 0 || contractAmount > 0) {
+      row.contractCount += explicitContract > 0 ? explicitContract : 1;
+      row.revenue += explicitRevenue > 0 ? explicitRevenue : contractAmount;
     }
   });
 
   let result = Array.from(bucket.values())
     .map((row) => {
-      const phoneCount = row.phones.size;
+      const phoneCount = row.phoneCountRaw + row.phones.size;
       const costPerMess = row.messCount ? row.budget / row.messCount : 0;
       const costPerPhone = phoneCount ? row.budget / phoneCount : 0;
       const costPerBooked = row.bookedCount ? row.budget / row.bookedCount : 0;
@@ -8109,19 +8124,46 @@ function getTelesaleReportRows(start, end) {
   });
 
   let result = Array.from(bucket.values()).map((g) => {
-    const messCount = g.items.length;
-    const phones = new Set(g.items.map((item) => String(item.phone || "").trim()).filter(Boolean));
-    const booked = g.items.filter((item) => item.status === "confirmed" || item.status === "completed");
-    const cancelledOrDeferred = g.items.filter((item) => item.status === "cancelled" || item.status === "pending");
-    const bookingRate = messCount ? (booked.length / messCount) * 100 : 0;
-    const revenue = booked.reduce((sum, item) => sum + (Number(item.contractAmount) || 0), 0);
+    let messCount = 0;
+    let phoneCountRaw = 0;
+    const phones = new Set();
+    let bookedCount = 0;
+    let cancelledCount = 0;
+    let revenue = 0;
+
+    g.items.forEach((item) => {
+      const explicitMess = Math.max(0, parseFlexibleNumber(item.marketingMessCount));
+      const explicitPhone = Math.max(0, parseFlexibleNumber(item.marketingPhoneCount));
+      const explicitBooked = Math.max(0, parseFlexibleNumber(item.marketingBookedCount));
+      const explicitCancelled = Math.max(0, parseFlexibleNumber(item.caCancelled));
+      const explicitRevenue = Math.max(0, parseFlexibleNumber(item.marketingRevenue));
+      const contractAmount = Number(item.contractAmount || 0);
+
+      messCount += explicitMess > 0 ? explicitMess : 1;
+      phoneCountRaw += explicitPhone;
+      const phone = String(item.phone || "").trim();
+      if (explicitPhone <= 0 && phone) phones.add(phone);
+
+      const isBooked = item.status === "confirmed" || item.status === "completed";
+      bookedCount += explicitBooked > 0 ? explicitBooked : (isBooked ? 1 : 0);
+
+      const isCancelledOrDeferred = item.status === "cancelled" || item.status === "pending";
+      cancelledCount += explicitCancelled > 0 ? explicitCancelled : (isCancelledOrDeferred ? 1 : 0);
+
+      if (explicitRevenue > 0 || contractAmount > 0) {
+        revenue += explicitRevenue > 0 ? explicitRevenue : contractAmount;
+      }
+    });
+
+    const phoneCount = phoneCountRaw + phones.size;
+    const bookingRate = messCount ? (bookedCount / messCount) * 100 : 0;
     return {
       date: g.date,
       saleName: g.saleName,
       messCount,
-      phoneCount: phones.size,
-      bookedCount: booked.length,
-      cancelledCount: cancelledOrDeferred.length,
+      phoneCount,
+      bookedCount,
+      cancelledCount,
       bookingRate,
       revenue
     };
