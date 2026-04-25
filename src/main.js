@@ -2113,7 +2113,7 @@ app.innerHTML = `
             <h3 style="margin:0 0 4px;">Đồng bộ từ Telegram</h3>
             <p class="muted" style="margin:0 0 10px;font-size:0.82rem;">Điều dưỡng gửi báo cáo ca vào nhóm Telegram theo mẫu quy định. Hệ thống đọc và nhập tự động vào danh sách lịch.</p>
             <div class="alert" style="margin-bottom:10px;font-size:0.82rem;">⚠ <strong>Lưu ý bảo mật:</strong> Bot Token được lưu trong trình duyệt. Không dùng token bot quan trọng khác. Chỉ Admin mới thấy mục này.</div>
-            <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr auto auto;align-items:end;">
+            <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr auto auto auto;align-items:end;">
               <div>
                 <label>Bot Token (từ @BotFather)</label>
                 <input id="telegramBotToken" type="password" placeholder="123456789:AAxxxxxxxxxxxxxx" />
@@ -2128,6 +2128,7 @@ app.innerHTML = `
               </div>
               <button class="btn secondary" type="button" id="syncTelegramBtn">Đọc tin báo cáo</button>
               <button class="btn secondary" type="button" id="testTelegramBtn">Kết nối realtime</button>
+              <button class="btn warn" type="button" id="resetTelegramCacheBtn">Reset cache Telegram</button>
             </div>
             <div class="muted" style="margin-top:6px;font-size:0.8rem;" id="telegramSyncStatus">Chưa đồng bộ lần nào.</div>
             <details style="margin-top:10px;">
@@ -2424,6 +2425,7 @@ const els = {
   telegramWebhookBaseUrl: document.querySelector("#telegramWebhookBaseUrl"),
   syncTelegramBtn: document.querySelector("#syncTelegramBtn"),
   testTelegramBtn: document.querySelector("#testTelegramBtn"),
+  resetTelegramCacheBtn: document.querySelector("#resetTelegramCacheBtn"),
   telegramSyncStatus: document.querySelector("#telegramSyncStatus"),
   workflowSection: document.querySelector("#workflowSection"),
   workflowSystemView: document.querySelector("#workflowSystemView"),
@@ -6880,6 +6882,18 @@ function firstValue(obj, keys) {
 // ─── Telegram Integration ─────────────────────────────────────────────────────
 function saveTelegramSourceConfig() {
   saveJSON(STORAGE.telegramSource, telegramSourceConfig);
+}
+
+function clearLocalTelegramSchedules() {
+  const current = Array.isArray(schedules) ? schedules : [];
+  schedules = current.filter((item) => {
+    const id = String(item?.id || "");
+    const source = String(item?.source || "").toLowerCase();
+    return !(id.startsWith("tg-") || source.includes("telegram"));
+  });
+  saveJSON(STORAGE.schedule, schedules);
+  telegramSourceConfig.lastSyncedAt = 0;
+  saveTelegramSourceConfig();
 }
 
 const TELEGRAM_BRIDGE_DEFAULT_API = "https://nora-sync-quocvietngd-2026-2.onrender.com";
@@ -11932,6 +11946,36 @@ els.syncTelegramBtn.addEventListener("click", async () => {
     showToast(`Lỗi Telegram: ${err.message}`, "error");
   } finally {
     els.syncTelegramBtn.disabled = false;
+  }
+});
+
+els.resetTelegramCacheBtn.addEventListener("click", async () => {
+  if (!can("canSyncData")) {
+    showToast("Bạn không có quyền đồng bộ dữ liệu.", "warning");
+    return;
+  }
+
+  saveTelegramInputs();
+  els.resetTelegramCacheBtn.disabled = true;
+  if (els.syncTelegramBtn) els.syncTelegramBtn.disabled = true;
+  if (els.testTelegramBtn) els.testTelegramBtn.disabled = true;
+  els.telegramSyncStatus.textContent = "Đang reset cache Telegram cục bộ và đồng bộ lại...";
+
+  try {
+    clearLocalTelegramSchedules();
+    renderAll();
+    const result = await runTelegramRealtimeSync(false, { fullSync: true });
+    const msg = `Đã reset cache Telegram và nhập lại ${result.importedRows} ca (${result.fetchedRows} bản ghi nhận về).`;
+    els.telegramSyncStatus.textContent = `✓ ${msg} (${new Date().toLocaleTimeString("vi-VN")})`;
+    showToast(msg, "success");
+    renderAll();
+  } catch (err) {
+    els.telegramSyncStatus.textContent = `Lỗi: ${err.message}`;
+    showToast(`Lỗi reset Telegram: ${err.message}`, "error");
+  } finally {
+    els.resetTelegramCacheBtn.disabled = false;
+    if (els.syncTelegramBtn) els.syncTelegramBtn.disabled = false;
+    if (els.testTelegramBtn) els.testTelegramBtn.disabled = false;
   }
 });
 
