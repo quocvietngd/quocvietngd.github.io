@@ -8696,7 +8696,7 @@ function renderReportsPage() {
   els.reportsSummary.textContent = `Bộ lọc: ${reportFilterState.start} → ${reportFilterState.end} | ${depMap[activeReportDepartment]} | ${detailRows.length} ngày dữ liệu`;
 }
 
-async function syncTelegramBeforeNurseReportRender() {
+async function syncTelegramBeforeReportRender() {
   if (!authState.loggedIn) return;
   const result = await runTelegramRealtimeSync(true, { fullSync: true });
   if (result?.error) {
@@ -8712,7 +8712,9 @@ async function openReportDepartment(departmentKey) {
       reportFilterState = { start: `${today.slice(0, 7)}-01`, end: today };
       showToast("Đã tự đặt bộ lọc báo cáo điều dưỡng về phạm vi tháng hiện tại.", "info");
     }
-    await syncTelegramBeforeNurseReportRender();
+  }
+  if (["marketing", "telesale", "consultant", "nurse"].includes(departmentKey)) {
+    await syncTelegramBeforeReportRender();
   }
   activeReportDepartment = departmentKey;
   renderReportsPage();
@@ -10973,8 +10975,8 @@ if (els.applyReportsFilterBtn) {
     }
     reportFilterState.start = start;
     reportFilterState.end = end;
-    if (activeReportDepartment === "nurse") {
-      await syncTelegramBeforeNurseReportRender();
+    if (["marketing", "telesale", "consultant", "nurse"].includes(activeReportDepartment)) {
+      await syncTelegramBeforeReportRender();
     }
     renderReportsPage();
   });
@@ -10990,8 +10992,8 @@ if (els.resetReportsFilterBtn) {
     telesaleReportState.sale = "";
     telesaleReportState.sortKey = "date";
     telesaleReportState.direction = "desc";
-    if (activeReportDepartment === "nurse") {
-      await syncTelegramBeforeNurseReportRender();
+    if (["marketing", "telesale", "consultant", "nurse"].includes(activeReportDepartment)) {
+      await syncTelegramBeforeReportRender();
     }
     renderReportsPage();
   });
