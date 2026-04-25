@@ -1061,6 +1061,50 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (method === "POST" && url.pathname === "/api/telegram/purge") {
+    try {
+      const payload = await parseJsonBody(req);
+      const targetRoute = normalizeVietnamese(String(payload.route || "").trim());
+      const allowedRoutes = new Set(["marketing", "telesale", "consultant", "nurse", "all"]);
+      if (!allowedRoutes.has(targetRoute)) {
+        sendJson(res, 400, { ok: false, error: "route không hợp lệ. Dùng: marketing|telesale|consultant|nurse|all" });
+        return;
+      }
+
+      const state = await readState();
+      const reports = Array.isArray(state.reports) ? state.reports : [];
+      const before = reports.length;
+
+      const filtered = reports.filter((item) => {
+        if (targetRoute === "all") return false;
+        const route = normalizeVietnamese(String(item?.raw?.telegramRoute || ""));
+        const source = normalizeVietnamese(String(item?.raw?.source || ""));
+        if (route === targetRoute) return false;
+        // Legacy fallback: some old rows only tagged in source text
+        if (targetRoute === "marketing" && source.includes("marketing")) return false;
+        if (targetRoute === "telesale" && source.includes("telesale")) return false;
+        if (targetRoute === "consultant" && source.includes("tu van")) return false;
+        if (targetRoute === "nurse" && source.includes("nurse")) return false;
+        return true;
+      });
+
+      const removed = before - filtered.length;
+      state.reports = filtered;
+      state.updatedAt = Date.now();
+      await writeState(state);
+
+      sendJson(res, 200, {
+        ok: true,
+        route: targetRoute,
+        removed,
+        remaining: filtered.length
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Purge telegram failed" });
+    }
+    return;
+  }
+
   if (method === "POST" && url.pathname === "/api/telegram/test-parse") {
     try {
       const payload = await parseJsonBody(req);
