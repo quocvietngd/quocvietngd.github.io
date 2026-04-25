@@ -7249,6 +7249,8 @@ function normalizeImportedScheduleRow(raw) {
     stage: "",
     motherCondition: "",
     babyCondition: "",
+    marketingName: String(firstValue(sourceObj, ["marketingname", "marketingstaff", "tennv", "marketing", "mkt", "marketer"]) || "").trim(),
+    marketingStaff: String(firstValue(sourceObj, ["marketingstaff", "marketingname", "tennv", "marketing", "mkt", "marketer"]) || "").trim(),
     consultant: String(firstValue(sourceObj, ["consultant", "tư vấn", "tu van"]) || "").trim(),
     nurse: String(firstValue(sourceObj, ["nurse", "điều dưỡng", "dieu duong"]) || "").trim(),
     saleStaff: String(firstValue(sourceObj, ["telesale", "sale", "telesale phụ trách", "telesale phu trach"]) || "").trim(),
