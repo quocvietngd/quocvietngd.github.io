@@ -6963,7 +6963,7 @@ function parseTelegramNurseMessage(text) {
     customerName: obj["khach"] || obj["khachhang"] || obj["customer"] || obj["tenkhach"] || obj["tenkh"] || "",
     phone: obj["sdt"] || obj["sodienthoai"] || obj["phone"] || "",
     service: obj["dichvu"] || obj["service"] || "",
-    shiftMinutes: obj["thoiluong"] || obj["phut"] || obj["minutes"] || "",
+    shiftMinutes: parseFlexibleNumber(obj["thoiluong"] || obj["phut"] || obj["minutes"] || 0) || extractMinutesFromText(obj["dichvu"] || obj["service"] || ""),
     distanceKm: obj["khoangcach"] || obj["km"] || obj["distance"] || "",
     contractAmount: obj["hopdong"] || obj["contract"] || obj["doanhso"] || obj["doanso"] || "",
     status: obj["trangthai"] || obj["status"] || "completed",
@@ -7057,6 +7057,16 @@ function parseTelegramNurseMessage(text) {
   const doanso = parseFloat(String(obj["doanso"] || obj["doanhso"] || obj["revenue"] || 0).replace(/[^\d.-]/g, "")) || 0;
   
   if (!saleStaff && mess <= 0 && sdt <= 0 && lich <= 0 && hopdong <= 0 && doanso <= 0) return null;
+  const serviceText = String(firstValue(sourceObj, ["service", "dịch vụ", "dich vu"]) || "").trim();
+  const sessionDurationText = String(firstValue(sourceObj, ["sessionduration", "thời gian", "thoi gian"]) || "").trim();
+  const noteText = String(firstValue(sourceObj, ["note", "ghi chú", "ghi chu"]) || "").trim();
+  const explicitShiftMinutes = parseFlexibleNumber(firstValue(sourceObj, ["shiftminutes", "minutes", "phut", "số phút", "so phut", "thời lượng ca", "thoi luong ca"]));
+  const inferredShiftMinutes = explicitShiftMinutes
+    || extractMinutesFromText(sessionDurationText)
+    || extractMinutesFromText(serviceText)
+    || extractMinutesFromText(noteText)
+    || 0;
+
   return {
     ...base,
     saleStaff,
@@ -7199,7 +7209,7 @@ function normalizeImportedScheduleRow(raw) {
     birthHistory: "",
     babyBirthday: "",
     priority: "",
-    service: String(firstValue(sourceObj, ["service", "dịch vụ", "dich vu"]) || "").trim(),
+    service: serviceText,
     stage: "",
     motherCondition: "",
     babyCondition: "",
@@ -7207,10 +7217,10 @@ function normalizeImportedScheduleRow(raw) {
     nurse: String(firstValue(sourceObj, ["nurse", "điều dưỡng", "dieu duong"]) || "").trim(),
     saleStaff: String(firstValue(sourceObj, ["telesale", "sale", "telesale phụ trách", "telesale phu trach"]) || "").trim(),
     experiencePrice: Number(firstValue(sourceObj, ["experienceprice", "gia tn"]) || 0),
-    sessionDuration: String(firstValue(sourceObj, ["sessionduration", "thời gian", "thoi gian"]) || "").trim(),
+    sessionDuration: sessionDurationText || (inferredShiftMinutes > 0 ? `${inferredShiftMinutes}p` : ""),
     source: String(firstValue(sourceObj, ["source", "nguồn data", "nguon data"]) || "Nhập file").trim(),
     contractAmount: Number(firstValue(sourceObj, ["contractamount", "giá trị hợp đồng", "gia tri hop dong"]) || 0),
-    shiftMinutes: Number(firstValue(sourceObj, ["shiftminutes", "minutes", "phut", "số phút", "so phut", "thời lượng ca", "thoi luong ca"]) || 0),
+    shiftMinutes: inferredShiftMinutes,
     distanceKm: parseFlexibleNumber(firstValue(sourceObj, ["distancekm", "distance", "khoang cach", "khoảng cách", "quang duong", "quãng đường", "km"])),
     renewContractAmount: Number(firstValue(sourceObj, ["renewcontractamount", "tai ky", "tái ký", "gia tri tai ky", "giá trị tái ký"]) || 0),
     productSalesAmount: Number(firstValue(sourceObj, ["productsalesamount", "doanh so san pham", "doanh số sản phẩm", "ban san pham", "bán sản phẩm"]) || 0),
@@ -7222,7 +7232,7 @@ function normalizeImportedScheduleRow(raw) {
     violationDeduction: Number(firstValue(sourceObj, ["violationdeduction", "phat vi pham", "phạt vi phạm", "tien phat", "tiền phạt"]) || 0),
     telegramUpdateId,
     status,
-    note: String(firstValue(sourceObj, ["note", "ghi chú", "ghi chu"]) || "").trim(),
+    note: noteText,
     updatedAt: Date.now(),
     createdAt: Date.now()
   };
@@ -7404,11 +7414,21 @@ function getNurseReportSortIndicator(sortKey) {
   return nurseReportSortState.direction === "desc" ? " ↓" : " ↑";
 }
 
+function extractMinutesFromText(value) {
+  const text = String(value || "");
+  const match = text.match(/(\d{2,3})\s*(?:p|phut|phút)?/i);
+  return match ? Number(match[1]) : 0;
+}
+
 function getShiftMinutes(item) {
   const directMinutes = Number(item.shiftMinutes) || 0;
   if (directMinutes > 0) return directMinutes;
-  const matched = String(item.sessionDuration || "").match(/(\d{2,3})/);
-  return matched ? Number(matched[1]) : 90;
+  const durationMinutes = extractMinutesFromText(item.sessionDuration);
+  if (durationMinutes > 0) return durationMinutes;
+  const serviceMinutes = extractMinutesFromText(item.service);
+  if (serviceMinutes > 0) return serviceMinutes;
+  const noteMinutes = extractMinutesFromText(item.note);
+  return noteMinutes > 0 ? noteMinutes : 90;
 }
 
 function parseFlexibleNumber(value) {
@@ -8139,12 +8159,7 @@ function toDailyReportRows(departmentKey, rows) {
       const serviceText = String(item.service || "").trim();
       const serviceLower = serviceText.toLowerCase();
       const stageLower = String(item.stage || "").toLowerCase();
-      const shiftMinutes = Number(item.shiftMinutes) > 0
-        ? Number(item.shiftMinutes)
-        : (() => {
-            const matched = String(item.sessionDuration || "").match(/(\d{2,3})/);
-            return matched ? Number(matched[1]) : 90;
-          })();
+      const shiftMinutes = getShiftMinutes(item);
 
       const prev = nurseBucket.get(nurseName) || {
         nurseName,

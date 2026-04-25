@@ -504,7 +504,10 @@ function parseTelegramReportMessage(text) {
   const service = String(firstTelegramValue(values, ["dichvu", "service"]) || "").trim();
   const note = String(firstTelegramValue(values, ["ghichu", "note"]) || "").trim();
   const status = String(firstTelegramValue(values, ["trangthai", "status"]) || "completed").trim() || "completed";
-  const shiftMinutes = parseFlexibleNumber(firstTelegramValue(values, ["thoiluong", "phut", "minutes"]));
+  const explicitShiftMinutes = parseFlexibleNumber(firstTelegramValue(values, ["thoiluong", "phut", "minutes"]));
+  const inferredMinutesFromService = Number((service.match(/(\d{2,3})\s*(?:p|phut|phút)?/i) || [])[1] || 0);
+  const inferredMinutesFromNote = Number((note.match(/(\d{2,3})\s*(?:p|phut|phút)?/i) || [])[1] || 0);
+  const shiftMinutes = explicitShiftMinutes || inferredMinutesFromService || inferredMinutesFromNote || 0;
   const distanceKm = parseFlexibleNumber(firstTelegramValue(values, ["khoangcach", "km", "distance"]));
   const contractAmount = parseFlexibleNumber(firstTelegramValue(values, ["hopdong", "contract", "contractamount", "doanhso"]));
 
