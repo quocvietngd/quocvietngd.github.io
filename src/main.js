@@ -7803,8 +7803,7 @@ function renderNurseReportMatrix() {
 function getMarketingOwnerName(item) {
   const candidates = [item?.marketingStaff, item?.marketingName, item?.marketer, item?.ownerName];
   const matched = candidates.map((value) => String(value || "").trim()).find(Boolean);
-  if (matched) return matched;
-  return "Chưa gán";
+  return matched || "";
 }
 
 function getMarketingBudget(item) {
@@ -7830,6 +7829,7 @@ function getMarketingReportRows(start, end) {
   rows.forEach((item) => {
     const date = item.registrationDate || "";
     const marketingName = getMarketingOwnerName(item);
+    if (!marketingName) return;
     const key = `${date}||${marketingName}`;
     if (!bucket.has(key)) {
       bucket.set(key, {
