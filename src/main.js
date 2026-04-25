@@ -7243,6 +7243,7 @@ function normalizeImportedScheduleRow(raw) {
     source: String(firstValue(sourceObj, ["source", "nguồn data", "nguon data"]) || "Nhập file").trim(),
     contractAmount,
     shiftMinutes: inferredShiftMinutes,
+    marketingBudget: parseFlexibleNumber(firstValue(sourceObj, ["marketingbudget", "budget", "chiphi", "chiphí", "ngansach", "chi"])),
     marketingMessCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingmesscount", "messcount", "mess", "luongmess"])),
     marketingPhoneCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingphonecount", "phonecount", "sdt", "sodienthoai"])),
     marketingBookedCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingbookedcount", "bookedcount", "lich", "datlich"])),
