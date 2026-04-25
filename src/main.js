@@ -7002,6 +7002,7 @@ function parseTelegramNurseMessage(text) {
 
   if (route === "marketing") {
     const marketingName = obj["tennv"] || obj["ten"] || obj["marketing"] || obj["mkt"] || obj["marketer"] || "";
+    const effectiveMarketingName = marketingName || customerName;
     const chiphi = parseFloat(String(obj["chiphi"] || obj["chiphí"] || obj["chi"] || obj["ngansach"] || 0).replace(/[^\d.-]/g, "")) || 0;
     const mess = parseFloat(obj["mess"] || obj["luongmess"] || obj["interactions"] || 0) || 0;
     const sdt = parseFloat(obj["sdt"] || obj["sodienthoai"] || obj["phone"] || 0) || 0;
@@ -7012,8 +7013,9 @@ function parseTelegramNurseMessage(text) {
     if (!marketingName && mess <= 0 && sdt <= 0 && lich <= 0 && hopdong <= 0 && doanso <= 0 && chiphi <= 0) return null;
     return {
       ...base,
-      marketingName,
-      marketingStaff: marketingName,
+      customerName: customerName || effectiveMarketingName,
+      marketingName: effectiveMarketingName,
+      marketingStaff: effectiveMarketingName,
       marketingBudget: chiphi,
       marketingMessCount: Math.max(0, mess),
       marketingPhoneCount: Math.max(0, sdt),

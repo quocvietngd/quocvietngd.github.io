@@ -562,6 +562,7 @@ function parseTelegramReportMessage(text) {
 
   if (route === "marketing") {
     const marketingName = String(firstTelegramValue(values, ["tennv", "ten", "marketing", "mkt", "marketer", "nhanvien"]) || "").trim();
+    const effectiveMarketingName = marketingName || customerName;
     const chiphí = parseFlexibleNumber(firstTelegramValue(values, ["chiphi", "chiphí", "chi", "ngansach", "budget"]));
     const mess = parseFlexibleNumber(firstTelegramValue(values, ["mess", "luongmess", "interactions"])) || 0;
     const sdt = parseFlexibleNumber(firstTelegramValue(values, ["sdt", "sodienthoai", "phone", "phones"])) || 0;
@@ -573,8 +574,9 @@ function parseTelegramReportMessage(text) {
     if (marketingName || mess > 0 || sdt > 0 || lich > 0 || hopdong > 0 || doanso > 0 || chiphí > 0) {
       return {
         ...base,
-        marketingName: marketingName || customerName,
-        marketingStaff: marketingName || customerName,
+        customerName: customerName || effectiveMarketingName,
+        marketingName: effectiveMarketingName,
+        marketingStaff: effectiveMarketingName,
         marketingBudget: chiphí || parseFlexibleNumber(firstTelegramValue(values, ["budget", "ads"])),
         marketingMessCount: Math.max(0, mess),
         marketingPhoneCount: Math.max(0, sdt),
