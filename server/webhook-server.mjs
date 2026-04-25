@@ -652,7 +652,7 @@ async function setTelegramWebhook(token, webhookUrl) {
     body: JSON.stringify({
       url: webhookUrl,
       drop_pending_updates: false,
-      allowed_updates: ["message"]
+      allowed_updates: ["message", "edited_message"]
     })
   });
   const payload = await response.json();
@@ -686,7 +686,7 @@ async function getWebhookInfo(token) {
 }
 
 function appendTelegramReport(state, update) {
-  const message = update?.message;
+  const message = update?.message || update?.edited_message;
   const chatId = String(message?.chat?.id || "");
   const debug = normalizeTelegramDebug(state.telegramDebug);
 

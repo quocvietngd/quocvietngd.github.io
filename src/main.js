@@ -7095,16 +7095,17 @@ async function fetchAndParseTelegramMessagesDirect() {
   let maxUpdateId = telegramSourceConfig.lastUpdateId;
   const rawRows = [];
   updates.forEach(u => {
-    if (!u.message) return;
-    const incomingChatId = String(u.message.chat && u.message.chat.id);
+    const message = u.message || u.edited_message;
+    if (!message) return;
+    const incomingChatId = String(message.chat && message.chat.id);
     if (!allowedChatIds.includes(incomingChatId)) return;
     if (u.update_id > maxUpdateId) maxUpdateId = u.update_id;
-    const parsed = parseTelegramNurseMessage(u.message.text || "");
+    const parsed = parseTelegramNurseMessage(message.text || "");
     if (parsed) rawRows.push({
       ...parsed,
       telegramUpdateId: String(u.update_id || ""),
       telegramChatId: incomingChatId,
-      telegramChatTitle: String(u.message.chat?.title || u.message.chat?.username || "").trim()
+      telegramChatTitle: String(message.chat?.title || message.chat?.username || "").trim()
     });
   });
 
