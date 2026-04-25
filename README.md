@@ -47,7 +47,7 @@ Các bước bật public site:
 
 Ghi chú:
 - URL site chính thức của project: `https://quocvietngd.github.io/`.
-- Build đã dùng `base: "./"` trong [vite.config.js](vite.config.js), nên hoạt động tốt trên GitHub Pages project URL.
+- Build đã dùng `base: "./"` trong [vite.config.js](vite.config.js), nên hoạt động tốt khi deploy tại root URL của GitHub Pages.
 
 ## Telegram Realtime (Webhook)
 
