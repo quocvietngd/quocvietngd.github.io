@@ -7188,7 +7188,22 @@ function normalizeImportedScheduleRow(raw) {
         ? "confirmed"
         : "pending";
 
-  const customerName = String(firstValue(sourceObj, ["customername", "họ tên", "ho ten", "name"]) || "").trim();
+  const customerName = String(
+    firstValue(sourceObj, [
+      "customername",
+      "họ tên",
+      "ho ten",
+      "name",
+      "tenkhach",
+      "ten khach",
+      "khachhang",
+      "marketingname",
+      "marketingstaff",
+      "salestaff",
+      "consultant",
+      "nurse"
+    ]) || ""
+  ).trim();
   if (!customerName) return null;
 
   const telegramUpdateId = String(firstValue(sourceObj, ["telegramupdateid"]) || "").trim();
