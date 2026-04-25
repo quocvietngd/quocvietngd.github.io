@@ -7801,7 +7801,7 @@ function renderNurseReportMatrix() {
 }
 
 function getMarketingOwnerName(item) {
-  const candidates = [item?.marketingStaff, item?.marketingName, item?.marketer, item?.ownerName, item?.customerName];
+  const candidates = [item?.marketingStaff, item?.marketingName, item?.marketer, item?.ownerName];
   const matched = candidates.map((value) => String(value || "").trim()).find(Boolean);
   if (matched) return matched;
   return "Chưa gán";
@@ -8230,7 +8230,28 @@ function getRowsByReportDepartment(departmentKey, start, end) {
   });
   if (departmentKey === "marketing") {
     const digital = ["facebook", "tiktok", "google", "website", "zalo", "instagram", "ads", "marketing"];
-    return inRange.filter((item) => digital.some((key) => String(item.source || "").toLowerCase().includes(key)));
+    return inRange.filter((item) => {
+      const sourceText = String(item.source || "").toLowerCase();
+      const isDigitalSource = digital.some((key) => sourceText.includes(key));
+      if (!isDigitalSource) return false;
+
+      const hasMarketingIdentity = Boolean(
+        String(item.marketingStaff || "").trim()
+        || String(item.marketingName || "").trim()
+        || String(item.marketer || "").trim()
+      );
+      const hasMarketingMetrics = [
+        item.marketingBudget,
+        item.marketingMessCount,
+        item.marketingPhoneCount,
+        item.marketingBookedCount,
+        item.marketingContractCount,
+        item.marketingRevenue
+      ].some((value) => parseFlexibleNumber(value) > 0);
+
+      // Keep Telegram/real marketing rows, hide old generic lead rows from draft data.
+      return sourceText.includes("telegram marketing") || hasMarketingIdentity || hasMarketingMetrics;
+    });
   }
   if (departmentKey === "telesale") return inRange.filter((item) => String(item.saleStaff || "").trim());
   if (departmentKey === "consultant") return inRange.filter((item) => String(item.consultant || "").trim());
