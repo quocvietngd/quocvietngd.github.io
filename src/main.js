@@ -7803,7 +7803,10 @@ function renderNurseReportMatrix() {
 function getMarketingOwnerName(item) {
   const candidates = [item?.marketingStaff, item?.marketingName, item?.marketer, item?.ownerName];
   const matched = candidates.map((value) => String(value || "").trim()).find(Boolean);
-  return matched || "";
+  if (!matched) return "";
+  const normalized = normalizeTextForMatching(matched);
+  if (normalized === "chua gan" || normalized === "chua gan marketing" || normalized === "unknown") return "";
+  return matched;
 }
 
 function getMarketingBudget(item) {
