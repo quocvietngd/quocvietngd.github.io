@@ -5383,7 +5383,6 @@ async function importExcelEmployees(file) {
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: "array" });
     
-    const sheetNames = ["1.1 DS NS HN", "1.2 DS CTV", "1.2 DS NS HCM", "2.1 NS nghỉ việc HN", "2.1 DS NS nghỉ việc HN"];
     let importedUsers = [];
     const seenIdentities = new Set();
 
@@ -5397,32 +5396,32 @@ async function importExcelEmployees(file) {
     // Đánh dấu username đã tồn tại
     Me.forEach((u) => seenIdentities.add((u.identityNumber || u.phone || slugify(u.fullName || "")).trim()));
 
-    for (const sheetName of sheetNames) {
-      if (!workbook.SheetNames.includes(sheetName)) continue;
-      
-      const worksheet = workbook.Sheets[sheetName];
+    // Detect file format: new single-sheet format vs old multi-sheet format
+    const isNewFormat = workbook.SheetNames.includes("Trang tính1");
+
+    if (isNewFormat) {
+      // New format: "Trang tính1" — Họ tên, SĐT, Ngày sinh, Phòng ban, Vị trí, Thu nhập, Ngày vào, Loại HĐ, STK, Email, CCCD, Hộ khẩu, Địa chỉ TT, BHXH, Tình trạng HĐ, Liên hệ khẩn
+      const worksheet = workbook.Sheets["Trang tính1"];
       const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-      
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i] || [];
-        
         const fullName = (row[0] || "").toString().trim();
-        const phone = digits(row[1] || "");
-        const identityNumber = digits(row[11] || "");
-        const department = (row[4] || "").toString().trim();
-        const position = (row[5] || "").toString().trim();
-        const email = (row[10] || "").toString().trim();
-        const birthDate = excelDateToIso(row[2]);
-        const gender = (row[3] || "").toString().trim();
-        const bankAccount = digits(row[9] || "");
-        const address = (row[8] || "").toString().trim();
-        const contractType = (row[8] || "").toString().trim();
-        const compensation = (row[6] || "").toString().trim();
-        const startDate = excelDateToIso(row[7]);
-        const taxCode = (row[0] === "Chứng chỉ nước ngoài" ? row[1] : row[13] || "").toString().trim();
-        const insuranceNumber = (row[0] === "Bảo hiểm" ? row[1] : row[14] || "").toString().trim();
-
         if (!fullName) continue;
+        const phone = digits(row[1] || "");
+        const dateOfBirth = excelDateToIso(row[2]);
+        const department = (row[3] || "").toString().trim();
+        const position = (row[4] || "").toString().trim();
+        const compensation = row[5] ? row[5].toString().trim() : "";
+        const startDate = excelDateToIso(row[6]);
+        const contractType = (row[7] || "").toString().trim();
+        const bankAccount = digits(row[8] || "");
+        const email = (row[9] || "").toString().trim();
+        const identityNumber = digits(row[10] || "");
+        const permanentAddress = (row[11] || "").toString().trim();
+        const currentAddress = (row[12] || "").toString().trim();
+        const insuranceNumber = digits(row[13] || "");
+        const contractSigningStatus = (row[14] || "").toString().trim();
+        const emergencyContact = (row[15] || "").toString().trim();
 
         const identityKey = identityNumber || phone || slugify(fullName);
         if (seenIdentities.has(identityKey)) continue;
@@ -5431,37 +5430,68 @@ async function importExcelEmployees(file) {
         const userCode = `NR${String(nextUserCode).padStart(3, "0")}`;
         nextUserCode++;
 
-        const username = `${slugify(fullName)}${userCode.slice(2).toLowerCase()}`;
-        const roleKey = position.toLowerCase().includes("giám đốc") || position.toLowerCase().includes("ceo")
+        const username = `${slugify(fullName)}${userCode.toLowerCase()}`;
+        const posLower = position.toLowerCase();
+        const roleKey = posLower.includes("giám đốc") || posLower.includes("ceo")
           ? "ceo"
-          : position.toLowerCase().includes("trưởng") || position.toLowerCase().includes("head")
+          : posLower.includes("trưởng") || posLower.includes("leader") || posLower.includes("giám sát") || posLower.includes("head")
           ? "head"
           : "staff";
 
-        const newUser = normalizeRemoteUser({
-          userCode,
-          username,
-          password: "123456",
-          fullName,
-          roleKey,
-          department,
-          phone,
-          email,
-          address,
-          bankAccount,
-          status: sheetName.includes("nghỉ việc") ? "suspended" : "active",
-          position,
-          dateOfBirth: birthDate,
-          gender,
-          identityNumber,
-          taxCode,
-          insuranceNumber,
-          contractType,
-          compensation,
-          startDate
-        });
+        importedUsers.push(normalizeRemoteUser({
+          userCode, username, password: "123456", fullName, roleKey,
+          department, phone, email, bankAccount, status: "active",
+          position, dateOfBirth, identityNumber, insuranceNumber,
+          contractType, compensation, startDate,
+          permanentAddress, currentAddress, contractSigningStatus, emergencyContact,
+        }));
+      }
+    } else {
+      // Old multi-sheet format
+      const sheetNames = ["1.1 DS NS HN", "1.2 DS CTV", "1.2 DS NS HCM", "2.1 NS nghỉ việc HN", "2.1 DS NS nghỉ việc HN"];
+      for (const sheetName of sheetNames) {
+        if (!workbook.SheetNames.includes(sheetName)) continue;
+        const worksheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i] || [];
+          const fullName = (row[0] || "").toString().trim();
+          if (!fullName) continue;
+          const phone = digits(row[1] || "");
+          const identityNumber = digits(row[11] || "");
+          const department = (row[4] || "").toString().trim();
+          const position = (row[5] || "").toString().trim();
+          const email = (row[10] || "").toString().trim();
+          const birthDate = excelDateToIso(row[2]);
+          const gender = (row[3] || "").toString().trim();
+          const bankAccount = digits(row[9] || "");
+          const contractType = (row[8] || "").toString().trim();
+          const compensation = (row[6] || "").toString().trim();
+          const startDate = excelDateToIso(row[7]);
+          const insuranceNumber = digits(row[14] || "");
 
-        importedUsers.push(newUser);
+          const identityKey = identityNumber || phone || slugify(fullName);
+          if (seenIdentities.has(identityKey)) continue;
+          seenIdentities.add(identityKey);
+
+          const userCode = `NR${String(nextUserCode).padStart(3, "0")}`;
+          nextUserCode++;
+          const username = `${slugify(fullName)}${userCode.toLowerCase()}`;
+          const posLower = position.toLowerCase();
+          const roleKey = posLower.includes("giám đốc") || posLower.includes("ceo")
+            ? "ceo"
+            : posLower.includes("trưởng") || posLower.includes("head")
+            ? "head"
+            : "staff";
+
+          importedUsers.push(normalizeRemoteUser({
+            userCode, username, password: "123456", fullName, roleKey,
+            department, phone, email, bankAccount,
+            status: sheetName.includes("nghỉ việc") ? "suspended" : "active",
+            position, dateOfBirth: birthDate, gender, identityNumber,
+            insuranceNumber, contractType, compensation, startDate,
+          }));
+        }
       }
     }
 
@@ -5825,15 +5855,44 @@ function openHrProfileModal(userId) {
   const roleLabel = getRolePermissions(user.roleKey).label;
   els.hrProfileTitle.textContent = user.fullName;
   els.hrProfileSubtitle.textContent = `${user.userCode || ""} · ${user.username}`;
-  els.hrProfileInfo.innerHTML = [
-    ["Vai trò", roleLabel],
-    ["Phòng ban", user.department || "Ban điều hành"],
-    ["Trạng thái", (user.status || "active") === "suspended" ? "Tạm dừng" : "Hoạt động"],
-    ["SĐT", user.phone || "—"],
-    ["Email", user.email || "—"],
-    ["Địa chỉ", user.address || "—"],
-    ["STK ngân hàng", user.bankAccount || "—"],
-  ].map(([k, v]) => `<div><div class="muted" style="font-size:0.75rem;margin-bottom:2px;">${k}</div><strong style="word-break:break-word;">${v}</strong></div>`).join("");
+  const isSuspended = (user.status || "active") === "suspended";
+  const infoGroups = [
+    { title: "Thông tin cơ bản", fields: [
+      ["Mã NV", user.userCode || "—"],
+      ["Vai trò", roleLabel],
+      ["Vị trí", user.position || "—"],
+      ["Phòng ban", user.department || "Ban điều hành"],
+      ["Trạng thái", isSuspended ? '<span style="color:#c0392b;">Tạm dừng</span>' : '<span style="color:#1a7f4b;">Hoạt động</span>'],
+      ["Ngày vào làm", user.startDate || "—"],
+      ["Loại HĐ", user.contractType || "—"],
+      ["Tình trạng ký HĐ", user.contractSigningStatus || "—"],
+    ]},
+    { title: "Liên hệ", fields: [
+      ["SĐT", user.phone || "—"],
+      ["Email", user.email || "—"],
+      ["Ngày sinh", user.dateOfBirth || "—"],
+      ["Liên hệ khẩn cấp", user.emergencyContact || "—"],
+    ]},
+    { title: "Tài chính", fields: [
+      ["Tổng thu nhập", user.compensation ? Number(user.compensation).toLocaleString("vi-VN") + " đ" : "—"],
+      ["STK ngân hàng", user.bankAccount || "—"],
+    ]},
+    { title: "Giấy tờ & Địa chỉ", fields: [
+      ["CCCD", user.identityNumber || "—"],
+      ["Số sổ BHXH", user.insuranceNumber || "—"],
+      ["Hộ khẩu thường trú", user.permanentAddress || user.address || "—"],
+      ["Địa chỉ tạm trú", user.currentAddress || "—"],
+    ]},
+  ];
+  els.hrProfileInfo.style.display = "block";
+  els.hrProfileInfo.innerHTML = infoGroups.map(g => `
+    <div style="margin-bottom:10px;">
+      <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">${g.title}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px 12px;">
+        ${g.fields.map(([k, v]) => `<div><div class="muted" style="font-size:0.72rem;margin-bottom:1px;">${k}</div><strong style="word-break:break-word;font-size:0.85rem;">${v}</strong></div>`).join("")}
+      </div>
+    </div>
+  `).join("");
   els.hrProfileStatus.textContent = "";
   renderHrFileList(userId);
   els.hrProfileModal.classList.remove("hidden");
