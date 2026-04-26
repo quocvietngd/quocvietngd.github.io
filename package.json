@@ -15,7 +15,8 @@
     "chart.js": "^4.4.3",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "vite": "^5.3.3"

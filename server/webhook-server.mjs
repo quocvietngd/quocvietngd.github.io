@@ -315,7 +315,28 @@ function normalizeUser(input = {}) {
     address: String(input.address || ""),
     bankAccount: String(input.bankAccount || ""),
     status: input.status === "suspended" ? "suspended" : "active",
-    createdAt: Number(input.createdAt) || Date.now()
+    createdAt: Number(input.createdAt) || Date.now(),
+    branch: String(input.branch || ""),
+    employeeGroup: String(input.employeeGroup || ""),
+    position: String(input.position || ""),
+    dateOfBirth: String(input.dateOfBirth || ""),
+    gender: String(input.gender || ""),
+    maritalStatus: String(input.maritalStatus || ""),
+    ethnicity: String(input.ethnicity || ""),
+    religion: String(input.religion || ""),
+    identityNumber: String(input.identityNumber || ""),
+    identityIssueDate: String(input.identityIssueDate || ""),
+    taxCode: String(input.taxCode || ""),
+    insuranceNumber: String(input.insuranceNumber || ""),
+    permanentAddress: String(input.permanentAddress || ""),
+    currentAddress: String(input.currentAddress || ""),
+    startDate: String(input.startDate || ""),
+    contractType: String(input.contractType || ""),
+    compensation: String(input.compensation || ""),
+    emergencyContact: String(input.emergencyContact || ""),
+    profileSubmissionStatus: String(input.profileSubmissionStatus || ""),
+    contractSigningStatus: String(input.contractSigningStatus || ""),
+    notes: String(input.notes || "")
   };
 }
 

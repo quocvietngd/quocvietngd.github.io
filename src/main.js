@@ -2,6 +2,7 @@ import "./style.css";
 import { Chart, registerables } from "chart.js";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import * as XLSX from "xlsx";
 
 Chart.register(...registerables);
 
@@ -1026,6 +1027,7 @@ app.innerHTML = `
             <h3>Danh sách nhân sự</h3>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button class="btn secondary" id="openPermissionModalBtn" type="button">Phân quyền</button>
+              <button class="btn secondary" id="importExcelBtn" type="button">📥 Import Excel</button>
               <button class="btn secondary" id="openUserModalBtn" type="button">+ Thêm nhân sự</button>
             </div>
           </div>
@@ -1080,6 +1082,7 @@ app.innerHTML = `
               <tbody id="userBody"></tbody>
             </table>
           </div>
+          <input type="file" id="excelFileInput" accept=".xlsx,.xls" style="display:none;" />
           <div class="customer-modal hidden" id="userModal">
             <div class="customer-modal-backdrop" id="userModalBackdrop"></div>
             <div class="customer-modal-panel card">
@@ -2285,6 +2288,8 @@ const els = {
   customerSection: document.querySelector("#customerSection"),
   adminUserSection: document.querySelector("#adminUserSection"),
   openUserModalBtn: document.querySelector("#openUserModalBtn"),
+  importExcelBtn: document.querySelector("#importExcelBtn"),
+  excelFileInput: document.querySelector("#excelFileInput"),
   userModal: document.querySelector("#userModal"),
   userModalBackdrop: document.querySelector("#userModalBackdrop"),
   closeUserModalBtn: document.querySelector("#closeUserModalBtn"),
@@ -3299,7 +3304,28 @@ function normalizeRemoteUser(user = {}) {
     address: String(user.address || ""),
     bankAccount: String(user.bankAccount || ""),
     status: user.status === "suspended" ? "suspended" : "active",
-    createdAt: Number(user.createdAt) || Date.now()
+    createdAt: Number(user.createdAt) || Date.now(),
+    branch: String(user.branch || ""),
+    employeeGroup: String(user.employeeGroup || ""),
+    position: String(user.position || ""),
+    dateOfBirth: String(user.dateOfBirth || ""),
+    gender: String(user.gender || ""),
+    maritalStatus: String(user.maritalStatus || ""),
+    ethnicity: String(user.ethnicity || ""),
+    religion: String(user.religion || ""),
+    identityNumber: String(user.identityNumber || ""),
+    identityIssueDate: String(user.identityIssueDate || ""),
+    taxCode: String(user.taxCode || ""),
+    insuranceNumber: String(user.insuranceNumber || ""),
+    permanentAddress: String(user.permanentAddress || ""),
+    currentAddress: String(user.currentAddress || ""),
+    startDate: String(user.startDate || ""),
+    contractType: String(user.contractType || ""),
+    compensation: String(user.compensation || ""),
+    emergencyContact: String(user.emergencyContact || ""),
+    profileSubmissionStatus: String(user.profileSubmissionStatus || ""),
+    contractSigningStatus: String(user.contractSigningStatus || ""),
+    notes: String(user.notes || "")
   };
 }
 
@@ -5324,6 +5350,134 @@ function getFilteredUsers() {
     if (status && (u.status || "active") !== status) return false;
     return true;
   });
+}
+
+function slugify(text = "") {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+    .replace(/^-+|-+$/g, "");
+}
+
+function excelDateToIso(value) {
+  if (!value || typeof value !== "number") return "";
+  const epoch = new Date(1899, 11, 30);
+  const date = new Date(epoch.getTime() + value * 86400000);
+  return date.toISOString().split("T")[0];
+}
+
+function digits(v) {
+  const str = String(v).trim();
+  const onlyDigits = str.replace(/\D/g, "");
+  return onlyDigits || str;
+}
+
+async function importExcelEmployees(file) {
+  try {
+    if (!XLSX || typeof XLSX.read !== "function") {
+      throw new Error("xlsx library not loaded. Please ensure it's installed.");
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: "array" });
+    
+    const sheetNames = ["1.1 DS NS HN", "1.2 DS CTV", "1.2 DS NS HCM", "2.1 DS NS nghỉ việc HN"];
+    let importedUsers = [];
+    const seenIdentities = new Set();
+    let nextUserCode = 4;
+
+    for (const sheetName of sheetNames) {
+      if (!workbook.SheetNames.includes(sheetName)) continue;
+      
+      const worksheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+      
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i] || [];
+        
+        const fullName = (row[0] || "").toString().trim();
+        const phone = digits(row[1] || "");
+        const identityNumber = digits(row[11] || "");
+        const department = (row[4] || "").toString().trim();
+        const position = (row[5] || "").toString().trim();
+        const email = (row[10] || "").toString().trim();
+        const birthDate = excelDateToIso(row[2]);
+        const gender = (row[3] || "").toString().trim();
+        const bankAccount = digits(row[9] || "");
+        const address = (row[8] || "").toString().trim();
+        const contractType = (row[8] || "").toString().trim();
+        const compensation = (row[6] || "").toString().trim();
+        const startDate = excelDateToIso(row[7]);
+        const taxCode = (row[0] === "Chứng chỉ nước ngoài" ? row[1] : row[13] || "").toString().trim();
+        const insuranceNumber = (row[0] === "Bảo hiểm" ? row[1] : row[14] || "").toString().trim();
+
+        if (!fullName) continue;
+
+        const identityKey = identityNumber || phone || slugify(fullName);
+        if (seenIdentities.has(identityKey)) continue;
+        seenIdentities.add(identityKey);
+
+        const userCode = `NR${String(nextUserCode).padStart(3, "0")}`;
+        nextUserCode++;
+
+        const username = `${slugify(fullName)}${userCode.slice(2).toLowerCase()}`;
+        const roleKey = position.toLowerCase().includes("giám đốc") || position.toLowerCase().includes("ceo")
+          ? "ceo"
+          : position.toLowerCase().includes("trưởng") || position.toLowerCase().includes("head")
+          ? "head"
+          : "staff";
+
+        const newUser = normalizeRemoteUser({
+          userCode,
+          username,
+          password: "123456",
+          fullName,
+          roleKey,
+          department,
+          phone,
+          email,
+          address,
+          bankAccount,
+          status: sheetName.includes("nghỉ việc") ? "suspended" : "active",
+          position,
+          dateOfBirth: birthDate,
+          gender,
+          identityNumber,
+          taxCode,
+          insuranceNumber,
+          contractType,
+          compensation,
+          startDate
+        });
+
+        importedUsers.push(newUser);
+      }
+    }
+
+    if (importedUsers.length === 0) {
+      yt("Không tìm thấy nhân viên nào để import.", "warning");
+      return;
+    }
+
+    Me.push(...importedUsers);
+    jt(Ft.users, Me);
+    await ep(`Import ${importedUsers.length} nhân viên từ Excel`);
+    
+    Cs();
+    yt(`Đã import ${importedUsers.length} nhân viên thành công.`);
+    Wt(
+      "Nhân sự",
+      "Import nhân viên từ Excel",
+      `Số lượng: ${importedUsers.length} người`,
+      { count: importedUsers.length }
+    );
+
+  } catch (error) {
+    console.error("Import Excel error:", error);
+    yt(`Lỗi import: ${error.message}`, "error");
+  }
 }
 
 function renderUserTable() {
@@ -10185,6 +10339,24 @@ els.saveInventoryTxnBtn.addEventListener("click", () => {
 
 els.openCustomerModalBtn.addEventListener("click", openCustomerModal);
 els.openUserModalBtn.addEventListener("click", openUserModal);
+els.importExcelBtn.addEventListener("click", () => {
+  if (!can("canManageUsers")) {
+    yt("Bạn không có quyền import nhân sự.", "warning");
+    return;
+  }
+  els.excelFileInput.click();
+});
+els.excelFileInput.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (!file.name.match(/\.(xlsx|xls)$/i)) {
+    yt("Vui lòng chọn file Excel (.xlsx hoặc .xls).", "warning");
+    return;
+  }
+  yt("Đang xử lý file Excel...", "info");
+  await importExcelEmployees(file);
+  els.excelFileInput.value = "";
+});
 els.closeUserModalBtn.addEventListener("click", closeUserModal);
 els.userModalBackdrop.addEventListener("click", closeUserModal);
 els.hrQuickSearch.addEventListener("input", renderUserTable);
