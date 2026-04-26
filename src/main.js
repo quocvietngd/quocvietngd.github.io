@@ -1156,7 +1156,12 @@ app.innerHTML = `
                   <h3 id="hrProfileTitle">Hồ sơ nhân sự</h3>
                   <p id="hrProfileSubtitle" class="muted" style="font-size:0.85rem;margin:2px 0 0;"></p>
                 </div>
-                <button class="btn warn" id="closeHrProfileBtn" type="button">Đóng</button>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <button class="btn secondary" id="editHrProfileBtn" type="button">Sửa</button>
+                  <button class="btn secondary hidden" id="saveHrProfileBtn" type="button">Lưu</button>
+                  <button class="btn secondary hidden" id="cancelHrProfileEditBtn" type="button">Hủy</button>
+                  <button class="btn warn" id="closeHrProfileBtn" type="button">Đóng</button>
+                </div>
               </div>
               <div id="hrProfileInfo" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0;background:#f8fafc;border-radius:10px;padding:12px;font-size:0.85rem;"></div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 6px;">
@@ -2331,6 +2336,9 @@ const els = {
   hrProfileFileList: document.querySelector("#hrProfileFileList"),
   hrFileUpload: document.querySelector("#hrFileUpload"),
   hrProfileStatus: document.querySelector("#hrProfileStatus"),
+  editHrProfileBtn: document.querySelector("#editHrProfileBtn"),
+  saveHrProfileBtn: document.querySelector("#saveHrProfileBtn"),
+  cancelHrProfileEditBtn: document.querySelector("#cancelHrProfileEditBtn"),
   customerName: document.querySelector("#customerName"),
   openCustomerModalBtn: document.querySelector("#openCustomerModalBtn"),
   customerModal: document.querySelector("#customerModal"),
@@ -5844,16 +5852,12 @@ async function exportFilteredInventoryToPdf() {
 }
 
 let viewingHrUserId = null;
+let hrProfileEditMode = false;
 
-function openHrProfileModal(userId) {
-  viewingHrUserId = userId;
-  const user = users.find((u) => u.id === userId);
-  if (!user) return;
+function getHrProfileInfoGroups(user) {
   const roleLabel = getRolePermissions(user.roleKey).label;
-  els.hrProfileTitle.textContent = user.fullName;
-  els.hrProfileSubtitle.textContent = `${user.userCode || ""} · ${user.username}`;
   const isSuspended = (user.status || "active") === "suspended";
-  const infoGroups = [
+  return [
     { title: "Thông tin cơ bản", fields: [
       ["Mã NV", user.userCode || "—"],
       ["Vai trò", roleLabel],
@@ -5871,7 +5875,7 @@ function openHrProfileModal(userId) {
       ["Liên hệ khẩn cấp", user.emergencyContact || "—"],
     ]},
     { title: "Tài chính", fields: [
-      ["Tổng thu nhập", user.compensation ? Number(user.compensation).toLocaleString("vi-VN") + " đ" : "—"],
+      ["Tổng thu nhập", user.compensation || "—"],
       ["STK ngân hàng", user.bankAccount || "—"],
     ]},
     { title: "Giấy tờ & Địa chỉ", fields: [
@@ -5881,15 +5885,141 @@ function openHrProfileModal(userId) {
       ["Địa chỉ tạm trú", user.currentAddress || "—"],
     ]},
   ];
+}
+
+function renderHrProfileInfo(user, editMode = false) {
+  if (!user) return;
+  if (!editMode) {
+    const infoGroups = getHrProfileInfoGroups(user);
+    els.hrProfileInfo.style.display = "block";
+    els.hrProfileInfo.innerHTML = infoGroups.map((g) => `
+      <div style="margin-bottom:10px;">
+        <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">${g.title}</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px 12px;">
+          ${g.fields.map(([k, v]) => `<div><div class="muted" style="font-size:0.72rem;margin-bottom:1px;">${k}</div><strong style="word-break:break-word;font-size:0.85rem;">${v}</strong></div>`).join("")}
+        </div>
+      </div>
+    `).join("");
+    return;
+  }
+
+  const roleOptions = Object.keys(ROLES).map((roleKey) => `<option value="${roleKey}" ${roleKey === user.roleKey ? "selected" : ""}>${getRolePermissions(roleKey).label}</option>`).join("");
+  const statusOptions = [
+    `<option value="active" ${(user.status || "active") === "active" ? "selected" : ""}>Hoạt động</option>`,
+    `<option value="suspended" ${(user.status || "active") === "suspended" ? "selected" : ""}>Tạm dừng</option>`
+  ].join("");
+
+  const sections = [
+    {
+      title: "Thông tin cơ bản",
+      fields: [
+        { key: "position", label: "Vị trí", type: "text", value: user.position || "" },
+        { key: "department", label: "Phòng ban", type: "text", value: user.department || "" },
+        { key: "roleKey", label: "Vai trò", type: "select", options: roleOptions },
+        { key: "status", label: "Trạng thái", type: "select", options: statusOptions },
+        { key: "startDate", label: "Ngày vào làm", type: "date", value: user.startDate || "" },
+        { key: "contractType", label: "Loại HĐ", type: "text", value: user.contractType || "" },
+        { key: "contractSigningStatus", label: "Tình trạng ký HĐ", type: "text", value: user.contractSigningStatus || "" },
+      ]
+    },
+    {
+      title: "Liên hệ",
+      fields: [
+        { key: "phone", label: "SĐT", type: "text", value: user.phone || "" },
+        { key: "email", label: "Email", type: "email", value: user.email || "" },
+        { key: "dateOfBirth", label: "Ngày sinh", type: "date", value: user.dateOfBirth || "" },
+        { key: "emergencyContact", label: "Liên hệ khẩn cấp", type: "textarea", value: user.emergencyContact || "" },
+      ]
+    },
+    {
+      title: "Tài chính",
+      fields: [
+        { key: "compensation", label: "Tổng thu nhập", type: "text", value: user.compensation || "" },
+        { key: "bankAccount", label: "STK ngân hàng", type: "text", value: user.bankAccount || "" },
+      ]
+    },
+    {
+      title: "Giấy tờ & Địa chỉ",
+      fields: [
+        { key: "identityNumber", label: "CCCD", type: "text", value: user.identityNumber || "" },
+        { key: "insuranceNumber", label: "Số sổ BHXH", type: "text", value: user.insuranceNumber || "" },
+        { key: "permanentAddress", label: "Hộ khẩu thường trú", type: "textarea", value: user.permanentAddress || user.address || "" },
+        { key: "currentAddress", label: "Địa chỉ tạm trú", type: "textarea", value: user.currentAddress || "" },
+      ]
+    },
+  ];
+
   els.hrProfileInfo.style.display = "block";
-  els.hrProfileInfo.innerHTML = infoGroups.map(g => `
+  els.hrProfileInfo.innerHTML = sections.map((section) => `
     <div style="margin-bottom:10px;">
-      <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">${g.title}</div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px 12px;">
-        ${g.fields.map(([k, v]) => `<div><div class="muted" style="font-size:0.72rem;margin-bottom:1px;">${k}</div><strong style="word-break:break-word;font-size:0.85rem;">${v}</strong></div>`).join("")}
+      <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:6px;">${section.title}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px 12px;">
+        ${section.fields.map((field) => {
+          if (field.type === "select") {
+            return `<div><label style="display:block;font-size:0.72rem;color:#64748b;margin-bottom:2px;">${field.label}</label><select data-hr-field="${field.key}" style="width:100%;">${field.options}</select></div>`;
+          }
+          if (field.type === "textarea") {
+            return `<div><label style="display:block;font-size:0.72rem;color:#64748b;margin-bottom:2px;">${field.label}</label><textarea data-hr-field="${field.key}" rows="2" style="width:100%;resize:vertical;">${escapeHtml(field.value)}</textarea></div>`;
+          }
+          return `<div><label style="display:block;font-size:0.72rem;color:#64748b;margin-bottom:2px;">${field.label}</label><input data-hr-field="${field.key}" type="${field.type}" value="${escapeHtml(field.value)}" style="width:100%;" /></div>`;
+        }).join("")}
       </div>
     </div>
   `).join("");
+}
+
+function setHrProfileEditMode(enabled) {
+  hrProfileEditMode = Boolean(enabled);
+  els.editHrProfileBtn.classList.toggle("hidden", hrProfileEditMode);
+  els.saveHrProfileBtn.classList.toggle("hidden", !hrProfileEditMode);
+  els.cancelHrProfileEditBtn.classList.toggle("hidden", !hrProfileEditMode);
+  const user = users.find((u) => u.id === viewingHrUserId);
+  renderHrProfileInfo(user, hrProfileEditMode);
+}
+
+function saveHrProfileModalChanges() {
+  const user = users.find((u) => u.id === viewingHrUserId);
+  if (!user) return;
+
+  const updates = {};
+  const fields = els.hrProfileInfo.querySelectorAll("[data-hr-field]");
+  fields.forEach((fieldEl) => {
+    const key = fieldEl.dataset.hrField;
+    if (!key) return;
+    const value = String(fieldEl.value || "").trim();
+    updates[key] = value;
+  });
+
+  if (updates.roleKey && !ROLES[updates.roleKey]) updates.roleKey = "staff";
+  if (updates.status !== "active" && updates.status !== "suspended") updates.status = "active";
+
+  const updatedUser = normalizeRemoteUser({
+    ...user,
+    ...updates
+  });
+
+  users = users.map((u) => (u.id === user.id ? updatedUser : u));
+  saveJSON(STORAGE.users, users);
+  saveJSON(STORAGE.usersPendingSync, true);
+  renderUserTable();
+  openHrProfileModal(user.id);
+  setHrProfileEditMode(false);
+  showToast("Đã lưu hồ sơ nhân sự.", "success");
+  logActivity("Nhân sự", "Cập nhật hồ sơ nhân sự", `${updatedUser.userCode || ""} | ${updatedUser.fullName || ""}`);
+  persistUsersToRemote(`Cập nhật hồ sơ nhân sự ${updatedUser.username || updatedUser.id}`).catch(() => {});
+}
+
+function openHrProfileModal(userId) {
+  viewingHrUserId = userId;
+  const user = users.find((u) => u.id === userId);
+  if (!user) return;
+  els.hrProfileTitle.textContent = user.fullName;
+  els.hrProfileSubtitle.textContent = `${user.userCode || ""} · ${user.username}`;
+  renderHrProfileInfo(user, false);
+  hrProfileEditMode = false;
+  els.editHrProfileBtn.classList.remove("hidden");
+  els.saveHrProfileBtn.classList.add("hidden");
+  els.cancelHrProfileEditBtn.classList.add("hidden");
   els.hrProfileStatus.textContent = "";
   renderHrFileList(userId);
   els.hrProfileModal.classList.remove("hidden");
@@ -5898,6 +6028,7 @@ function openHrProfileModal(userId) {
 function closeHrProfileModal() {
   els.hrProfileModal.classList.add("hidden");
   viewingHrUserId = null;
+  hrProfileEditMode = false;
 }
 
 function renderHrFileList(userId) {
@@ -10406,7 +10537,7 @@ els.openCustomerModalBtn.addEventListener("click", openCustomerModal);
 els.openUserModalBtn.addEventListener("click", openUserModal);
 els.importExcelBtn.addEventListener("click", () => {
   if (!can("canManageUsers")) {
-    yt("Bạn không có quyền import nhân sự.", "warning");
+    showToast("Bạn không có quyền import nhân sự.", "warning");
     return;
   }
   els.excelFileInput.click();
@@ -10430,6 +10561,24 @@ els.hrFilterDept.addEventListener("change", renderUserTable);
 els.hrFilterStatus.addEventListener("change", renderUserTable);
 els.closeHrProfileBtn.addEventListener("click", closeHrProfileModal);
 els.hrProfileModalBackdrop.addEventListener("click", closeHrProfileModal);
+els.editHrProfileBtn.addEventListener("click", () => {
+  if (!can("canManageUsers")) {
+    showToast("Bạn không có quyền sửa hồ sơ nhân sự.", "warning");
+    return;
+  }
+  setHrProfileEditMode(true);
+});
+els.cancelHrProfileEditBtn.addEventListener("click", () => {
+  setHrProfileEditMode(false);
+  els.hrProfileStatus.textContent = "";
+});
+els.saveHrProfileBtn.addEventListener("click", () => {
+  if (!can("canManageUsers")) {
+    showToast("Bạn không có quyền sửa hồ sơ nhân sự.", "warning");
+    return;
+  }
+  saveHrProfileModalChanges();
+});
 
 if (els.openPermissionModalBtn) {
   els.openPermissionModalBtn.addEventListener("click", () => {
