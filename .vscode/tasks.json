@@ -11,6 +11,16 @@
 			],
 			"isBackground": true,
 			"group": "build"
+		},
+		{
+			"label": "Deploy Latest To GitHub Pages",
+			"type": "shell",
+			"command": "zsh",
+			"args": [
+				"-lc",
+				"cd \"/Users/tranquocviet/Documents/Web báo cáo demo\" && git add -A ':!server/telegram-bridge-state.json' && if git diff --cached --quiet; then echo 'No changes to deploy.'; else git commit -m \"chore: auto deploy $(date '+%Y-%m-%d %H:%M:%S')\" && git push origin main; fi"
+			],
+			"group": "build"
 		}
 	]
 }
