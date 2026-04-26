@@ -5383,10 +5383,19 @@ async function importExcelEmployees(file) {
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: "array" });
     
-    const sheetNames = ["1.1 DS NS HN", "1.2 DS CTV", "1.2 DS NS HCM", "2.1 DS NS nghỉ việc HN"];
+    const sheetNames = ["1.1 DS NS HN", "1.2 DS CTV", "1.2 DS NS HCM", "2.1 NS nghỉ việc HN", "2.1 DS NS nghỉ việc HN"];
     let importedUsers = [];
     const seenIdentities = new Set();
-    let nextUserCode = 4;
+
+    // Tính nextUserCode động để tránh xung đột với nhân viên đã có
+    const existingCodes = Me.map((u) => {
+      const m = (u.userCode || "").match(/NR(\d+)/i);
+      return m ? parseInt(m[1], 10) : 0;
+    });
+    let nextUserCode = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 4;
+
+    // Đánh dấu username đã tồn tại
+    Me.forEach((u) => seenIdentities.add((u.identityNumber || u.phone || slugify(u.fullName || "")).trim()));
 
     for (const sheetName of sheetNames) {
       if (!workbook.SheetNames.includes(sheetName)) continue;
@@ -5465,7 +5474,7 @@ async function importExcelEmployees(file) {
     jt(Ft.users, Me);
     await ep(`Import ${importedUsers.length} nhân viên từ Excel`);
     
-    Cs();
+    renderUserTable();
     yt(`Đã import ${importedUsers.length} nhân viên thành công.`);
     Wt(
       "Nhân sự",
