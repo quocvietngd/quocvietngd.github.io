@@ -5387,14 +5387,14 @@ async function importExcelEmployees(file) {
     const seenIdentities = new Set();
 
     // Tính nextUserCode động để tránh xung đột với nhân viên đã có
-    const existingCodes = Me.map((u) => {
+    const existingCodes = users.map((u) => {
       const m = (u.userCode || "").match(/NR(\d+)/i);
       return m ? parseInt(m[1], 10) : 0;
     });
     let nextUserCode = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 4;
 
     // Đánh dấu username đã tồn tại
-    Me.forEach((u) => seenIdentities.add((u.identityNumber || u.phone || slugify(u.fullName || "")).trim()));
+    users.forEach((u) => seenIdentities.add((u.identityNumber || u.phone || slugify(u.fullName || "")).trim()));
 
     // Detect file format: new single-sheet format vs old multi-sheet format
     const isNewFormat = workbook.SheetNames.includes("Trang tính1");
@@ -5500,18 +5500,13 @@ async function importExcelEmployees(file) {
       return;
     }
 
-    Me.push(...importedUsers);
-    jt(Ft.users, Me);
-    await ep(`Import ${importedUsers.length} nhân viên từ Excel`);
+    users.push(...importedUsers);
+    jt(STORAGE.users, users);
+    syncUsersToRemoteInBackground(`Import ${importedUsers.length} nhân viên từ Excel`);
     
     renderUserTable();
     yt(`Đã import ${importedUsers.length} nhân viên thành công.`);
-    Wt(
-      "Nhân sự",
-      "Import nhân viên từ Excel",
-      `Số lượng: ${importedUsers.length} người`,
-      { count: importedUsers.length }
-    );
+    logActivity("Nhân sự", "Import nhân viên từ Excel", `Số lượng: ${importedUsers.length} người`);
 
   } catch (error) {
     console.error("Import Excel error:", error);
