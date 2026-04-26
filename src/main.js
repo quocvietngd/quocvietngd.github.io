@@ -5504,11 +5504,11 @@ async function importExcelEmployees(file) {
 
     users.push(...importedUsers);
     saveJSON(STORAGE.users, users);
-    syncUsersToRemoteInBackground(`Import ${importedUsers.length} nhân viên từ Excel`);
-    
+    saveJSON(STORAGE.usersPendingSync, true);
     renderUserTable();
     showToast(`Đã import ${importedUsers.length} nhân viên thành công.`, "success");
     logActivity("Nhân sự", "Import nhân viên từ Excel", `Số lượng: ${importedUsers.length} người`);
+    persistUsersToRemote(`Import ${importedUsers.length} nhân viên từ Excel`).catch(() => {});
 
   } catch (error) {
     console.error("Import Excel error:", error);
