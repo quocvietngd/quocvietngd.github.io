@@ -5379,6 +5379,7 @@ async function importExcelEmployees(file) {
     if (!XLSX || typeof XLSX.read !== "function") {
       throw new Error("xlsx library not loaded. Please ensure it's installed.");
     }
+    console.log("[Import] Starting import for file:", file.name);
 
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: "array" });
@@ -5495,22 +5496,23 @@ async function importExcelEmployees(file) {
       }
     }
 
+    console.log("[Import] importedUsers.length:", importedUsers.length, "seenIdentities:", [...seenIdentities].slice(0,5));
     if (importedUsers.length === 0) {
-      yt("Không tìm thấy nhân viên nào để import.", "warning");
+      showToast("Không tìm thấy nhân viên nào để import.", "warning");
       return;
     }
 
     users.push(...importedUsers);
-    jt(STORAGE.users, users);
+    saveJSON(STORAGE.users, users);
     syncUsersToRemoteInBackground(`Import ${importedUsers.length} nhân viên từ Excel`);
     
     renderUserTable();
-    yt(`Đã import ${importedUsers.length} nhân viên thành công.`);
+    showToast(`Đã import ${importedUsers.length} nhân viên thành công.`, "success");
     logActivity("Nhân sự", "Import nhân viên từ Excel", `Số lượng: ${importedUsers.length} người`);
 
   } catch (error) {
     console.error("Import Excel error:", error);
-    yt(`Lỗi import: ${error.message}`, "error");
+    showToast(`Lỗi import: ${error.message}`, "error");
   }
 }
 
@@ -10413,10 +10415,10 @@ els.excelFileInput.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
   if (!file.name.match(/\.(xlsx|xls)$/i)) {
-    yt("Vui lòng chọn file Excel (.xlsx hoặc .xls).", "warning");
+    showToast("Vui lòng chọn file Excel (.xlsx hoặc .xls).", "warning");
     return;
   }
-  yt("Đang xử lý file Excel...", "info");
+  showToast("Đang xử lý file Excel...", "info");
   await importExcelEmployees(file);
   els.excelFileInput.value = "";
 });
