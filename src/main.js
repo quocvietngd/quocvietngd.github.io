@@ -15,7 +15,8 @@ const HR_DEPARTMENTS = [
   "Chăm sóc khách hàng",
   "Điều hành ca",
   "Lễ tân",
-  "Trợ lý"
+  "Trợ lý",
+  "Nhân sự"
 ];
 const DEPARTMENT_MONTHLY_REVENUE_TARGET = {
   "Nhân sự": 220000000,
