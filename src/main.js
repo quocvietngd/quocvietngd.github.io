@@ -7,6 +7,16 @@ import * as XLSX from "xlsx";
 Chart.register(...registerables);
 
 const DEPARTMENTS = ["Nhân sự", "Kinh doanh", "Marketing", "Kỹ thuật", "Vận hành", "Tài chính"];
+const HR_DEPARTMENTS = [
+  "Marketing",
+  "Telesale",
+  "Tư vấn",
+  "Điều dưỡng",
+  "Chăm sóc khách hàng",
+  "Điều hành ca",
+  "Lễ tân",
+  "Trợ lý"
+];
 const DEPARTMENT_MONTHLY_REVENUE_TARGET = {
   "Nhân sự": 220000000,
   "Kinh doanh": 920000000,
@@ -1051,8 +1061,7 @@ app.innerHTML = `
               <label>Phòng ban</label>
               <select id="hrFilterDept">
                 <option value="">Tất cả phòng ban</option>
-                <option>Ban điều hành</option>
-                ${DEPARTMENTS.map((d) => `<option>${d}</option>`).join("")}
+                ${HR_DEPARTMENTS.map((d) => `<option>${d}</option>`).join("")}
               </select>
             </div>
             <div>
@@ -1119,8 +1128,7 @@ app.innerHTML = `
                 <div style="grid-column:1/-1;">
                   <label>Phòng ban</label>
                   <select id="userDepartment">
-                    <option>Ban điều hành</option>
-                    ${DEPARTMENTS.map((d) => `<option>${d}</option>`).join("")}
+                    ${HR_DEPARTMENTS.map((d) => `<option>${d}</option>`).join("")}
                   </select>
                 </div>
                 <div>
@@ -3306,7 +3314,7 @@ function normalizeRemoteUser(user = {}) {
     password: String(user.password || ""),
     fullName: String(user.fullName || "").trim(),
     roleKey: String(user.roleKey || "staff"),
-    department: String(user.department || "Ban điều hành"),
+    department: String(user.department || HR_DEPARTMENTS[0]),
     phone: String(user.phone || ""),
     email: String(user.email || ""),
     address: String(user.address || ""),
@@ -5354,7 +5362,7 @@ function getFilteredUsers() {
   return users.filter((u) => {
     if (keyword && !u.fullName.toLowerCase().includes(keyword) && !u.username.toLowerCase().includes(keyword) && !(u.userCode || "").toLowerCase().includes(keyword)) return false;
     if (role && u.roleKey !== role) return false;
-    if (dept && (u.department || "Ban điều hành") !== dept) return false;
+    if (dept && (u.department || HR_DEPARTMENTS[0]) !== dept) return false;
     if (status && (u.status || "active") !== status) return false;
     return true;
   });
@@ -5547,7 +5555,7 @@ function renderUserTable() {
         <td><button class="user-name-link" data-user-id="${u.id}" type="button">${u.fullName}</button></td>
         <td class="muted">${u.username}</td>
         <td>${roleLabel}</td>
-        <td>${u.department || "Ban điều hành"}</td>
+        <td>${u.department || HR_DEPARTMENTS[0]}</td>
         <td>${statusBadge}</td>
         <td class="muted" style="font-size:0.8rem;">${createdAt}</td>
         <td style="position:relative;">
@@ -5862,7 +5870,7 @@ function getHrProfileInfoGroups(user) {
       ["Mã NV", user.userCode || "—"],
       ["Vai trò", roleLabel],
       ["Vị trí", user.position || "—"],
-      ["Phòng ban", user.department || "Ban điều hành"],
+      ["Phòng ban", user.department || HR_DEPARTMENTS[0]],
       ["Trạng thái", isSuspended ? '<span style="color:#c0392b;">Tạm dừng</span>' : '<span style="color:#1a7f4b;">Hoạt động</span>'],
       ["Ngày vào làm", user.startDate || "—"],
       ["Loại HĐ", user.contractType || "—"],
@@ -5904,6 +5912,7 @@ function renderHrProfileInfo(user, editMode = false) {
   }
 
   const roleOptions = Object.keys(ROLES).map((roleKey) => `<option value="${roleKey}" ${roleKey === user.roleKey ? "selected" : ""}>${getRolePermissions(roleKey).label}</option>`).join("");
+  const departmentOptions = HR_DEPARTMENTS.map((department) => `<option value="${department}" ${department === (user.department || HR_DEPARTMENTS[0]) ? "selected" : ""}>${department}</option>`).join("");
   const statusOptions = [
     `<option value="active" ${(user.status || "active") === "active" ? "selected" : ""}>Hoạt động</option>`,
     `<option value="suspended" ${(user.status || "active") === "suspended" ? "selected" : ""}>Tạm dừng</option>`
@@ -5914,7 +5923,7 @@ function renderHrProfileInfo(user, editMode = false) {
       title: "Thông tin cơ bản",
       fields: [
         { key: "position", label: "Vị trí", type: "text", value: user.position || "" },
-        { key: "department", label: "Phòng ban", type: "text", value: user.department || "" },
+        { key: "department", label: "Phòng ban", type: "select", options: departmentOptions },
         { key: "roleKey", label: "Vai trò", type: "select", options: roleOptions },
         { key: "status", label: "Trạng thái", type: "select", options: statusOptions },
         { key: "startDate", label: "Ngày vào làm", type: "date", value: user.startDate || "" },
@@ -6075,7 +6084,7 @@ function resetUserForm() {
   els.userUsername.value = "";
   els.userPassword.value = "";
   els.userRoleKey.value = "staff";
-  els.userDepartment.value = "Ban điều hành";
+  els.userDepartment.value = HR_DEPARTMENTS[0];
   els.userPhone.value = "";
   els.userEmail.value = "";
   els.userAddress.value = "";
@@ -12093,7 +12102,8 @@ els.userBody.addEventListener("click", async (event) => {
     els.userUsername.value = user.username;
     els.userPassword.value = user.password;
     els.userRoleKey.value = user.roleKey;
-    els.userDepartment.value = user.department || "Ban điều hành";
+    const preferredDepartment = user.department || HR_DEPARTMENTS[0];
+    els.userDepartment.value = HR_DEPARTMENTS.includes(preferredDepartment) ? preferredDepartment : HR_DEPARTMENTS[0];
     els.userPhone.value = user.phone || "";
     els.userEmail.value = user.email || "";
     els.userAddress.value = user.address || "";
