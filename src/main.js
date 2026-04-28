@@ -12552,9 +12552,22 @@ els.discoverTelegramChatIdBtn.addEventListener("click", async () => {
 
     const summary = chats.slice(0, 5).map((chat) => `${chat.chatTitle || "Không tên"}: ${chat.chatId}`).join(" | ");
     if (els.telegramSyncStatus) {
-      els.telegramSyncStatus.textContent = `Đã tìm thấy ${chats.length} chat gần đây. ${summary}`;
+      els.telegramSyncStatus.textContent = `Đã tìm thấy ${chats.length} chat gần đây. Đang lưu lên server...`;
     }
-    showToast(`Đã lấy ${chats.length} Chat ID và điền vào ô cấu hình.`, "success");
+
+    // Auto-push updated chatId list to server so new chats are immediately allowed
+    try {
+      await configureTelegramRealtimeWebhook();
+      showToast(`Đã lấy ${chats.length} Chat ID và lưu lên server thành công.`, "success");
+      if (els.telegramSyncStatus) {
+        els.telegramSyncStatus.textContent = `✓ Đã lưu ${chats.length} chat lên server. ${summary}`;
+      }
+    } catch (configErr) {
+      showToast(`Đã lấy Chat ID nhưng chưa lưu lên server: ${configErr.message}`, "warning");
+      if (els.telegramSyncStatus) {
+        els.telegramSyncStatus.textContent = `Chat ID đã lưu cục bộ. Lỗi đẩy server: ${configErr.message}`;
+      }
+    }
   } catch (err) {
     if (els.telegramSyncStatus) els.telegramSyncStatus.textContent = `Lỗi lấy Chat ID: ${err.message}`;
     showToast(`Lỗi lấy Chat ID: ${err.message}`, "error");
