@@ -628,7 +628,6 @@ app.innerHTML = `
           <h3>Đăng nhập</h3>
           <div class="form-grid">
             <div>
-              <button class="btn secondary" type="button" id="discoverTelegramChatIdBtn">Lấy Chat ID gần đây</button>
               <label>Tên đăng nhập</label>
               <input id="loginUsername" placeholder="Nhập username" autocomplete="username" />
             </div>
@@ -2144,6 +2143,7 @@ app.innerHTML = `
                 <label>Webhook Public URL (https)</label>
                 <input id="telegramWebhookBaseUrl" placeholder="https://your-public-domain.com" />
               </div>
+              <button class="btn secondary" type="button" id="discoverTelegramChatIdBtn">Lấy Chat ID gần đây</button>
               <button class="btn secondary" type="button" id="syncTelegramBtn">Đọc tin báo cáo</button>
               <button class="btn secondary" type="button" id="testTelegramBtn">Kết nối realtime</button>
               <button class="btn warn" type="button" id="resetTelegramCacheBtn">Reset cache Telegram</button>
