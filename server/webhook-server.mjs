@@ -402,6 +402,7 @@ function normalizeTelegramFieldKey(input) {
     String(input || "")
       .replace(/^[^\p{L}\p{N}]+/u, "")
       .replace(/[：]/g, ":")
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
       .trim()
   );
 }
@@ -426,7 +427,15 @@ function parseFlexibleNumber(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const text = String(value || "").trim();
   if (!text) return 0;
-  const normalized = text.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
+  // Vietnamese format: 20.000.000 (dots as thousands separators)
+  // Detect: multiple dots OR dot-groups-of-3 pattern
+  let normalized;
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(text.replace(/[^\d.,]/g, ""))) {
+    // Vietnamese: dots=thousands, comma=decimal
+    normalized = text.replace(/[^\d.,]/g, "").replace(/\./g, "").replace(/,/g, ".");
+  } else {
+    normalized = text.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
+  }
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
