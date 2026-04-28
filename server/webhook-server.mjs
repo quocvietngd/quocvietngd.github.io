@@ -513,6 +513,9 @@ function parseTelegramReportMessage(text) {
   const values = {};
   const hashtags = extractTelegramHashtags(text);
 
+  // Only treat tagged messages as report payloads to avoid importing normal chat messages.
+  if (!hashtags.length) return null;
+
   for (const line of lines) {
     const separatorIndex = line.indexOf(":");
     if (separatorIndex === -1) continue;
