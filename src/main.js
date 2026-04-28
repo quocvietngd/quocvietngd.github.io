@@ -3060,6 +3060,22 @@ function normalizeRemoteCriticalState(raw = {}) {
   };
 }
 
+function mergeTelegramSourceFromLocalAndRemote(localCfg = {}, remoteCfg = {}) {
+  const localChatIds = parseTelegramAllowedChatIds(localCfg.chatId || "");
+  const remoteChatIds = parseTelegramAllowedChatIds(remoteCfg.chatId || "");
+  const mergedChatIds = Array.from(new Set([...remoteChatIds, ...localChatIds]));
+
+  return {
+    ...remoteCfg,
+    token: String(remoteCfg.token || localCfg.token || "").trim(),
+    webhookBaseUrl: String(remoteCfg.webhookBaseUrl || localCfg.webhookBaseUrl || "").trim(),
+    bridgeApiUrl: String(remoteCfg.bridgeApiUrl || localCfg.bridgeApiUrl || "").trim(),
+    chatId: mergedChatIds.join(","),
+    lastUpdateId: Math.max(Number(remoteCfg.lastUpdateId || 0), Number(localCfg.lastUpdateId || 0)),
+    lastSyncedAt: Math.max(Number(remoteCfg.lastSyncedAt || 0), Number(localCfg.lastSyncedAt || 0))
+  };
+}
+
 function getRemoteCriticalStateRowCount(remoteState) {
   return (
     (remoteState.customers?.length || 0) +
@@ -3249,7 +3265,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     accountingAttendanceFilterState = normalizeAccountingAttendanceFilterState(remoteState.accountingAttendanceFilters);
     accountingServicePayrollFilterState = normalizeAccountingServicePayrollFilterState(remoteState.accountingServicePayrollFilters);
     nurseReportOverrides = remoteState.nurseReportOverrides;
-    telegramSourceConfig = remoteState.telegramSource;
+    telegramSourceConfig = mergeTelegramSourceFromLocalAndRemote(telegramSourceConfig, remoteState.telegramSource);
     dataSourceConfig = normalizeDataSourceConfig(remoteState.dataSourceConfig);
     reports = remoteState.reports;
 
