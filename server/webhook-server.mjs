@@ -686,7 +686,7 @@ async function setTelegramWebhook(token, webhookUrl) {
     body: JSON.stringify({
       url: webhookUrl,
       drop_pending_updates: false,
-      allowed_updates: ["message", "edited_message"]
+      allowed_updates: ["message", "edited_message", "channel_post", "edited_channel_post", "my_chat_member", "chat_member"]
     })
   });
   const payload = await response.json();
@@ -720,8 +720,9 @@ async function getWebhookInfo(token) {
 }
 
 function appendTelegramReport(state, update) {
-  const message = update?.message || update?.edited_message;
-  const chatId = String(message?.chat?.id || "");
+  const message = update?.message || update?.edited_message || update?.channel_post || update?.edited_channel_post;
+  const chatMeta = extractTelegramChatMeta(update);
+  const chatId = String(chatMeta.chatId || "");
   const debug = normalizeTelegramDebug(state.telegramDebug);
 
   const markIgnored = (reason, counterKey) => {
@@ -730,7 +731,7 @@ function appendTelegramReport(state, update) {
       reason,
       updateId: String(update?.update_id || ""),
       chatId,
-      chatTitle: String(message?.chat?.title || message?.chat?.username || "").trim(),
+      chatTitle: String(chatMeta.chatTitle || "").trim(),
       textPreview: String(message?.text || "").slice(0, 280)
     };
     debug.ignoredCount += 1;
@@ -820,6 +821,43 @@ function appendTelegramReport(state, update) {
     debug.lastAcceptedAt = Date.now();
     state.telegramDebug = debug;
     return { saved: true, ignored: false };
+}
+
+function extractTelegramChatMeta(update = {}) {
+  const message = update?.message || update?.edited_message || update?.channel_post || update?.edited_channel_post;
+  const memberUpdate = update?.my_chat_member || update?.chat_member;
+  const chat = message?.chat || memberUpdate?.chat || null;
+  return {
+    chatId: String(chat?.id || ""),
+    chatTitle: String(chat?.title || chat?.username || [chat?.first_name, chat?.last_name].filter(Boolean).join(" ") || "").trim(),
+    updateType: message
+      ? (update?.message ? "message" : update?.edited_message ? "edited_message" : update?.channel_post ? "channel_post" : "edited_channel_post")
+      : (update?.my_chat_member ? "my_chat_member" : update?.chat_member ? "chat_member" : "unknown")
+  };
+}
+
+function getDiscoveredTelegramChats(state) {
+  const discovered = new Map();
+  const pushChat = (chatId, chatTitle, source) => {
+    const normalizedChatId = String(chatId || "").trim();
+    if (!normalizedChatId) return;
+    const current = discovered.get(normalizedChatId) || { chatId: normalizedChatId, chatTitle: "", sources: [], lastSeenAt: 0 };
+    current.chatTitle = String(chatTitle || current.chatTitle || "").trim();
+    current.lastSeenAt = Date.now();
+    if (source && !current.sources.includes(source)) current.sources.push(source);
+    discovered.set(normalizedChatId, current);
+  };
+
+  (state.reports || []).forEach((item) => {
+    pushChat(item?.raw?.telegramChatId, item?.raw?.telegramChatTitle, String(item?.raw?.source || "report"));
+  });
+
+  const debug = normalizeTelegramDebug(state.telegramDebug);
+  (debug.droppedMessages || []).forEach((item) => {
+    pushChat(item?.chatId, item?.chatTitle, String(item?.reason || "debug"));
+  });
+
+  return Array.from(discovered.values()).sort((a, b) => String(a.chatTitle || a.chatId).localeCompare(String(b.chatTitle || b.chatId), "vi"));
 }
 
 async function fetchTelegramUpdates(state) {
@@ -936,6 +974,21 @@ const server = createServer(async (req, res) => {
       });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Read telegram debug failed" });
+    }
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/telegram/discover-chats") {
+    try {
+      const state = await readState();
+      sendJson(res, 200, {
+        ok: true,
+        configured: Boolean(state.token),
+        currentChatId: String(state.chatId || ""),
+        chats: getDiscoveredTelegramChats(state)
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Discover chats failed" });
     }
     return;
   }

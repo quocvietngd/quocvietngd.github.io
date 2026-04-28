@@ -628,6 +628,7 @@ app.innerHTML = `
           <h3>Đăng nhập</h3>
           <div class="form-grid">
             <div>
+              <button class="btn secondary" type="button" id="discoverTelegramChatIdBtn">Lấy Chat ID gần đây</button>
               <label>Tên đăng nhập</label>
               <input id="loginUsername" placeholder="Nhập username" autocomplete="username" />
             </div>
@@ -2445,6 +2446,7 @@ const els = {
   telegramBotToken: document.querySelector("#telegramBotToken"),
   telegramChatId: document.querySelector("#telegramChatId"),
   telegramWebhookBaseUrl: document.querySelector("#telegramWebhookBaseUrl"),
+  discoverTelegramChatIdBtn: document.querySelector("#discoverTelegramChatIdBtn"),
   syncTelegramBtn: document.querySelector("#syncTelegramBtn"),
   testTelegramBtn: document.querySelector("#testTelegramBtn"),
   resetTelegramCacheBtn: document.querySelector("#resetTelegramCacheBtn"),
@@ -7460,6 +7462,56 @@ function parseTelegramAllowedChatIds(chatIdValue) {
     .filter(Boolean);
 }
 
+function extractTelegramChatFromUpdate(update = {}) {
+  const message = update?.message || update?.edited_message || update?.channel_post || update?.edited_channel_post;
+  const memberUpdate = update?.my_chat_member || update?.chat_member;
+  const chat = message?.chat || memberUpdate?.chat || null;
+  const chatId = String(chat?.id || "").trim();
+  if (!chatId) return null;
+  return {
+    chatId,
+    chatTitle: String(chat?.title || chat?.username || [chat?.first_name, chat?.last_name].filter(Boolean).join(" ") || "").trim(),
+    updateType: message
+      ? (update?.message ? "message" : update?.edited_message ? "edited_message" : update?.channel_post ? "channel_post" : "edited_channel_post")
+      : (update?.my_chat_member ? "my_chat_member" : update?.chat_member ? "chat_member" : "unknown")
+  };
+}
+
+async function discoverTelegramChats() {
+  const discovered = new Map();
+  const addChat = (entry) => {
+    if (!entry || !entry.chatId) return;
+    const existing = discovered.get(entry.chatId) || { chatId: entry.chatId, chatTitle: "", sources: [] };
+    existing.chatTitle = entry.chatTitle || existing.chatTitle || "";
+    const sourceLabel = entry.updateType || entry.source || "unknown";
+    if (sourceLabel && !existing.sources.includes(sourceLabel)) existing.sources.push(sourceLabel);
+    discovered.set(entry.chatId, existing);
+  };
+
+  try {
+    const bridgeData = await callTelegramBridge("/api/telegram/discover-chats");
+    (bridgeData.chats || []).forEach((chat) => addChat({
+      chatId: String(chat.chatId || "").trim(),
+      chatTitle: String(chat.chatTitle || "").trim(),
+      source: Array.isArray(chat.sources) ? chat.sources.join(", ") : "bridge"
+    }));
+  } catch {
+    // Allow fallback to direct Telegram getUpdates when bridge is unavailable.
+  }
+
+  const token = String(telegramSourceConfig.token || "").trim();
+  if (token) {
+    const url = `https://api.telegram.org/bot${token}/getUpdates?limit=100`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Telegram API lỗi HTTP: ${response.status}`);
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.description || "Telegram trả về lỗi.");
+    (data.result || []).forEach((update) => addChat(extractTelegramChatFromUpdate(update)));
+  }
+
+  return Array.from(discovered.values()).sort((a, b) => String(a.chatTitle || a.chatId).localeCompare(String(b.chatTitle || b.chatId), "vi"));
+}
+
 async function fetchAndParseTelegramMessagesDirect() {
   const { token, chatId, lastUpdateId } = telegramSourceConfig;
   if (!token || !chatId) throw new Error("Chưa nhập Bot Token hoặc Chat ID.");
@@ -12397,6 +12449,43 @@ els.testTelegramBtn.addEventListener("click", async () => {
     await runTelegramRealtimeSync(false, { fullSync: true });
   } catch (err) {
     showToast(`Lỗi Telegram: ${err.message}`, "error");
+  }
+});
+
+els.discoverTelegramChatIdBtn.addEventListener("click", async () => {
+  saveTelegramInputs();
+  if (!telegramSourceConfig.token) {
+    showToast("Vui lòng nhập Bot Token trước khi lấy Chat ID.", "warning");
+    return;
+  }
+
+  els.discoverTelegramChatIdBtn.disabled = true;
+  if (els.telegramSyncStatus) els.telegramSyncStatus.textContent = "Đang tìm Chat ID từ Telegram...";
+
+  try {
+    const chats = await discoverTelegramChats();
+    if (!chats.length) {
+      throw new Error("Chưa thấy chat nào. Hãy thêm bot vào nhóm, cho bot 1 tin nhắn trong nhóm, rồi thử lại.");
+    }
+
+    const mergedIds = Array.from(new Set([
+      ...parseTelegramAllowedChatIds(telegramSourceConfig.chatId),
+      ...chats.map((chat) => chat.chatId)
+    ]));
+    telegramSourceConfig.chatId = mergedIds.join(",");
+    saveTelegramSourceConfig();
+    populateTelegramInputs();
+
+    const summary = chats.slice(0, 5).map((chat) => `${chat.chatTitle || "Không tên"}: ${chat.chatId}`).join(" | ");
+    if (els.telegramSyncStatus) {
+      els.telegramSyncStatus.textContent = `Đã tìm thấy ${chats.length} chat gần đây. ${summary}`;
+    }
+    showToast(`Đã lấy ${chats.length} Chat ID và điền vào ô cấu hình.`, "success");
+  } catch (err) {
+    if (els.telegramSyncStatus) els.telegramSyncStatus.textContent = `Lỗi lấy Chat ID: ${err.message}`;
+    showToast(`Lỗi lấy Chat ID: ${err.message}`, "error");
+  } finally {
+    els.discoverTelegramChatIdBtn.disabled = false;
   }
 });
 
