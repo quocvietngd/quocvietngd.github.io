@@ -145,6 +145,14 @@ function normalizeState(raw = {}) {
   const chatId = String(raw.chatId || ENV_TELEGRAM_CHAT_ID || "");
   const webhookSecret = String(raw.webhookSecret || ENV_WEBHOOK_SECRET || randomUUID().replace(/-/g, ""));
   const webhookBaseUrl = String(raw.webhookBaseUrl || ENV_WEBHOOK_BASE_URL || "");
+  const reports = Array.isArray(raw.reports)
+    ? raw.reports.filter((item) => {
+        const tags = Array.isArray(item?.raw?.telegramTags)
+          ? item.raw.telegramTags.map((tag) => String(tag || "").trim()).filter(Boolean)
+          : [];
+        return tags.length > 0;
+      }).slice(-MAX_REPORTS)
+    : [];
   return {
     token,
     chatId,
@@ -153,7 +161,7 @@ function normalizeState(raw = {}) {
     webhookSecret,
     webhookPath: String(raw.webhookPath || (webhookBaseUrl && webhookSecret ? `/api/telegram/webhook/${webhookSecret}` : "")),
     updatedAt: Number(raw.updatedAt || 0),
-    reports: Array.isArray(raw.reports) ? raw.reports.slice(-MAX_REPORTS) : [],
+    reports,
     telegramDebug: normalizeTelegramDebug(raw.telegramDebug),
     users: normalizeUsersList(raw.users && Array.isArray(raw.users) && raw.users.length ? raw.users : DEFAULT_USERS),
     kpiReports: normalizeKpiReportsList(raw.kpiReports),

@@ -3613,6 +3613,28 @@ function migrateLegacyReceivableAmounts() {
   }
 }
 
+function purgeLegacyTelegramRowsWithoutHashtag() {
+  if (!Array.isArray(schedules) || !schedules.length) return;
+  const before = schedules.length;
+  schedules = schedules.filter((item) => {
+    if (!item || typeof item !== "object") return true;
+    const source = String(item.source || "").toLowerCase();
+    const id = String(item.id || "");
+    const isTelegramRow = id.startsWith("tg-") || source.includes("telegram");
+    if (!isTelegramRow) return true;
+
+    const tags = Array.isArray(item.telegramTags)
+      ? item.telegramTags.map((tag) => String(tag || "").trim()).filter(Boolean)
+      : [];
+    return tags.length > 0;
+  });
+
+  if (schedules.length !== before) {
+    saveJSON(STORAGE.schedule, schedules);
+  }
+}
+
+purgeLegacyTelegramRowsWithoutHashtag();
 migrateLegacyReceivableAmounts();
 
 let editingScheduleId = null;
