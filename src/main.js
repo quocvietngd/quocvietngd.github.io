@@ -3552,6 +3552,69 @@ if (Array.isArray(schedules)) {
     saveJSON(STORAGE.schedule, schedules);
   }
 }
+
+function parseVietnameseAmount(value) {
+  const text = String(value || "").trim();
+  if (!text) return 0;
+  const cleaned = text.replace(/[^\d,.-]/g, "");
+  if (!cleaned) return 0;
+
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(cleaned)) {
+    const parsed = Number.parseFloat(cleaned.replace(/\./g, "").replace(/,/g, "."));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  const dotCount = (cleaned.match(/\./g) || []).length;
+  if (dotCount > 1 && /^\d+(\.\d{3})+$/.test(cleaned)) {
+    const parsed = Number.parseFloat(cleaned.replace(/\./g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  const parsed = Number.parseFloat(cleaned.replace(/,/g, "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function extractReceivableAmountFromNote(note) {
+  const text = String(note || "");
+  if (!text) return 0;
+  const match = text.match(/c[oô]ng\s*n[oợ]\s*[:\-]\s*([^\n]+)/iu);
+  if (!match) return 0;
+  const amountToken = String(match[1] || "").match(/-?\d[\d.,]*/);
+  if (!amountToken) return 0;
+  return Math.max(0, parseVietnameseAmount(amountToken[0]));
+}
+
+function migrateLegacyReceivableAmounts() {
+  if (!Array.isArray(schedules) || !schedules.length) return;
+  let changed = 0;
+  const now = Date.now();
+  schedules = schedules.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const source = String(item.source || "").toLowerCase();
+    const id = String(item.id || "");
+    const isTelegramRow = id.startsWith("tg-") || source.includes("telegram");
+    if (!isTelegramRow) return item;
+
+    const explicitReceivable = Math.max(0, parseVietnameseAmount(item.receivableAmount));
+    const noteReceivable = extractReceivableAmountFromNote(item.note);
+    const nextReceivable = explicitReceivable > 0 ? explicitReceivable : noteReceivable;
+    if (Number(item.receivableAmount || 0) === nextReceivable) return item;
+
+    changed += 1;
+    return {
+      ...item,
+      receivableAmount: nextReceivable,
+      updatedAt: now
+    };
+  });
+
+  if (changed > 0) {
+    saveJSON(STORAGE.schedule, schedules);
+  }
+}
+
+migrateLegacyReceivableAmounts();
+
 let editingScheduleId = null;
 let scheduleFilterState = { month: today.slice(0, 7), status: "", staff: "all", source: "", keyword: "" };
 let metricsFilterState = { start: filterState.start, end: filterState.end, department: "all" };
@@ -7717,7 +7780,8 @@ function normalizeImportedScheduleRow(raw) {
     || extractMinutesFromText(noteText)
     || 0;
   const contractAmount = Number(firstValue(sourceObj, ["contractamount", "giá trị hợp đồng", "gia tri hop dong"]) || 0);
-  const receivableAmount = parseFlexibleNumber(firstValue(sourceObj, ["receivableamount", "congno", "công nợ", "cong no", "debt"]));
+  const explicitReceivableAmount = parseVietnameseAmount(firstValue(sourceObj, ["receivableamount", "congno", "công nợ", "cong no", "debt"]));
+  const receivableAmount = explicitReceivableAmount > 0 ? explicitReceivableAmount : extractReceivableAmountFromNote(noteText);
 
   return {
     id: telegramUpdateId ? `tg-${telegramUpdateId}` : `sc-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
@@ -8508,7 +8572,7 @@ function getConsultantReportRows(start, end) {
     };
 
     const contractAmount = Number(item.contractAmount || 0);
-    const receivableAmount = Math.max(0, parseFlexibleNumber(item.receivableAmount));
+    const receivableAmount = Math.max(0, parseVietnameseAmount(item.receivableAmount));
     const status = String(item.status || "").toLowerCase();
     const noteText = normalizeTextForMatching(item.note || "");
 
