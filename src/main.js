@@ -2149,6 +2149,28 @@ app.innerHTML = `
               <button class="btn warn" type="button" id="resetTelegramCacheBtn">Reset cache Telegram</button>
             </div>
             <div class="muted" style="margin-top:6px;font-size:0.8rem;" id="telegramSyncStatus">Chưa đồng bộ lần nào.</div>
+            <div class="card" style="margin-top:10px;padding:10px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+                <strong style="font-size:0.9rem;">Chat Telegram đã phát hiện</strong>
+                <span class="muted" id="telegramDiscoveredChatsMeta" style="font-size:0.8rem;">Chưa có dữ liệu.</span>
+              </div>
+              <div class="tables" style="margin-top:0;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Tên nhóm/kênh</th>
+                      <th>Chat ID</th>
+                      <th>Update gần nhất</th>
+                      <th>Thấy lúc</th>
+                      <th>Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody id="telegramDiscoveredChatsBody">
+                    <tr><td colspan="5" class="muted" style="text-align:center;">Bấm "Lấy Chat ID gần đây" để quét các nhóm mới.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
             <details style="margin-top:10px;">
               <summary style="cursor:pointer;font-weight:600;font-size:0.85rem;">📋 Hướng dẫn tạo bot và mẫu tin báo cáo</summary>
               <div class="muted" style="margin-top:8px;font-size:0.82rem;line-height:1.7;">
@@ -2451,6 +2473,8 @@ const els = {
   testTelegramBtn: document.querySelector("#testTelegramBtn"),
   resetTelegramCacheBtn: document.querySelector("#resetTelegramCacheBtn"),
   telegramSyncStatus: document.querySelector("#telegramSyncStatus"),
+  telegramDiscoveredChatsBody: document.querySelector("#telegramDiscoveredChatsBody"),
+  telegramDiscoveredChatsMeta: document.querySelector("#telegramDiscoveredChatsMeta"),
   workflowSection: document.querySelector("#workflowSection"),
   workflowSystemView: document.querySelector("#workflowSystemView"),
   workflowDetailView: document.querySelector("#workflowDetailView"),
@@ -7471,20 +7495,66 @@ function extractTelegramChatFromUpdate(update = {}) {
   return {
     chatId,
     chatTitle: String(chat?.title || chat?.username || [chat?.first_name, chat?.last_name].filter(Boolean).join(" ") || "").trim(),
+    lastSeenAt: Date.now(),
     updateType: message
       ? (update?.message ? "message" : update?.edited_message ? "edited_message" : update?.channel_post ? "channel_post" : "edited_channel_post")
       : (update?.my_chat_member ? "my_chat_member" : update?.chat_member ? "chat_member" : "unknown")
   };
 }
 
+function formatTelegramUpdateType(updateType = "") {
+  const map = {
+    message: "message",
+    edited_message: "edited_message",
+    channel_post: "channel_post",
+    edited_channel_post: "edited_channel_post",
+    my_chat_member: "my_chat_member",
+    chat_member: "chat_member",
+    unknown: "unknown"
+  };
+  return map[String(updateType || "")] || String(updateType || "unknown");
+}
+
+function renderDiscoveredTelegramChats(chats = []) {
+  if (!els.telegramDiscoveredChatsBody || !els.telegramDiscoveredChatsMeta) return;
+  if (!chats.length) {
+    els.telegramDiscoveredChatsMeta.textContent = "Chưa có dữ liệu.";
+    els.telegramDiscoveredChatsBody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;">Bấm "Lấy Chat ID gần đây" để quét các nhóm mới.</td></tr>';
+    return;
+  }
+
+  els.telegramDiscoveredChatsMeta.textContent = `${chats.length} chat đã phát hiện`;
+  els.telegramDiscoveredChatsBody.innerHTML = chats.map((chat) => {
+    const lastSeen = Number(chat.lastSeenAt || 0) > 0
+      ? new Date(Number(chat.lastSeenAt || 0)).toLocaleString("vi-VN", { hour12: false })
+      : "--";
+    const chatTitle = chat.chatTitle || "Không tên";
+    const sourceText = Array.isArray(chat.sources) && chat.sources.length ? chat.sources.join(", ") : "--";
+    return `
+      <tr>
+        <td>
+          <strong>${escapeHtml(chatTitle)}</strong>
+          <div class="muted" style="font-size:0.78rem;">${escapeHtml(sourceText)}</div>
+        </td>
+        <td style="font-family:monospace;">${escapeHtml(chat.chatId || "")}</td>
+        <td><span class="muted">${escapeHtml(formatTelegramUpdateType(chat.updateType || "unknown"))}</span></td>
+        <td class="muted">${lastSeen}</td>
+        <td><button class="btn secondary telegram-copy-chat-btn" type="button" data-chat-id="${escapeHtml(chat.chatId || "")}" style="font-size:0.78rem;padding:4px 10px;">Copy ID</button></td>
+      </tr>
+    `;
+  }).join("");
+}
+
 async function discoverTelegramChats() {
   const discovered = new Map();
   const addChat = (entry) => {
     if (!entry || !entry.chatId) return;
-    const existing = discovered.get(entry.chatId) || { chatId: entry.chatId, chatTitle: "", sources: [] };
+    const existing = discovered.get(entry.chatId) || { chatId: entry.chatId, chatTitle: "", sources: [], lastSeenAt: 0, updateType: "" };
     existing.chatTitle = entry.chatTitle || existing.chatTitle || "";
     const sourceLabel = entry.updateType || entry.source || "unknown";
     if (sourceLabel && !existing.sources.includes(sourceLabel)) existing.sources.push(sourceLabel);
+    existing.lastSeenAt = Math.max(Number(existing.lastSeenAt || 0), Number(entry.lastSeenAt || 0));
+    if (entry.updateType) existing.updateType = entry.updateType;
     discovered.set(entry.chatId, existing);
   };
 
@@ -7493,7 +7563,9 @@ async function discoverTelegramChats() {
     (bridgeData.chats || []).forEach((chat) => addChat({
       chatId: String(chat.chatId || "").trim(),
       chatTitle: String(chat.chatTitle || "").trim(),
-      source: Array.isArray(chat.sources) ? chat.sources.join(", ") : "bridge"
+      source: Array.isArray(chat.sources) ? chat.sources.join(", ") : "bridge",
+      lastSeenAt: Number(chat.lastSeenAt || 0),
+      updateType: String(chat.updateType || "")
     }));
   } catch {
     // Allow fallback to direct Telegram getUpdates when bridge is unavailable.
@@ -12331,6 +12403,7 @@ function populateTelegramInputs() {
   if (els.telegramBotToken) els.telegramBotToken.value = telegramSourceConfig.token || "";
   if (els.telegramChatId) els.telegramChatId.value = telegramSourceConfig.chatId || "";
   if (els.telegramWebhookBaseUrl) els.telegramWebhookBaseUrl.value = telegramSourceConfig.webhookBaseUrl || "";
+  renderDiscoveredTelegramChats([]);
   if (els.telegramSyncStatus) {
     if (telegramSourceConfig.lastSyncedAt) {
       const d = new Date(telegramSourceConfig.lastSyncedAt);
@@ -12475,6 +12548,7 @@ els.discoverTelegramChatIdBtn.addEventListener("click", async () => {
     telegramSourceConfig.chatId = mergedIds.join(",");
     saveTelegramSourceConfig();
     populateTelegramInputs();
+    renderDiscoveredTelegramChats(chats);
 
     const summary = chats.slice(0, 5).map((chat) => `${chat.chatTitle || "Không tên"}: ${chat.chatId}`).join(" | ");
     if (els.telegramSyncStatus) {
@@ -12486,6 +12560,28 @@ els.discoverTelegramChatIdBtn.addEventListener("click", async () => {
     showToast(`Lỗi lấy Chat ID: ${err.message}`, "error");
   } finally {
     els.discoverTelegramChatIdBtn.disabled = false;
+  }
+});
+
+els.telegramDiscoveredChatsBody.addEventListener("click", async (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || !target.classList.contains("telegram-copy-chat-btn")) return;
+  const chatId = String(target.dataset.chatId || "").trim();
+  if (!chatId) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(chatId);
+    } else {
+      const input = document.createElement("input");
+      input.value = chatId;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+    }
+    showToast(`Đã copy Chat ID ${chatId}.`, "success");
+  } catch (err) {
+    showToast(`Không copy được Chat ID: ${err.message}`, "error");
   }
 });
 

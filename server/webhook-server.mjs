@@ -732,6 +732,7 @@ function appendTelegramReport(state, update) {
       updateId: String(update?.update_id || ""),
       chatId,
       chatTitle: String(chatMeta.chatTitle || "").trim(),
+      updateType: String(chatMeta.updateType || "unknown"),
       textPreview: String(message?.text || "").slice(0, 280)
     };
     debug.ignoredCount += 1;
@@ -764,6 +765,7 @@ function appendTelegramReport(state, update) {
   raw.telegramMessageId = messageId;
   raw.telegramChatId = chatId;
   raw.telegramChatTitle = String(message?.chat?.title || message?.chat?.username || "").trim();
+  raw.telegramUpdateType = String(chatMeta.updateType || "message");
   const reports = Array.isArray(state.reports) ? state.reports : [];
 
   const processedUpdateIds = new Set(
@@ -838,23 +840,36 @@ function extractTelegramChatMeta(update = {}) {
 
 function getDiscoveredTelegramChats(state) {
   const discovered = new Map();
-  const pushChat = (chatId, chatTitle, source) => {
+  const pushChat = (chatId, chatTitle, source, lastSeenAt = 0, updateType = "") => {
     const normalizedChatId = String(chatId || "").trim();
     if (!normalizedChatId) return;
-    const current = discovered.get(normalizedChatId) || { chatId: normalizedChatId, chatTitle: "", sources: [], lastSeenAt: 0 };
+    const current = discovered.get(normalizedChatId) || { chatId: normalizedChatId, chatTitle: "", sources: [], lastSeenAt: 0, updateType: "" };
     current.chatTitle = String(chatTitle || current.chatTitle || "").trim();
-    current.lastSeenAt = Date.now();
+    current.lastSeenAt = Math.max(Number(current.lastSeenAt || 0), Number(lastSeenAt || 0));
+    if (updateType) current.updateType = String(updateType || current.updateType || "");
     if (source && !current.sources.includes(source)) current.sources.push(source);
     discovered.set(normalizedChatId, current);
   };
 
   (state.reports || []).forEach((item) => {
-    pushChat(item?.raw?.telegramChatId, item?.raw?.telegramChatTitle, String(item?.raw?.source || "report"));
+    pushChat(
+      item?.raw?.telegramChatId,
+      item?.raw?.telegramChatTitle,
+      String(item?.raw?.source || "report"),
+      Number(item?.receivedAt || 0),
+      String(item?.raw?.telegramUpdateType || "message")
+    );
   });
 
   const debug = normalizeTelegramDebug(state.telegramDebug);
   (debug.droppedMessages || []).forEach((item) => {
-    pushChat(item?.chatId, item?.chatTitle, String(item?.reason || "debug"));
+    pushChat(
+      item?.chatId,
+      item?.chatTitle,
+      String(item?.reason || "debug"),
+      Number(item?.at || 0),
+      String(item?.updateType || "unknown")
+    );
   });
 
   return Array.from(discovered.values()).sort((a, b) => String(a.chatTitle || a.chatId).localeCompare(String(b.chatTitle || b.chatId), "vi"));
