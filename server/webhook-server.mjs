@@ -627,6 +627,7 @@ function parseTelegramReportMessage(text) {
     const kq = String(firstTelegramValue(values, ["ketqua", "kq", "result"]) || "").trim();
     const mahd = String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim();
     const sotien = parseFlexibleNumber(firstTelegramValue(values, ["sotien", "so", "amount", "tien"]));
+    const receivableAmount = parseFlexibleNumber(firstTelegramValue(values, ["congno", "cong no", "receivable", "debt"]));
     const pttt = String(firstTelegramValue(values, ["pttt", "phuongthuc", "method"]) || "").trim();
     const ghichu = String(firstTelegramValue(values, ["ghichu", "note", "ghi"]) || "").trim();
     
@@ -642,6 +643,7 @@ function parseTelegramReportMessage(text) {
         pttt,
         note: ghichu || note,
         contractAmount: sotien,
+        receivableAmount,
         source: route ? `Telegram Tu Van #${route}` : "Telegram Webhook"
       };
     }

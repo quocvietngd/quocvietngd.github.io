@@ -7717,6 +7717,7 @@ function normalizeImportedScheduleRow(raw) {
     || extractMinutesFromText(noteText)
     || 0;
   const contractAmount = Number(firstValue(sourceObj, ["contractamount", "giá trị hợp đồng", "gia tri hop dong"]) || 0);
+  const receivableAmount = parseFlexibleNumber(firstValue(sourceObj, ["receivableamount", "congno", "công nợ", "cong no", "debt"]));
 
   return {
     id: telegramUpdateId ? `tg-${telegramUpdateId}` : `sc-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
@@ -7742,6 +7743,7 @@ function normalizeImportedScheduleRow(raw) {
     sessionDuration: sessionDurationText || (inferredShiftMinutes > 0 ? `${inferredShiftMinutes}p` : ""),
     source: String(firstValue(sourceObj, ["source", "nguồn data", "nguon data"]) || "Nhập file").trim(),
     contractAmount,
+    receivableAmount,
     shiftMinutes: inferredShiftMinutes,
     marketingBudget: parseFlexibleNumber(firstValue(sourceObj, ["marketingbudget", "budget", "chiphi", "chiphí", "ngansach", "chi"])),
     marketingMessCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingmesscount", "messcount", "mess", "luongmess"])),
@@ -8506,6 +8508,7 @@ function getConsultantReportRows(start, end) {
     };
 
     const contractAmount = Number(item.contractAmount || 0);
+    const receivableAmount = Math.max(0, parseFlexibleNumber(item.receivableAmount));
     const status = String(item.status || "").toLowerCase();
     const noteText = normalizeTextForMatching(item.note || "");
 
@@ -8513,8 +8516,8 @@ function getConsultantReportRows(start, end) {
     if (contractAmount > 0) {
       prev.signedCount += 1;
       prev.revenue += contractAmount;
-      prev.receivable += contractAmount;
     }
+    prev.receivable += receivableAmount;
 
     const isPostponed = status === "cancelled"
       || noteText.includes("hoan")
