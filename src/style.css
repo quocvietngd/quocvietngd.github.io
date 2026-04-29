@@ -1982,48 +1982,38 @@ td.schedule-editable:hover {
 }
 
 #careScrollControls {
-  display: flex !important;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-#careScrollControls.hidden {
-  display: none !important;
+  display: none;
 }
 
 #careTableWrap {
-  overflow-x: scroll !important;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable both-edges;
+  overflow: visible;
 }
 
 #careTable {
-  width: max-content !important;
-  min-width: 2400px;
-  table-layout: auto !important;
+  width: 100% !important;
+  min-width: unset !important;
+  table-layout: fixed !important;
 }
 
 #careTable th,
 #careTable td {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+  padding: 5px 5px;
 }
 
-#careTableWrap::-webkit-scrollbar {
-  height: 14px;
+.care-input-sm {
+  width: 100% !important;
+  padding: 3px 4px !important;
+  font-size: 0.74rem !important;
+  border-radius: 6px !important;
+  min-height: unset !important;
+  height: 28px;
 }
 
-#careTableWrap::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 999px;
-  border: 2px solid #e5edf5;
-}
-
-#careTableWrap::-webkit-scrollbar-track {
-  background: #eef3f8;
-  border-radius: 999px;
-}
+#careTableWrap::-webkit-scrollbar { display: none; }
 
 .schedule-scroll-btn {
   width: 32px;

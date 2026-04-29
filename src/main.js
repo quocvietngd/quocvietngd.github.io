@@ -2029,37 +2029,48 @@ app.innerHTML = `
             <div class="muted" id="careFilterSummary" style="display:flex;align-items:center;font-size:0.83rem;">--</div>
           </div>
 
-          <div class="tables" id="careTableWrap" tabindex="0" style="margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-            <table id="careTable" style="width:max-content;border-collapse:collapse;table-layout:auto;min-width:2400px;">
+          <div class="tables" id="careTableWrap" style="margin-top:10px;overflow:visible;">
+            <table id="careTable" style="width:100%;border-collapse:collapse;table-layout:fixed;">
+              <colgroup>
+                <col style="width:6%;" />
+                <col style="width:10%;" />
+                <col style="width:7%;" />
+                <col style="width:8%;" />
+                <col style="width:5%;" />
+                <col style="width:6%;" />
+                <col style="width:6%;" />
+                <col style="width:5%;" />
+                <col style="width:6%;" />
+                <col style="width:7%;" />
+                <col style="width:5%;" />
+                <col style="width:5%;" />
+                <col style="width:4%;" />
+                <col style="width:8%;" />
+                <col style="width:7%;" />
+                <col style="width:5%;" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th style="min-width:80px;">Ngày chốt</th>
-                  <th style="min-width:140px;">Khách hàng</th>
-                  <th style="min-width:90px;">SĐT</th>
-                  <th style="min-width:110px;">Dịch vụ</th>
-                  <th style="min-width:70px;">Điểm dịch vụ</th>
-                  <th style="min-width:90px;">Tư vấn</th>
-                  <th style="min-width:100px;">Điều dưỡng</th>
-                  <th style="min-width:85px;">Sale</th>
-                  <th style="min-width:130px;">Nguồn</th>
-                  <th style="min-width:100px;text-align:right;">Giá trị HĐ</th>
-                  <th style="min-width:80px;">Liệu trình đăng ký</th>
-                  <th style="min-width:80px;">Đã sử dụng</th>
-                  <th style="min-width:60px;text-align:center;">Còn lại</th>
-                  <th style="min-width:130px;">Trạng thái CSKH</th>
-                  <th style="min-width:100px;">Hẹn chăm tiếp</th>
-                  <th style="min-width:120px;">Ghi chú CSKH</th>
+                  <th>Ngày chốt</th>
+                  <th>Khách hàng</th>
+                  <th>SĐT</th>
+                  <th>Dịch vụ</th>
+                  <th>Điểm DV</th>
+                  <th>Tư vấn</th>
+                  <th>Điều dưỡng</th>
+                  <th>Sale</th>
+                  <th>Nguồn</th>
+                  <th style="text-align:right;">Giá trị HĐ</th>
+                  <th>LT đăng ký</th>
+                  <th>Đã dùng</th>
+                  <th style="text-align:center;">Còn</th>
+                  <th>Trạng thái</th>
+                  <th>Hẹn tiếp</th>
+                  <th>Ghi chú</th>
                 </tr>
               </thead>
               <tbody id="careBody"></tbody>
             </table>
-          </div>
-          <div class="schedule-scroll-controls" id="careScrollControls" aria-label="Điều khiển cuộn ngang bảng chăm sóc khách hàng">
-            <button class="schedule-scroll-btn" id="careScrollLeftBtn" type="button" title="Cuộn sang trái">◀</button>
-            <div class="schedule-bottom-scrollbar" id="careBottomScroller" aria-label="Thanh cuộn ngang bảng chăm sóc khách hàng">
-              <div class="schedule-bottom-scrollbar-inner" id="careBottomScrollerInner"></div>
-            </div>
-            <button class="schedule-scroll-btn" id="careScrollRightBtn" type="button" title="Cuộn sang phải">▶</button>
           </div>
         </section>
 
@@ -2627,11 +2638,6 @@ const els = {
   careFilterSummary: document.querySelector("#careFilterSummary"),
   careTableWrap: document.querySelector("#careTableWrap"),
   careTable: document.querySelector("#careTable"),
-  careScrollControls: document.querySelector("#careScrollControls"),
-  careScrollLeftBtn: document.querySelector("#careScrollLeftBtn"),
-  careScrollRightBtn: document.querySelector("#careScrollRightBtn"),
-  careBottomScroller: document.querySelector("#careBottomScroller"),
-  careBottomScrollerInner: document.querySelector("#careBottomScrollerInner"),
   careBody: document.querySelector("#careBody"),
   accountingSection: document.querySelector("#accountingSection"),
   accountingFolderView: document.querySelector("#accountingFolderView"),
@@ -3778,51 +3784,11 @@ function initScheduleBottomScroller() {
 
 initScheduleBottomScroller();
 
-function scrollCareHorizontally(delta) {
-  if (!els.careTableWrap) return;
-  els.careTableWrap.scrollBy({ left: delta, behavior: "smooth" });
-}
+function scrollCareHorizontally(_delta) { /* no-op: table fits viewport */ }
 
-function syncCareBottomScrollerWidth() {
-  if (!els.careTableWrap || !els.careTable || !els.careScrollControls || !els.careBottomScrollerInner) return;
-  const tableWidth = els.careTable.scrollWidth;
-  const wrapWidth = els.careTableWrap.clientWidth;
-  const hasOverflow = tableWidth > wrapWidth + 2;
-  const visualWidth = Math.max(tableWidth, wrapWidth + 1);
-  els.careBottomScrollerInner.style.width = `${visualWidth}px`;
-  els.careScrollControls.classList.remove("hidden");
-  if (els.careScrollLeftBtn) els.careScrollLeftBtn.disabled = !hasOverflow;
-  if (els.careScrollRightBtn) els.careScrollRightBtn.disabled = !hasOverflow;
-}
+function syncCareBottomScrollerWidth() { /* no-op: table fits viewport */ }
 
-function initCareBottomScroller() {
-  if (!els.careTableWrap || !els.careBottomScroller) return;
-
-  els.careTableWrap.addEventListener("scroll", () => {
-    if (careScrollSyncLock) return;
-    careScrollSyncLock = true;
-    els.careBottomScroller.scrollLeft = els.careTableWrap.scrollLeft;
-    careScrollSyncLock = false;
-  });
-
-  els.careBottomScroller.addEventListener("scroll", () => {
-    if (careScrollSyncLock) return;
-    careScrollSyncLock = true;
-    els.careTableWrap.scrollLeft = els.careBottomScroller.scrollLeft;
-    careScrollSyncLock = false;
-  });
-
-  els.careScrollLeftBtn?.addEventListener("click", () => {
-    scrollCareHorizontally(-SCHEDULE_SCROLL_STEP);
-  });
-
-  els.careScrollRightBtn?.addEventListener("click", () => {
-    scrollCareHorizontally(SCHEDULE_SCROLL_STEP);
-  });
-
-  window.addEventListener("resize", syncCareBottomScrollerWidth);
-  syncCareBottomScrollerWidth();
-}
+function initCareBottomScroller() { /* no-op: table fits viewport */ }
 
 initCareBottomScroller();
 
@@ -7129,28 +7095,25 @@ function renderCustomerCareTable() {
     els.careBody.innerHTML = rows.map((row) => {
       const progress = getCareProgressForRow(row);
       const remaining = Math.max(0, progress.totalSessions - progress.usedSessions);
+      const contractFmt = row.contractAmount > 0 ? (row.contractAmount / 1000000).toFixed(1) + "M" : "--";
       return `
         <tr>
-          <td style="min-width:80px;">${row.closedDate || "--"}</td>
-          <td style="min-width:140px;"><strong>${row.customerName || "--"}</strong><div class="muted" style="font-size:0.75rem;white-space:normal;">${row.address || ""}</div></td>
-          <td style="min-width:90px;">${row.phone || "--"}</td>
-          <td style="min-width:110px;">${row.service || "--"}</td>
-          <td style="min-width:70px;"><input class="care-auto-save" type="number" min="0" max="10" step="0.5" value="${progress.serviceScore || ""}" data-care-key="${row.key}" data-care-field="serviceScore" placeholder="0-10" style="width:60px;" /></td>
-          <td style="min-width:90px;">${row.consultant || "--"}</td>
-          <td style="min-width:100px;">${row.nurse || "--"}</td>
-          <td style="min-width:85px;">${row.saleStaff || "--"}</td>
-          <td style="min-width:130px;white-space:normal;">${row.source || "--"}</td>
-          <td style="min-width:100px;text-align:right;">${Number(row.contractAmount || 0).toLocaleString("vi-VN")} đ</td>
-          <td style="min-width:80px;"><input class="care-auto-save" type="number" min="1" step="1" value="${progress.totalSessions}" data-care-key="${row.key}" data-care-field="totalSessions" style="width:70px;" /></td>
-          <td style="min-width:80px;"><input class="care-auto-save" type="number" min="0" step="1" value="${progress.usedSessions}" data-care-key="${row.key}" data-care-field="usedSessions" style="width:70px;" /></td>
-          <td style="min-width:60px;text-align:center;" class="care-remaining-cell">${remaining}</td>
-          <td style="min-width:130px;">
-            <select class="care-auto-save" data-care-key="${row.key}" data-care-field="status" style="width:120px;">
-              ${CARE_STATUS_OPTIONS.map((status) => `<option value="${status}"${progress.status === status ? " selected" : ""}>${status}</option>`).join("")}
-            </select>
-          </td>
-          <td style="min-width:100px;"><input class="care-auto-save" type="date" value="${progress.nextDate || ""}" data-care-key="${row.key}" data-care-field="nextDate" style="width:95px;" /></td>
-          <td style="min-width:120px;"><input class="care-auto-save" type="text" value="${progress.note || ""}" data-care-key="${row.key}" data-care-field="note" placeholder="Ghi chú" style="width:110px;" /></td>
+          <td>${row.closedDate || "--"}</td>
+          <td><strong style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${row.customerName || ""}">${row.customerName || "--"}</strong></td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${row.phone || ""}">${row.phone || "--"}</td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${row.service || ""}">${row.service || "--"}</td>
+          <td><input class="care-auto-save care-input-sm" type="number" min="0" max="10" step="0.5" value="${progress.serviceScore || ""}" data-care-key="${row.key}" data-care-field="serviceScore" placeholder="0-10" /></td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${row.consultant || ""}">${row.consultant || "--"}</td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${row.nurse || ""}">${row.nurse || "--"}</td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${row.saleStaff || "--"}</td>
+          <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${row.source || ""}">${row.source || "--"}</td>
+          <td style="text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${contractFmt}</td>
+          <td><input class="care-auto-save care-input-sm" type="number" min="1" step="1" value="${progress.totalSessions}" data-care-key="${row.key}" data-care-field="totalSessions" /></td>
+          <td><input class="care-auto-save care-input-sm" type="number" min="0" step="1" value="${progress.usedSessions}" data-care-key="${row.key}" data-care-field="usedSessions" /></td>
+          <td style="text-align:center;" class="care-remaining-cell">${remaining}</td>
+          <td><select class="care-auto-save care-input-sm" data-care-key="${row.key}" data-care-field="status">${CARE_STATUS_OPTIONS.map((s) => `<option value="${s}"${progress.status === s ? " selected" : ""}>${s}</option>`).join("")}</select></td>
+          <td><input class="care-auto-save care-input-sm" type="date" value="${progress.nextDate || ""}" data-care-key="${row.key}" data-care-field="nextDate" /></td>
+          <td><input class="care-auto-save care-input-sm" type="text" value="${progress.note || ""}" data-care-key="${row.key}" data-care-field="note" placeholder="Ghi chú" /></td>
         </tr>
       `;
     }).join("");
