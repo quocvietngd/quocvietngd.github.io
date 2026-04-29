@@ -2030,7 +2030,7 @@ app.innerHTML = `
           </div>
 
           <div class="tables" id="careTableWrap" tabindex="0" style="margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-            <table id="careTable" style="width:100%;border-collapse:collapse;table-layout:auto;min-width:1600px;">
+            <table id="careTable" style="width:max-content;border-collapse:collapse;table-layout:auto;min-width:1600px;">
               <thead>
                 <tr>
                   <th style="min-width:80px;">Ngày chốt</th>

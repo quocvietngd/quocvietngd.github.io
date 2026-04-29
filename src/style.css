@@ -1978,6 +1978,34 @@ td.schedule-editable:hover {
   display: none !important;
 }
 
+#careScrollControls {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+#careScrollControls.hidden {
+  display: none !important;
+}
+
+#careTableWrap {
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+#careTable {
+  width: max-content !important;
+  min-width: 1600px;
+  table-layout: auto !important;
+}
+
+#careTable th,
+#careTable td {
+  white-space: nowrap;
+}
+
 .schedule-scroll-btn {
   width: 32px;
   height: 26px;
