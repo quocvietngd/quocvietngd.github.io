@@ -210,6 +210,7 @@ const STORAGE = {
   schedule: "nora_schedule_v1",
   customerCareProgress: "nora_customer_care_progress_v1",
   customerCareFilters: "nora_customer_care_filters_v1",
+    customerCareManualRows: "nora_care_manual_rows_v1",
   accountingCashflow: "nora_accounting_cashflow_v1",
   accountingCashflowFilters: "nora_accounting_cashflow_filters_v1",
   accountingAttendance: "nora_accounting_attendance_v1",
@@ -1988,6 +1989,9 @@ app.innerHTML = `
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button class="btn secondary" id="exportCareExcelBtn" type="button">Xuất Excel (CSV)</button>
               <button class="btn warn" id="exportCarePdfBtn" type="button">Xuất PDF CSKH</button>
+                <button class="btn secondary" id="addCareManualBtn" type="button">+ Thêm thủ công</button>
+                <button class="btn secondary" id="importCareFileBtn" type="button">Import CSV</button>
+                <input type="file" id="careImportFileInput" accept=".csv" style="display:none;" />
             </div>
           </div>
           <div class="customer-filter form-grid" style="margin-top:10px;">
@@ -2033,21 +2037,22 @@ app.innerHTML = `
             <table id="careTable" style="width:100%;border-collapse:collapse;table-layout:fixed;">
               <colgroup>
                 <col style="width:6%;" />
-                <col style="width:10%;" />
+                <col style="width:9%;" />
                 <col style="width:7%;" />
                 <col style="width:8%;" />
                 <col style="width:5%;" />
-                <col style="width:6%;" />
-                <col style="width:6%;" />
+                <col style="width:5%;" />
+                <col style="width:5%;" />
                 <col style="width:5%;" />
                 <col style="width:6%;" />
-                <col style="width:7%;" />
+                <col style="width:6%;" />
                 <col style="width:5%;" />
                 <col style="width:5%;" />
                 <col style="width:4%;" />
                 <col style="width:8%;" />
                 <col style="width:7%;" />
                 <col style="width:5%;" />
+                <col style="width:4%;" />
               </colgroup>
               <thead>
                 <tr>
@@ -2067,12 +2072,38 @@ app.innerHTML = `
                   <th>Trạng thái</th>
                   <th>Hẹn tiếp</th>
                   <th>Ghi chú</th>
+                  <th style="text-align:center;">Xóa</th>
                 </tr>
               </thead>
               <tbody id="careBody"></tbody>
             </table>
           </div>
         </section>
+
+        <!-- CSKH Manual Add Modal -->
+        <div id="careManualModal" class="modal-overlay hidden" style="z-index:999;">
+          <div class="modal" style="max-width:500px;width:95%;">
+            <div class="modal-header"><h4 id="careManualModalTitle">Thêm khách chăm sóc thủ công</h4><button class="modal-close" id="closeCareManualModal" type="button">&times;</button></div>
+            <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <input type="hidden" id="careManualEditKey" value="" />
+              <div style="grid-column:span 2;"><label>Tên khách hàng *</label><input type="text" id="careManualName" placeholder="Tên khách hàng" /></div>
+              <div><label>Số điện thoại *</label><input type="text" id="careManualPhone" placeholder="0xxx..." /></div>
+              <div><label>Ngày chốt *</label><input type="date" id="careManualClosedDate" /></div>
+              <div style="grid-column:span 2;"><label>Địa chỉ</label><input type="text" id="careManualAddress" /></div>
+              <div style="grid-column:span 2;"><label>Dịch vụ</label><input type="text" id="careManualService" /></div>
+              <div><label>Tư vấn</label><input type="text" id="careManualConsultant" /></div>
+              <div><label>Điều dưỡng</label><input type="text" id="careManualNurse" /></div>
+              <div><label>Sale</label><input type="text" id="careManualSaleStaff" /></div>
+              <div><label>Nguồn</label><input type="text" id="careManualSource" /></div>
+              <div><label>Giá trị HĐ (VNĐ)</label><input type="number" id="careManualContractAmount" min="0" step="1000" placeholder="0" /></div>
+              <div><label>Giá trải nghiệm (VNĐ)</label><input type="number" id="careManualExperiencePrice" min="0" step="1000" placeholder="0" /></div>
+            </div>
+            <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+              <button class="btn primary" id="saveCareManualBtn" type="button">Lưu</button>
+              <button class="btn secondary" id="cancelCareManualBtn" type="button">Huỷ</button>
+            </div>
+          </div>
+        </div>
 
         <section class="card section app-page hidden" data-page="accounting" id="accountingSection">
           <div id="accountingFolderView">
@@ -2635,6 +2666,25 @@ const els = {
   resetCareFilterBtn: document.querySelector("#resetCareFilterBtn"),
   exportCareExcelBtn: document.querySelector("#exportCareExcelBtn"),
   exportCarePdfBtn: document.querySelector("#exportCarePdfBtn"),
+    addCareManualBtn: document.querySelector("#addCareManualBtn"),
+    importCareFileBtn: document.querySelector("#importCareFileBtn"),
+    careImportFileInput: document.querySelector("#careImportFileInput"),
+    careManualModal: document.querySelector("#careManualModal"),
+    closeCareManualModal: document.querySelector("#closeCareManualModal"),
+    saveCareManualBtn: document.querySelector("#saveCareManualBtn"),
+    cancelCareManualBtn: document.querySelector("#cancelCareManualBtn"),
+    careManualEditKey: document.querySelector("#careManualEditKey"),
+    careManualClosedDate: document.querySelector("#careManualClosedDate"),
+    careManualName: document.querySelector("#careManualName"),
+    careManualPhone: document.querySelector("#careManualPhone"),
+    careManualAddress: document.querySelector("#careManualAddress"),
+    careManualService: document.querySelector("#careManualService"),
+    careManualConsultant: document.querySelector("#careManualConsultant"),
+    careManualNurse: document.querySelector("#careManualNurse"),
+    careManualSaleStaff: document.querySelector("#careManualSaleStaff"),
+    careManualSource: document.querySelector("#careManualSource"),
+    careManualContractAmount: document.querySelector("#careManualContractAmount"),
+    careManualExperiencePrice: document.querySelector("#careManualExperiencePrice"),
   careFilterSummary: document.querySelector("#careFilterSummary"),
   careTableWrap: document.querySelector("#careTableWrap"),
   careTable: document.querySelector("#careTable"),
@@ -2883,6 +2933,7 @@ const APP_STATE_SYNC_KEYS = new Set([
   STORAGE.hrFiles,
   STORAGE.customerCareProgress,
   STORAGE.customerCareFilters,
+  STORAGE.customerCareManualRows,
   STORAGE.activities,
   STORAGE.recycleBin,
   STORAGE.rolePermissions,
@@ -3008,6 +3059,7 @@ function hasLocalCriticalData() {
     (Array.isArray(inventoryTransactions) && inventoryTransactions.length > 0) ||
     countObjectKeys(hrFiles) > 0 ||
     countObjectKeys(customerCareProgress) > 0 ||
+    (Array.isArray(customerCareManualRows) && customerCareManualRows.length > 0) ||
     (Array.isArray(activityLogs) && activityLogs.length > 0) ||
     (Array.isArray(recycleBin) && recycleBin.length > 0) ||
     (Array.isArray(newsPosts) && newsPosts.length > 0) ||
@@ -3030,6 +3082,7 @@ function buildCriticalStatePayload() {
     hrFiles: hrFiles && typeof hrFiles === "object" ? hrFiles : {},
     customerCareProgress: customerCareProgress && typeof customerCareProgress === "object" ? customerCareProgress : {},
     customerCareFilters: customerCareFilterState && typeof customerCareFilterState === "object" ? customerCareFilterState : {},
+    customerCareManualRows: Array.isArray(customerCareManualRows) ? customerCareManualRows : [],
     activities: Array.isArray(activityLogs) ? activityLogs : [],
     recycleBin: Array.isArray(recycleBin) ? recycleBin : [],
     rolePermissions: rolePermissionsState && typeof rolePermissionsState === "object" ? rolePermissionsState : {},
@@ -3060,6 +3113,7 @@ function normalizeRemoteCriticalState(raw = {}) {
     hrFiles: raw.hrFiles && typeof raw.hrFiles === "object" ? raw.hrFiles : {},
     customerCareProgress: raw.customerCareProgress && typeof raw.customerCareProgress === "object" ? raw.customerCareProgress : {},
     customerCareFilters: raw.customerCareFilters && typeof raw.customerCareFilters === "object" ? raw.customerCareFilters : {},
+    customerCareManualRows: Array.isArray(raw.customerCareManualRows) ? raw.customerCareManualRows : [],
     activities: Array.isArray(raw.activities) ? raw.activities : [],
     recycleBin: Array.isArray(raw.recycleBin) ? raw.recycleBin : [],
     rolePermissions: raw.rolePermissions && typeof raw.rolePermissions === "object" ? raw.rolePermissions : {},
@@ -3118,6 +3172,7 @@ function getRemoteCriticalStateRowCount(remoteState) {
     (remoteState.inventoryTransactions?.length || 0) +
     countObjectKeys(remoteState.hrFiles) +
     countObjectKeys(remoteState.customerCareProgress) +
+    (remoteState.customerCareManualRows?.length || 0) +
     (remoteState.activities?.length || 0) +
     (remoteState.recycleBin?.length || 0) +
     (remoteState.newsPosts?.length || 0) +
@@ -3259,6 +3314,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     const mergedInventoryTransactions = preferRemoteList(remoteState.inventoryTransactions, inventoryTransactions);
     const mergedHrFiles = preferRemoteObject(remoteState.hrFiles, hrFiles);
     const mergedCustomerCareProgress = preferRemoteObject(remoteState.customerCareProgress, customerCareProgress);
+    const mergedCustomerCareManualRows = preferRemoteList(remoteState.customerCareManualRows, customerCareManualRows);
     const mergedActivities = preferRemoteList(remoteState.activities, activityLogs);
     const mergedRecycleBin = preferRemoteList(remoteState.recycleBin, recycleBin);
     const mergedRolePermissions = preferRemoteObject(remoteState.rolePermissions, rolePermissionsState);
@@ -3291,6 +3347,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     hrFiles = mergedHrFiles;
     customerCareProgress = mergedCustomerCareProgress;
     customerCareFilterState = normalizeCustomerCareFilterState(remoteState.customerCareFilters || {});
+    customerCareManualRows = mergedCustomerCareManualRows.map((item) => normalizeCustomerCareManualRow(item, item?.sourceType || "manual"));
     activityLogs = mergedActivities;
     recycleBin = mergedRecycleBin;
     rolePermissionsState = normalizeRolePermissions(mergedRolePermissions, ROLES);
@@ -3327,6 +3384,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     saveJSON(STORAGE.hrFiles, hrFiles);
     saveJSON(STORAGE.customerCareProgress, customerCareProgress);
     saveJSON(STORAGE.customerCareFilters, customerCareFilterState);
+    saveJSON(STORAGE.customerCareManualRows, customerCareManualRows);
     saveJSON(STORAGE.activities, activityLogs);
     saveJSON(STORAGE.recycleBin, recycleBin);
     saveJSON(STORAGE.rolePermissions, rolePermissionsState);
@@ -3708,6 +3766,7 @@ let editingScheduleId = null;
 let scheduleFilterState = { month: today.slice(0, 7), status: "", staff: "all", source: "", keyword: "" };
 let metricsFilterState = { start: filterState.start, end: filterState.end, department: "all" };
 let customerCareProgress = loadJSON(STORAGE.customerCareProgress, {});
+let customerCareManualRows = loadJSON(STORAGE.customerCareManualRows, []);
 let customerCareFilterState = normalizeCustomerCareFilterState(loadJSON(STORAGE.customerCareFilters, {
   start: "",
   end: "",
@@ -5522,6 +5581,8 @@ function setAuthUI() {
   if (els.exportReportsPdfBtn) els.exportReportsPdfBtn.disabled = !can("canExportPdf");
   if (els.exportCareExcelBtn) els.exportCareExcelBtn.disabled = !canViewData;
   if (els.exportCarePdfBtn) els.exportCarePdfBtn.disabled = !can("canExportPdf");
+  if (els.addCareManualBtn) els.addCareManualBtn.disabled = !canViewData;
+  if (els.importCareFileBtn) els.importCareFileBtn.disabled = !canViewData;
   if (els.applyInventoryStatsBtn) els.applyInventoryStatsBtn.disabled = !canManageInventory;
   if (els.resetInventoryStatsBtn) els.resetInventoryStatsBtn.disabled = !canManageInventory;
   if (els.openUserModalBtn) els.openUserModalBtn.disabled = !isAdmin;
@@ -6966,10 +7027,38 @@ function getClosedSchedulesForCare() {
   return schedules.filter((item) => Number(item.contractAmount || 0) > 0 && item.status !== "cancelled");
 }
 
+function buildCareRowKey(phone, customerName) {
+  return `${String(phone || "").trim()}|${String(customerName || "").trim().toLowerCase()}`;
+}
+
+function normalizeCustomerCareManualRow(item = {}, sourceType = "manual") {
+  const customerName = String(item.customerName || "").trim();
+  const phone = String(item.phone || "").trim();
+  const key = String(item.key || buildCareRowKey(phone, customerName));
+  return {
+    key,
+    sourceScheduleId: item.sourceScheduleId || "",
+    closedDate: String(item.closedDate || "").slice(0, 10),
+    customerName,
+    phone,
+    address: String(item.address || "").trim(),
+    service: String(item.service || "").trim(),
+    consultant: String(item.consultant || "").trim(),
+    nurse: String(item.nurse || "").trim(),
+    saleStaff: String(item.saleStaff || "").trim(),
+    source: String(item.source || "").trim(),
+    contractAmount: Math.max(0, Number(item.contractAmount || 0)),
+    experiencePrice: Math.max(0, Number(item.experiencePrice || 0)),
+    updatedAt: Number(item.updatedAt || Date.now()),
+    sourceType: sourceType === "import" ? "import" : "manual"
+  };
+}
+
 function getCustomerCareRows() {
   const map = new Map();
+  // Source 2: Auto from signed schedules
   getClosedSchedulesForCare().forEach((item) => {
-    const key = `${String(item.phone || "").trim()}|${String(item.customerName || "").trim().toLowerCase()}`;
+    const key = buildCareRowKey(item.phone, item.customerName);
     const prev = map.get(key);
     const itemDate = item.registrationDate || "";
     const prevDate = prev?.closedDate || "";
@@ -6989,11 +7078,137 @@ function getCustomerCareRows() {
         source: item.source || "",
         contractAmount: Number(item.contractAmount || 0),
         experiencePrice: Number(item.experiencePrice || 0),
-        updatedAt: Number(item.updatedAt || 0)
+        updatedAt: Number(item.updatedAt || 0),
+        sourceType: "auto"
       });
     }
   });
+
+  // Source 1 and 3: imported rows + manual rows override auto rows on same key
+  (Array.isArray(customerCareManualRows) ? customerCareManualRows : []).forEach((item) => {
+    const normalized = normalizeCustomerCareManualRow(item, item?.sourceType || "manual");
+    if (!normalized.customerName || !normalized.phone) return;
+    map.set(normalized.key, normalized);
+  });
+
   return Array.from(map.values()).sort((a, b) => (b.closedDate || "").localeCompare(a.closedDate || "") || b.updatedAt - a.updatedAt);
+}
+
+function resetCareManualForm(defaultDate = today) {
+  if (els.careManualEditKey) els.careManualEditKey.value = "";
+  if (els.careManualClosedDate) els.careManualClosedDate.value = String(defaultDate || today).slice(0, 10);
+  if (els.careManualName) els.careManualName.value = "";
+  if (els.careManualPhone) els.careManualPhone.value = "";
+  if (els.careManualAddress) els.careManualAddress.value = "";
+  if (els.careManualService) els.careManualService.value = "";
+  if (els.careManualConsultant) els.careManualConsultant.value = "";
+  if (els.careManualNurse) els.careManualNurse.value = "";
+  if (els.careManualSaleStaff) els.careManualSaleStaff.value = "";
+  if (els.careManualSource) els.careManualSource.value = "";
+  if (els.careManualContractAmount) els.careManualContractAmount.value = "";
+  if (els.careManualExperiencePrice) els.careManualExperiencePrice.value = "";
+}
+
+function openCareManualModal() {
+  if (!els.careManualModal) return;
+  resetCareManualForm(today);
+  els.careManualModal.classList.remove("hidden");
+}
+
+function closeCareManualModal() {
+  if (!els.careManualModal) return;
+  els.careManualModal.classList.add("hidden");
+}
+
+function upsertCustomerCareManualRow(rawRow = {}, sourceType = "manual") {
+  const normalized = normalizeCustomerCareManualRow(rawRow, sourceType);
+  if (!normalized.customerName || !normalized.phone) return false;
+  const current = Array.isArray(customerCareManualRows) ? customerCareManualRows : [];
+  const next = current.filter((item) => item.key !== normalized.key);
+  next.unshift(normalized);
+  customerCareManualRows = next;
+  return true;
+}
+
+function mapImportedCustomerCareRows(parsedRows = []) {
+  const aliases = {
+    closedDate: ["ngay chot", "ngày chốt", "ngaychot", "closeddate", "date", "ngay"],
+    customerName: ["khach hang", "khách hàng", "ten khach", "ten", "customer", "customername", "name"],
+    phone: ["sdt", "so dt", "so dien thoai", "điện thoại", "phone", "mobile"],
+    address: ["dia chi", "địa chỉ", "address"],
+    service: ["dich vu", "dịch vụ", "service"],
+    consultant: ["tu van", "tư vấn", "consultant"],
+    nurse: ["dieu duong", "điều dưỡng", "nurse"],
+    saleStaff: ["sale", "telesale", "sales", "sale staff"],
+    source: ["nguon", "nguồn", "source"],
+    contractAmount: ["gia tri hd", "giá trị hđ", "hop dong", "contract", "contractamount"],
+    experiencePrice: ["gia trai nghiem", "giá trải nghiệm", "experience", "experienceprice"]
+  };
+
+  const pick = (row, keys) => {
+    for (const [rawKey, rawValue] of Object.entries(row || {})) {
+      const key = String(rawKey || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/[^a-z0-9]/g, "");
+      for (const candidate of keys) {
+        const normalizedCandidate = candidate
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/đ/g, "d")
+          .replace(/[^a-z0-9]/g, "");
+        if (key === normalizedCandidate) return rawValue;
+      }
+    }
+    return "";
+  };
+
+  return parsedRows.map((row) => ({
+    closedDate: String(pick(row, aliases.closedDate) || "").slice(0, 10),
+    customerName: String(pick(row, aliases.customerName) || "").trim(),
+    phone: String(pick(row, aliases.phone) || "").trim(),
+    address: String(pick(row, aliases.address) || "").trim(),
+    service: String(pick(row, aliases.service) || "").trim(),
+    consultant: String(pick(row, aliases.consultant) || "").trim(),
+    nurse: String(pick(row, aliases.nurse) || "").trim(),
+    saleStaff: String(pick(row, aliases.saleStaff) || "").trim(),
+    source: String(pick(row, aliases.source) || "").trim(),
+    contractAmount: Math.max(0, Number(pick(row, aliases.contractAmount) || 0)),
+    experiencePrice: Math.max(0, Number(pick(row, aliases.experiencePrice) || 0)),
+    updatedAt: Date.now()
+  })).filter((item) => item.customerName && item.phone);
+}
+
+async function importCustomerCareRowsFromCsvFile(file) {
+  if (!file) return;
+  const text = await file.text();
+  const parsed = parseCsvText(text);
+  if (!parsed.length) {
+    showToast("File CSV không có dữ liệu hợp lệ.", "warning");
+    return;
+  }
+  const mapped = mapImportedCustomerCareRows(parsed);
+  if (!mapped.length) {
+    showToast("Không tìm thấy cột bắt buộc (tên khách + SĐT).", "warning");
+    return;
+  }
+
+  let importedCount = 0;
+  mapped.forEach((row) => {
+    const ok = upsertCustomerCareManualRow({
+      ...row,
+      key: buildCareRowKey(row.phone, row.customerName)
+    }, "import");
+    if (ok) importedCount += 1;
+  });
+
+  saveJSON(STORAGE.customerCareManualRows, customerCareManualRows);
+  showToast(`Đã import ${importedCount} khách vào CSKH.`, "success");
+  logActivity("CSKH", "Import CSV", `Số khách import: ${importedCount}`);
+  renderCustomerCarePage();
 }
 
 function getCustomerCareOptionSets(rows) {
@@ -7090,7 +7305,7 @@ function renderCustomerCareTable() {
   const rows = getFilteredCustomerCareRows();
 
   if (!rows.length) {
-    els.careBody.innerHTML = '<tr><td colspan="16" style="text-align:center;">Không có khách đã chốt phù hợp với bộ lọc.</td></tr>';
+    els.careBody.innerHTML = '<tr><td colspan="17" style="text-align:center;">Không có khách đã chốt phù hợp với bộ lọc.</td></tr>';
   } else {
     els.careBody.innerHTML = rows.map((row) => {
       const progress = getCareProgressForRow(row);
@@ -7114,6 +7329,7 @@ function renderCustomerCareTable() {
           <td><select class="care-auto-save care-input-sm" data-care-key="${row.key}" data-care-field="status">${CARE_STATUS_OPTIONS.map((s) => `<option value="${s}"${progress.status === s ? " selected" : ""}>${s}</option>`).join("")}</select></td>
           <td><input class="care-auto-save care-input-sm" type="date" value="${progress.nextDate || ""}" data-care-key="${row.key}" data-care-field="nextDate" /></td>
           <td><input class="care-auto-save care-input-sm" type="text" value="${progress.note || ""}" data-care-key="${row.key}" data-care-field="note" placeholder="Ghi chú" /></td>
+          <td style="text-align:center;">${row.sourceType === "auto" ? "--" : `<button class="btn danger care-delete-row-btn" type="button" data-care-delete-key="${row.key}">X</button>`}</td>
         </tr>
       `;
     }).join("");
@@ -7156,6 +7372,24 @@ function renderCustomerCareTable() {
         }
         showToast(`Đã cập nhật ${field}.`, "success");
         logActivity("CSKH", "Cập nhật tiến độ", `Khóa KH: ${careKey}`);
+      });
+    });
+
+    const deleteButtons = document.querySelectorAll(".care-delete-row-btn");
+    deleteButtons.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const key = e.currentTarget?.getAttribute("data-care-delete-key");
+        if (!key) return;
+        const found = (Array.isArray(customerCareManualRows) ? customerCareManualRows : []).find((item) => item.key === key);
+        if (!found) return;
+        if (!confirm(`Xóa khách ${found.customerName || ""} khỏi danh sách CSKH thủ công/import?`)) return;
+        customerCareManualRows = customerCareManualRows.filter((item) => item.key !== key);
+        saveJSON(STORAGE.customerCareManualRows, customerCareManualRows);
+        delete customerCareProgress[key];
+        saveJSON(STORAGE.customerCareProgress, customerCareProgress);
+        showToast("Đã xóa dòng CSKH thủ công/import.", "success");
+        logActivity("CSKH", "Xóa dòng thủ công/import", `Khóa KH: ${key}`);
+        renderCustomerCarePage();
       });
     });
   }, 100);
@@ -12039,6 +12273,87 @@ if (els.exportCareExcelBtn) {
 if (els.exportCarePdfBtn) {
   els.exportCarePdfBtn.addEventListener("click", async () => {
     await exportFilteredCustomerCareToPdf();
+  });
+}
+
+if (els.addCareManualBtn) {
+  els.addCareManualBtn.addEventListener("click", () => {
+    openCareManualModal();
+  });
+}
+
+if (els.closeCareManualModal) {
+  els.closeCareManualModal.addEventListener("click", () => {
+    closeCareManualModal();
+  });
+}
+
+if (els.cancelCareManualBtn) {
+  els.cancelCareManualBtn.addEventListener("click", () => {
+    closeCareManualModal();
+  });
+}
+
+if (els.careManualModal) {
+  els.careManualModal.addEventListener("click", (e) => {
+    if (e.target === els.careManualModal) {
+      closeCareManualModal();
+    }
+  });
+}
+
+if (els.saveCareManualBtn) {
+  els.saveCareManualBtn.addEventListener("click", () => {
+    const customerName = String(els.careManualName?.value || "").trim();
+    const phone = String(els.careManualPhone?.value || "").trim();
+    if (!customerName || !phone) {
+      showToast("Vui lòng nhập Tên khách hàng và SĐT.", "warning");
+      return;
+    }
+    const raw = {
+      key: buildCareRowKey(phone, customerName),
+      closedDate: String(els.careManualClosedDate?.value || today).slice(0, 10),
+      customerName,
+      phone,
+      address: String(els.careManualAddress?.value || "").trim(),
+      service: String(els.careManualService?.value || "").trim(),
+      consultant: String(els.careManualConsultant?.value || "").trim(),
+      nurse: String(els.careManualNurse?.value || "").trim(),
+      saleStaff: String(els.careManualSaleStaff?.value || "").trim(),
+      source: String(els.careManualSource?.value || "").trim(),
+      contractAmount: Number(els.careManualContractAmount?.value || 0),
+      experiencePrice: Number(els.careManualExperiencePrice?.value || 0),
+      updatedAt: Date.now()
+    };
+    const saved = upsertCustomerCareManualRow(raw, "manual");
+    if (!saved) {
+      showToast("Không thể lưu dữ liệu CSKH thủ công.", "warning");
+      return;
+    }
+    saveJSON(STORAGE.customerCareManualRows, customerCareManualRows);
+    closeCareManualModal();
+    showToast("Đã thêm khách CSKH thủ công.", "success");
+    logActivity("CSKH", "Thêm thủ công", `${customerName} | ${phone}`);
+    renderCustomerCarePage();
+  });
+}
+
+if (els.importCareFileBtn && els.careImportFileInput) {
+  els.importCareFileBtn.addEventListener("click", () => {
+    els.careImportFileInput.value = "";
+    els.careImportFileInput.click();
+  });
+
+  els.careImportFileInput.addEventListener("change", async () => {
+    const file = els.careImportFileInput.files?.[0];
+    if (!file) return;
+    try {
+      await importCustomerCareRowsFromCsvFile(file);
+    } catch (err) {
+      showToast(`Import CSV thất bại: ${err.message || err}`, "warning");
+    } finally {
+      els.careImportFileInput.value = "";
+    }
   });
 }
 
