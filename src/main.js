@@ -3290,7 +3290,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     }));
     hrFiles = mergedHrFiles;
     customerCareProgress = mergedCustomerCareProgress;
-    customerCareFilterState = normalizeCustomerFilterState(remoteState.customerCareFilters);
+    customerCareFilterState = normalizeCustomerCareFilterState(remoteState.customerCareFilters || {});
     activityLogs = mergedActivities;
     recycleBin = mergedRecycleBin;
     rolePermissionsState = normalizeRolePermissions(mergedRolePermissions, ROLES);
