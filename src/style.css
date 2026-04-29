@@ -1975,7 +1975,10 @@ td.schedule-editable:hover {
 }
 
 .schedule-scroll-controls {
-  display: none !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 #careScrollControls {
@@ -1990,20 +1993,36 @@ td.schedule-editable:hover {
 }
 
 #careTableWrap {
-  overflow-x: auto !important;
+  overflow-x: scroll !important;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable both-edges;
 }
 
 #careTable {
   width: max-content !important;
-  min-width: 1600px;
+  min-width: 2400px;
   table-layout: auto !important;
 }
 
 #careTable th,
 #careTable td {
   white-space: nowrap;
+}
+
+#careTableWrap::-webkit-scrollbar {
+  height: 14px;
+}
+
+#careTableWrap::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
+  border: 2px solid #e5edf5;
+}
+
+#careTableWrap::-webkit-scrollbar-track {
+  background: #eef3f8;
+  border-radius: 999px;
 }
 
 .schedule-scroll-btn {

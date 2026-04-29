@@ -2030,7 +2030,7 @@ app.innerHTML = `
           </div>
 
           <div class="tables" id="careTableWrap" tabindex="0" style="margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-            <table id="careTable" style="width:max-content;border-collapse:collapse;table-layout:auto;min-width:1600px;">
+            <table id="careTable" style="width:max-content;border-collapse:collapse;table-layout:auto;min-width:2400px;">
               <thead>
                 <tr>
                   <th style="min-width:80px;">Ngày chốt</th>
@@ -3787,9 +3787,12 @@ function syncCareBottomScrollerWidth() {
   if (!els.careTableWrap || !els.careTable || !els.careScrollControls || !els.careBottomScrollerInner) return;
   const tableWidth = els.careTable.scrollWidth;
   const wrapWidth = els.careTableWrap.clientWidth;
-  els.careBottomScrollerInner.style.width = `${tableWidth}px`;
-  const shouldShow = tableWidth > wrapWidth + 2;
-  els.careScrollControls.classList.toggle("hidden", !shouldShow);
+  const hasOverflow = tableWidth > wrapWidth + 2;
+  const visualWidth = Math.max(tableWidth, wrapWidth + 1);
+  els.careBottomScrollerInner.style.width = `${visualWidth}px`;
+  els.careScrollControls.classList.remove("hidden");
+  if (els.careScrollLeftBtn) els.careScrollLeftBtn.disabled = !hasOverflow;
+  if (els.careScrollRightBtn) els.careScrollRightBtn.disabled = !hasOverflow;
 }
 
 function initCareBottomScroller() {
