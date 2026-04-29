@@ -3074,6 +3074,20 @@ function normalizeRemoteCriticalState(raw = {}) {
   };
 }
 
+function preferRemoteList(remoteList, localList) {
+  const safeRemote = Array.isArray(remoteList) ? remoteList : [];
+  const safeLocal = Array.isArray(localList) ? localList : [];
+  if (safeRemote.length === 0 && safeLocal.length > 0) return safeLocal;
+  return safeRemote;
+}
+
+function preferRemoteObject(remoteObj, localObj) {
+  const safeRemote = remoteObj && typeof remoteObj === "object" ? remoteObj : {};
+  const safeLocal = localObj && typeof localObj === "object" ? localObj : {};
+  if (countObjectKeys(safeRemote) === 0 && countObjectKeys(safeLocal) > 0) return safeLocal;
+  return safeRemote;
+}
+
 function mergeTelegramSourceFromLocalAndRemote(localCfg = {}, remoteCfg = {}) {
   const localChatIds = parseTelegramAllowedChatIds(localCfg.chatId || "");
   const remoteChatIds = parseTelegramAllowedChatIds(remoteCfg.chatId || "");
@@ -3233,9 +3247,26 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
 
   isApplyingRemoteCriticalState = true;
   try {
-    customers = remoteState.customers.map((customer) => normalizeCustomer(customer));
-    schedules = remoteState.schedules;
-    inventoryItems = remoteState.inventoryItems.map((item) => ({
+    const mergedCustomers = preferRemoteList(remoteState.customers, customers);
+    const mergedSchedules = preferRemoteList(remoteState.schedules, schedules);
+    const mergedInventoryItems = preferRemoteList(remoteState.inventoryItems, inventoryItems);
+    const mergedInventoryTransactions = preferRemoteList(remoteState.inventoryTransactions, inventoryTransactions);
+    const mergedHrFiles = preferRemoteObject(remoteState.hrFiles, hrFiles);
+    const mergedCustomerCareProgress = preferRemoteObject(remoteState.customerCareProgress, customerCareProgress);
+    const mergedActivities = preferRemoteList(remoteState.activities, activityLogs);
+    const mergedRecycleBin = preferRemoteList(remoteState.recycleBin, recycleBin);
+    const mergedRolePermissions = preferRemoteObject(remoteState.rolePermissions, rolePermissionsState);
+    const mergedNewsPosts = preferRemoteList(remoteState.newsPosts, newsPosts);
+    const mergedNewsPinned = preferRemoteList(remoteState.newsPinned, newsPinned);
+    const mergedNewsEvents = preferRemoteList(remoteState.newsEvents, newsEvents);
+    const mergedAccountingCashflow = preferRemoteList(remoteState.accountingCashflow, accountingCashflowEntries);
+    const mergedAccountingAttendance = preferRemoteList(remoteState.accountingAttendance, accountingAttendanceEntries);
+    const mergedNurseReportOverrides = preferRemoteObject(remoteState.nurseReportOverrides, nurseReportOverrides);
+    const mergedReports = preferRemoteList(remoteState.reports, reports);
+
+    customers = mergedCustomers.map((customer) => normalizeCustomer(customer));
+    schedules = mergedSchedules;
+    inventoryItems = mergedInventoryItems.map((item) => ({
       ...item,
       purchasePrice: Number(item.purchasePrice) || 0,
       salePrice: Number(item.salePrice) || 0,
@@ -3244,23 +3275,23 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
       status: item.status === "inactive" ? "inactive" : "active",
       updatedAt: Number(item.updatedAt) || Date.now()
     }));
-    inventoryTransactions = remoteState.inventoryTransactions.map((txn) => ({
+    inventoryTransactions = mergedInventoryTransactions.map((txn) => ({
       ...txn,
       quantity: Math.max(0, Number(txn.quantity) || 0),
       stockAfter: Math.max(0, Number(txn.stockAfter) || 0),
       createdAt: Number(txn.createdAt) || Date.now(),
       type: txn.type === "out" ? "out" : "in"
     }));
-    hrFiles = remoteState.hrFiles;
-    customerCareProgress = remoteState.customerCareProgress;
+    hrFiles = mergedHrFiles;
+    customerCareProgress = mergedCustomerCareProgress;
     customerCareFilterState = normalizeCustomerFilterState(remoteState.customerCareFilters);
-    activityLogs = remoteState.activities;
-    recycleBin = remoteState.recycleBin;
-    rolePermissionsState = normalizeRolePermissions(remoteState.rolePermissions, ROLES);
-    newsPosts = remoteState.newsPosts;
-    newsPinned = remoteState.newsPinned;
-    newsEvents = remoteState.newsEvents;
-    accountingCashflowEntries = remoteState.accountingCashflow.map((entry) => ({
+    activityLogs = mergedActivities;
+    recycleBin = mergedRecycleBin;
+    rolePermissionsState = normalizeRolePermissions(mergedRolePermissions, ROLES);
+    newsPosts = mergedNewsPosts;
+    newsPinned = mergedNewsPinned;
+    newsEvents = mergedNewsEvents;
+    accountingCashflowEntries = mergedAccountingCashflow.map((entry) => ({
       ...entry,
       amount: Math.max(0, Number(entry.amount) || 0),
       createdAt: Number(entry.createdAt) || Date.now(),
@@ -3268,7 +3299,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
       status: entry.status || "pending"
     }));
     accountingCashflowFilterState = remoteState.accountingCashflowFilters;
-    accountingAttendanceEntries = remoteState.accountingAttendance.map((entry) => ({
+    accountingAttendanceEntries = mergedAccountingAttendance.map((entry) => ({
       ...entry,
       workHours: Math.max(0, Number(entry.workHours) || 0),
       overtimeHours: Math.max(0, Number(entry.overtimeHours) || 0),
@@ -3278,10 +3309,10 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     accountingAttendanceSource = normalizeAccountingAttendanceSource(remoteState.accountingAttendanceSource);
     accountingAttendanceFilterState = normalizeAccountingAttendanceFilterState(remoteState.accountingAttendanceFilters);
     accountingServicePayrollFilterState = normalizeAccountingServicePayrollFilterState(remoteState.accountingServicePayrollFilters);
-    nurseReportOverrides = remoteState.nurseReportOverrides;
+    nurseReportOverrides = mergedNurseReportOverrides;
     telegramSourceConfig = mergeTelegramSourceFromLocalAndRemote(telegramSourceConfig, remoteState.telegramSource);
     dataSourceConfig = normalizeDataSourceConfig(remoteState.dataSourceConfig);
-    reports = remoteState.reports;
+    reports = mergedReports;
 
     saveJSON(STORAGE.customers, customers);
     saveJSON(STORAGE.schedule, schedules);
