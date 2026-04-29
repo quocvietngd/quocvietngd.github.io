@@ -7027,8 +7027,29 @@ async function exportSchedulePdf() {
   logActivity("Lịch KH", "Xuất PDF", `Số lịch: ${rows.length}`);
 }
 
+function isScheduleEligibleForCare(item = {}) {
+  const contractAmount = Number(item.contractAmount || 0);
+  const status = String(item.status || "").toLowerCase();
+  const source = String(item.source || "").toLowerCase();
+  const id = String(item.id || "");
+  const customerName = String(item.customerName || "").trim();
+  const phone = String(item.phone || "").trim();
+  const digits = phone.replace(/\D/g, "");
+
+  if (contractAmount <= 0) return false;
+  if (!(status === "confirmed" || status === "completed")) return false;
+  if (!customerName) return false;
+  if (digits.length < 8) return false;
+
+  // Exclude schedule rows that come from Telegram bridge / external sync noise.
+  const isTelegramRow = id.startsWith("tg-") || source.includes("telegram");
+  if (isTelegramRow) return false;
+
+  return true;
+}
+
 function getClosedSchedulesForCare() {
-  return schedules.filter((item) => Number(item.contractAmount || 0) > 0 && item.status !== "cancelled");
+  return schedules.filter((item) => isScheduleEligibleForCare(item));
 }
 
 function buildCareRowKey(phone, customerName) {
@@ -7064,7 +7085,8 @@ function cleanupLegacyCustomerCareData() {
 
   inputRows.forEach((item) => {
     const normalized = normalizeCustomerCareManualRow(item, item?.sourceType || "manual");
-    if (!normalized.customerName || !normalized.phone) return;
+    const digits = String(normalized.phone || "").replace(/\D/g, "");
+    if (!normalized.customerName || digits.length < 8) return;
     const prev = deduped.get(normalized.key);
     if (!prev || Number(normalized.updatedAt || 0) >= Number(prev.updatedAt || 0)) {
       deduped.set(normalized.key, normalized);
