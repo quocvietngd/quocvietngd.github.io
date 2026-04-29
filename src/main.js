@@ -2030,26 +2030,25 @@ app.innerHTML = `
           </div>
 
           <div class="tables" style="margin-top:10px;">
-            <table>
+            <table style="width:100%;border-collapse:collapse;table-layout:auto;">
               <thead>
                 <tr>
-                  <th>Ngày chốt</th>
-                  <th>Khách hàng</th>
-                  <th>SĐT</th>
-                  <th>Dịch vụ</th>
-                  <th>Điểm dịch vụ</th>
-                  <th>Tư vấn</th>
-                  <th>Điều dưỡng</th>
-                  <th>Sale</th>
-                  <th>Nguồn</th>
-                  <th>Giá trị HĐ</th>
-                  <th>Liệu trình đăng ký</th>
-                  <th>Đã sử dụng</th>
-                  <th>Còn lại</th>
-                  <th>Trạng thái CSKH</th>
-                  <th>Hẹn chăm tiếp</th>
-                  <th>Ghi chú CSKH</th>
-                  <th>Thao tác</th>
+                  <th style="min-width:80px;">Ngày chốt</th>
+                  <th style="min-width:140px;">Khách hàng</th>
+                  <th style="min-width:90px;">SĐT</th>
+                  <th style="min-width:110px;">Dịch vụ</th>
+                  <th style="min-width:70px;">Điểm dịch vụ</th>
+                  <th style="min-width:90px;">Tư vấn</th>
+                  <th style="min-width:100px;">Điều dưỡng</th>
+                  <th style="min-width:85px;">Sale</th>
+                  <th style="min-width:130px;">Nguồn</th>
+                  <th style="min-width:100px;text-align:right;">Giá trị HĐ</th>
+                  <th style="min-width:80px;">Liệu trình đăng ký</th>
+                  <th style="min-width:80px;">Đã sử dụng</th>
+                  <th style="min-width:60px;text-align:center;">Còn lại</th>
+                  <th style="min-width:130px;">Trạng thái CSKH</th>
+                  <th style="min-width:100px;">Hẹn chăm tiếp</th>
+                  <th style="min-width:120px;">Ghi chú CSKH</th>
                 </tr>
               </thead>
               <tbody id="careBody"></tbody>
@@ -6966,7 +6965,7 @@ function getCareProgressForRow(row) {
   const saved = customerCareProgress[row.key] || {};
   const totalSessions = Math.max(1, Number(saved.totalSessions || inferCareTotalSessions(row) || 1));
   const usedSessions = Math.max(0, Math.min(totalSessions, Number(saved.usedSessions || 0)));
-  const serviceScore = Math.max(0, Math.min(5, Number(saved.serviceScore || 0)));
+  const serviceScore = Math.max(0, Math.min(10, Number(saved.serviceScore || 0)));
   return {
     totalSessions,
     usedSessions,
@@ -7030,34 +7029,33 @@ function renderCustomerCareTable() {
   const rows = getFilteredCustomerCareRows();
 
   if (!rows.length) {
-    els.careBody.innerHTML = '<tr><td colspan="17" style="text-align:center;">Không có khách đã chốt phù hợp với bộ lọc.</td></tr>';
+    els.careBody.innerHTML = '<tr><td colspan="16" style="text-align:center;">Không có khách đã chốt phù hợp với bộ lọc.</td></tr>';
   } else {
     els.careBody.innerHTML = rows.map((row) => {
       const progress = getCareProgressForRow(row);
       const remaining = Math.max(0, progress.totalSessions - progress.usedSessions);
       return `
         <tr>
-          <td>${row.closedDate || "--"}</td>
-          <td><strong>${row.customerName || "--"}</strong><div class="muted" style="font-size:0.75rem;">${row.address || ""}</div></td>
-          <td>${row.phone || "--"}</td>
-          <td>${row.service || "--"}</td>
-          <td><input class="care-inline-input care-inline-number" type="number" min="0" max="5" step="0.5" value="${progress.serviceScore || ""}" data-care-key="${row.key}" data-care-field="serviceScore" placeholder="0-5" style="width:60px;" /></td>
-          <td>${row.consultant || "--"}</td>
-          <td>${row.nurse || "--"}</td>
-          <td>${row.saleStaff || "--"}</td>
-          <td>${row.source || "--"}</td>
-          <td>${Number(row.contractAmount || 0).toLocaleString("vi-VN")} đ</td>
-          <td><input class="care-inline-input care-inline-number" type="number" min="1" step="1" value="${progress.totalSessions}" data-care-key="${row.key}" data-care-field="totalSessions" /></td>
-          <td><input class="care-inline-input care-inline-number" type="number" min="0" step="1" value="${progress.usedSessions}" data-care-key="${row.key}" data-care-field="usedSessions" /></td>
-          <td class="care-remaining-cell">${remaining}</td>
-          <td>
-            <select class="care-inline-input" data-care-key="${row.key}" data-care-field="status">
+          <td style="min-width:80px;">${row.closedDate || "--"}</td>
+          <td style="min-width:140px;"><strong>${row.customerName || "--"}</strong><div class="muted" style="font-size:0.75rem;white-space:normal;">${row.address || ""}</div></td>
+          <td style="min-width:90px;">${row.phone || "--"}</td>
+          <td style="min-width:110px;">${row.service || "--"}</td>
+          <td style="min-width:70px;"><input class="care-auto-save" type="number" min="0" max="10" step="0.5" value="${progress.serviceScore || ""}" data-care-key="${row.key}" data-care-field="serviceScore" placeholder="0-10" style="width:60px;" /></td>
+          <td style="min-width:90px;">${row.consultant || "--"}</td>
+          <td style="min-width:100px;">${row.nurse || "--"}</td>
+          <td style="min-width:85px;">${row.saleStaff || "--"}</td>
+          <td style="min-width:130px;white-space:normal;">${row.source || "--"}</td>
+          <td style="min-width:100px;text-align:right;">${Number(row.contractAmount || 0).toLocaleString("vi-VN")} đ</td>
+          <td style="min-width:80px;"><input class="care-auto-save" type="number" min="1" step="1" value="${progress.totalSessions}" data-care-key="${row.key}" data-care-field="totalSessions" style="width:70px;" /></td>
+          <td style="min-width:80px;"><input class="care-auto-save" type="number" min="0" step="1" value="${progress.usedSessions}" data-care-key="${row.key}" data-care-field="usedSessions" style="width:70px;" /></td>
+          <td style="min-width:60px;text-align:center;" class="care-remaining-cell">${remaining}</td>
+          <td style="min-width:130px;">
+            <select class="care-auto-save" data-care-key="${row.key}" data-care-field="status" style="width:120px;">
               ${CARE_STATUS_OPTIONS.map((status) => `<option value="${status}"${progress.status === status ? " selected" : ""}>${status}</option>`).join("")}
             </select>
           </td>
-          <td><input class="care-inline-input" type="date" value="${progress.nextDate || ""}" data-care-key="${row.key}" data-care-field="nextDate" /></td>
-          <td><input class="care-inline-input" type="text" value="${progress.note || ""}" data-care-key="${row.key}" data-care-field="note" placeholder="Ghi chú" /></td>
-          <td><button class="btn secondary care-save-btn" type="button" data-care-key="${row.key}">Lưu</button></td>
+          <td style="min-width:100px;"><input class="care-auto-save" type="date" value="${progress.nextDate || ""}" data-care-key="${row.key}" data-care-field="nextDate" style="width:95px;" /></td>
+          <td style="min-width:120px;"><input class="care-auto-save" type="text" value="${progress.note || ""}" data-care-key="${row.key}" data-care-field="note" placeholder="Ghi chú" style="width:110px;" /></td>
         </tr>
       `;
     }).join("");
@@ -7068,6 +7066,40 @@ function renderCustomerCareTable() {
     : "mọi ngày";
   const keywordPart = customerCareFilterState.keyword ? ` | Từ khóa: ${customerCareFilterState.keyword}` : "";
   els.careFilterSummary.textContent = `Hiển thị ${rows.length}/${allRows.length} khách đã chốt | Ngày chốt: ${datePart}${keywordPart}`;
+
+  setTimeout(() => {
+    const autoSaveInputs = document.querySelectorAll(".care-auto-save");
+    autoSaveInputs.forEach((input) => {
+      input.addEventListener("change", (e) => {
+        const careKey = e.target.getAttribute("data-care-key");
+        const field = e.target.getAttribute("data-care-field");
+        if (!careKey || !field) return;
+        const value = e.target.value;
+        customerCareProgress[careKey] = {
+          ...(customerCareProgress[careKey] || {}),
+          [field]: field === "totalSessions" || field === "usedSessions" ? Math.max(0, Number(value || 0)) : field === "serviceScore" ? Math.max(0, Math.min(10, Number(value || 0))) : value,
+          updatedAt: Date.now()
+        };
+        saveJSON(STORAGE.customerCareProgress, customerCareProgress);
+        if (field === "usedSessions") {
+          const cellRow = e.target.closest("tr");
+          if (cellRow) {
+            const totalInput = cellRow.querySelector('[data-care-field="totalSessions"]');
+            const usedInput = cellRow.querySelector('[data-care-field="usedSessions"]');
+            if (totalInput && usedInput) {
+              const total = Math.max(1, Number(totalInput.value || 1));
+              const used = Math.max(0, Math.min(total, Number(usedInput.value || 0)));
+              const remaining = Math.max(0, total - used);
+              const remainingCell = cellRow.querySelector(".care-remaining-cell");
+              if (remainingCell) remainingCell.textContent = remaining;
+            }
+          }
+        }
+        showToast(`Đã cập nhật ${field}.`, "success");
+        logActivity("CSKH", "Cập nhật tiến độ", `Khóa KH: ${careKey}`);
+      });
+    });
+  }, 100);
 }
 
 function renderCustomerCarePage() {
@@ -7171,35 +7203,6 @@ async function exportFilteredCustomerCareToPdf() {
   showToast(`Đã xuất PDF CSKH ${rows.length} khách.`);
   logActivity("CSKH", "Xuất PDF", `Số khách: ${rows.length}`);
   renderActivityTable();
-}
-
-function saveCustomerCareProgressFromRow(careKey, tableRow) {
-  const serviceScoreInput = tableRow.querySelector('[data-care-field="serviceScore"]');
-  const totalInput = tableRow.querySelector('[data-care-field="totalSessions"]');
-  const usedInput = tableRow.querySelector('[data-care-field="usedSessions"]');
-  const statusInput = tableRow.querySelector('[data-care-field="status"]');
-  const nextDateInput = tableRow.querySelector('[data-care-field="nextDate"]');
-  const noteInput = tableRow.querySelector('[data-care-field="note"]');
-  if (!totalInput || !usedInput || !statusInput || !nextDateInput || !noteInput) return;
-
-  const totalSessions = Math.max(1, Number(totalInput.value || 1));
-  const usedSessions = Math.max(0, Math.min(totalSessions, Number(usedInput.value || 0)));
-  const serviceScore = Math.max(0, Math.min(5, Number(serviceScoreInput.value || 0)));
-
-  customerCareProgress[careKey] = {
-    ...(customerCareProgress[careKey] || {}),
-    totalSessions,
-    usedSessions,
-    serviceScore,
-    status: String(statusInput.value || "Đang chăm sóc"),
-    nextDate: String(nextDateInput.value || ""),
-    note: String(noteInput.value || "").trim(),
-    updatedAt: Date.now()
-  };
-  saveJSON(STORAGE.customerCareProgress, customerCareProgress);
-  showToast("Đã lưu tiến độ chăm sóc khách hàng.");
-  logActivity("CSKH", "Cập nhật tiến độ", `Khóa KH: ${careKey}`);
-  renderCustomerCareTable();
 }
 
 // ── End Schedule ─────────────────────────────────────────────────────────────
@@ -11965,17 +11968,7 @@ if (els.careSearch) {
 }
 
 if (els.careBody) {
-  els.careBody.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    const saveBtn = target.closest(".care-save-btn");
-    if (!(saveBtn instanceof HTMLElement)) return;
-    const careKey = saveBtn.dataset.careKey;
-    if (!careKey) return;
-    const row = saveBtn.closest("tr");
-    if (!(row instanceof HTMLTableRowElement)) return;
-    saveCustomerCareProgressFromRow(careKey, row);
-  });
+  // Auto-save moved to renderCustomerCareTable function
 }
 
 if (els.exportCareExcelBtn) {
