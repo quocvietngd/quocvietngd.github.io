@@ -2029,8 +2029,8 @@ app.innerHTML = `
             <div class="muted" id="careFilterSummary" style="display:flex;align-items:center;font-size:0.83rem;">--</div>
           </div>
 
-          <div class="tables" style="margin-top:10px;">
-            <table style="width:100%;border-collapse:collapse;table-layout:auto;">
+          <div class="tables" style="margin-top:10px; overflow-x:auto; -webkit-overflow-scrolling:touch;">
+            <table style="width:100%;border-collapse:collapse;table-layout:auto;min-width:1600px;">
               <thead>
                 <tr>
                   <th style="min-width:80px;">Ngày chốt</th>
