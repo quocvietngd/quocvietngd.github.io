@@ -2029,8 +2029,8 @@ app.innerHTML = `
             <div class="muted" id="careFilterSummary" style="display:flex;align-items:center;font-size:0.83rem;">--</div>
           </div>
 
-          <div class="tables" style="margin-top:10px; overflow-x:auto; -webkit-overflow-scrolling:touch;">
-            <table style="width:100%;border-collapse:collapse;table-layout:auto;min-width:1600px;">
+          <div class="tables" id="careTableWrap" tabindex="0" style="margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+            <table id="careTable" style="width:100%;border-collapse:collapse;table-layout:auto;min-width:1600px;">
               <thead>
                 <tr>
                   <th style="min-width:80px;">Ngày chốt</th>
@@ -2053,6 +2053,13 @@ app.innerHTML = `
               </thead>
               <tbody id="careBody"></tbody>
             </table>
+          </div>
+          <div class="schedule-scroll-controls" id="careScrollControls" aria-label="Điều khiển cuộn ngang bảng chăm sóc khách hàng">
+            <button class="schedule-scroll-btn" id="careScrollLeftBtn" type="button" title="Cuộn sang trái">◀</button>
+            <div class="schedule-bottom-scrollbar" id="careBottomScroller" aria-label="Thanh cuộn ngang bảng chăm sóc khách hàng">
+              <div class="schedule-bottom-scrollbar-inner" id="careBottomScrollerInner"></div>
+            </div>
+            <button class="schedule-scroll-btn" id="careScrollRightBtn" type="button" title="Cuộn sang phải">▶</button>
           </div>
         </section>
 
@@ -2618,6 +2625,13 @@ const els = {
   exportCareExcelBtn: document.querySelector("#exportCareExcelBtn"),
   exportCarePdfBtn: document.querySelector("#exportCarePdfBtn"),
   careFilterSummary: document.querySelector("#careFilterSummary"),
+  careTableWrap: document.querySelector("#careTableWrap"),
+  careTable: document.querySelector("#careTable"),
+  careScrollControls: document.querySelector("#careScrollControls"),
+  careScrollLeftBtn: document.querySelector("#careScrollLeftBtn"),
+  careScrollRightBtn: document.querySelector("#careScrollRightBtn"),
+  careBottomScroller: document.querySelector("#careBottomScroller"),
+  careBottomScrollerInner: document.querySelector("#careBottomScrollerInner"),
   careBody: document.querySelector("#careBody"),
   accountingSection: document.querySelector("#accountingSection"),
   accountingFolderView: document.querySelector("#accountingFolderView"),
@@ -3667,9 +3681,11 @@ let customerCareFilterState = normalizeCustomerCareFilterState(loadJSON(STORAGE.
   keyword: ""
 }));
 enableHorizontalDragScroll(els.scheduleTableWrap);
+enableHorizontalDragScroll(els.careTableWrap);
 
 let scheduleScrollSyncLock = false;
 const SCHEDULE_SCROLL_STEP = 280;
+let careScrollSyncLock = false;
 
 function scrollScheduleHorizontally(delta) {
   if (!els.scheduleTableWrap) return;
@@ -3730,6 +3746,51 @@ function initScheduleBottomScroller() {
 }
 
 initScheduleBottomScroller();
+
+function scrollCareHorizontally(delta) {
+  if (!els.careTableWrap) return;
+  els.careTableWrap.scrollBy({ left: delta, behavior: "smooth" });
+}
+
+function syncCareBottomScrollerWidth() {
+  if (!els.careTableWrap || !els.careTable || !els.careScrollControls || !els.careBottomScrollerInner) return;
+  const tableWidth = els.careTable.scrollWidth;
+  const wrapWidth = els.careTableWrap.clientWidth;
+  els.careBottomScrollerInner.style.width = `${tableWidth}px`;
+  const shouldShow = tableWidth > wrapWidth + 2;
+  els.careScrollControls.classList.toggle("hidden", !shouldShow);
+}
+
+function initCareBottomScroller() {
+  if (!els.careTableWrap || !els.careBottomScroller) return;
+
+  els.careTableWrap.addEventListener("scroll", () => {
+    if (careScrollSyncLock) return;
+    careScrollSyncLock = true;
+    els.careBottomScroller.scrollLeft = els.careTableWrap.scrollLeft;
+    careScrollSyncLock = false;
+  });
+
+  els.careBottomScroller.addEventListener("scroll", () => {
+    if (careScrollSyncLock) return;
+    careScrollSyncLock = true;
+    els.careTableWrap.scrollLeft = els.careBottomScroller.scrollLeft;
+    careScrollSyncLock = false;
+  });
+
+  els.careScrollLeftBtn?.addEventListener("click", () => {
+    scrollCareHorizontally(-SCHEDULE_SCROLL_STEP);
+  });
+
+  els.careScrollRightBtn?.addEventListener("click", () => {
+    scrollCareHorizontally(SCHEDULE_SCROLL_STEP);
+  });
+
+  window.addEventListener("resize", syncCareBottomScrollerWidth);
+  syncCareBottomScrollerWidth();
+}
+
+initCareBottomScroller();
 
 const WORKFLOW_DEPARTMENT_DETAILS = {
   "hcns": {
@@ -7066,6 +7127,7 @@ function renderCustomerCareTable() {
     : "mọi ngày";
   const keywordPart = customerCareFilterState.keyword ? ` | Từ khóa: ${customerCareFilterState.keyword}` : "";
   els.careFilterSummary.textContent = `Hiển thị ${rows.length}/${allRows.length} khách đã chốt | Ngày chốt: ${datePart}${keywordPart}`;
+  syncCareBottomScrollerWidth();
 
   setTimeout(() => {
     const autoSaveInputs = document.querySelectorAll(".care-auto-save");
