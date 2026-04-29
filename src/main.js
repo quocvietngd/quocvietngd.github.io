@@ -1989,9 +1989,10 @@ app.innerHTML = `
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button class="btn secondary" id="exportCareExcelBtn" type="button">Xuất Excel (CSV)</button>
               <button class="btn warn" id="exportCarePdfBtn" type="button">Xuất PDF CSKH</button>
-                <button class="btn secondary" id="addCareManualBtn" type="button">+ Thêm thủ công</button>
-                <button class="btn secondary" id="importCareFileBtn" type="button">Import CSV</button>
-                <input type="file" id="careImportFileInput" accept=".csv" style="display:none;" />
+              <button class="btn secondary" id="addCareManualBtn" type="button">+ Thêm thủ công</button>
+              <button class="btn secondary" id="importCareFileBtn" type="button">Import CSV</button>
+              <button class="btn secondary" id="cleanupCareLegacyBtn" type="button">Lọc dữ liệu cũ</button>
+              <input type="file" id="careImportFileInput" accept=".csv" style="display:none;" />
             </div>
           </div>
           <div class="customer-filter form-grid" style="margin-top:10px;">
@@ -2666,25 +2667,26 @@ const els = {
   resetCareFilterBtn: document.querySelector("#resetCareFilterBtn"),
   exportCareExcelBtn: document.querySelector("#exportCareExcelBtn"),
   exportCarePdfBtn: document.querySelector("#exportCarePdfBtn"),
-    addCareManualBtn: document.querySelector("#addCareManualBtn"),
-    importCareFileBtn: document.querySelector("#importCareFileBtn"),
-    careImportFileInput: document.querySelector("#careImportFileInput"),
-    careManualModal: document.querySelector("#careManualModal"),
-    closeCareManualModal: document.querySelector("#closeCareManualModal"),
-    saveCareManualBtn: document.querySelector("#saveCareManualBtn"),
-    cancelCareManualBtn: document.querySelector("#cancelCareManualBtn"),
-    careManualEditKey: document.querySelector("#careManualEditKey"),
-    careManualClosedDate: document.querySelector("#careManualClosedDate"),
-    careManualName: document.querySelector("#careManualName"),
-    careManualPhone: document.querySelector("#careManualPhone"),
-    careManualAddress: document.querySelector("#careManualAddress"),
-    careManualService: document.querySelector("#careManualService"),
-    careManualConsultant: document.querySelector("#careManualConsultant"),
-    careManualNurse: document.querySelector("#careManualNurse"),
-    careManualSaleStaff: document.querySelector("#careManualSaleStaff"),
-    careManualSource: document.querySelector("#careManualSource"),
-    careManualContractAmount: document.querySelector("#careManualContractAmount"),
-    careManualExperiencePrice: document.querySelector("#careManualExperiencePrice"),
+  addCareManualBtn: document.querySelector("#addCareManualBtn"),
+  importCareFileBtn: document.querySelector("#importCareFileBtn"),
+  cleanupCareLegacyBtn: document.querySelector("#cleanupCareLegacyBtn"),
+  careImportFileInput: document.querySelector("#careImportFileInput"),
+  careManualModal: document.querySelector("#careManualModal"),
+  closeCareManualModal: document.querySelector("#closeCareManualModal"),
+  saveCareManualBtn: document.querySelector("#saveCareManualBtn"),
+  cancelCareManualBtn: document.querySelector("#cancelCareManualBtn"),
+  careManualEditKey: document.querySelector("#careManualEditKey"),
+  careManualClosedDate: document.querySelector("#careManualClosedDate"),
+  careManualName: document.querySelector("#careManualName"),
+  careManualPhone: document.querySelector("#careManualPhone"),
+  careManualAddress: document.querySelector("#careManualAddress"),
+  careManualService: document.querySelector("#careManualService"),
+  careManualConsultant: document.querySelector("#careManualConsultant"),
+  careManualNurse: document.querySelector("#careManualNurse"),
+  careManualSaleStaff: document.querySelector("#careManualSaleStaff"),
+  careManualSource: document.querySelector("#careManualSource"),
+  careManualContractAmount: document.querySelector("#careManualContractAmount"),
+  careManualExperiencePrice: document.querySelector("#careManualExperiencePrice"),
   careFilterSummary: document.querySelector("#careFilterSummary"),
   careTableWrap: document.querySelector("#careTableWrap"),
   careTable: document.querySelector("#careTable"),
@@ -3767,6 +3769,7 @@ let scheduleFilterState = { month: today.slice(0, 7), status: "", staff: "all", 
 let metricsFilterState = { start: filterState.start, end: filterState.end, department: "all" };
 let customerCareProgress = loadJSON(STORAGE.customerCareProgress, {});
 let customerCareManualRows = loadJSON(STORAGE.customerCareManualRows, []);
+let customerCareLegacyCleaned = false;
 let customerCareFilterState = normalizeCustomerCareFilterState(loadJSON(STORAGE.customerCareFilters, {
   start: "",
   end: "",
@@ -5583,6 +5586,7 @@ function setAuthUI() {
   if (els.exportCarePdfBtn) els.exportCarePdfBtn.disabled = !can("canExportPdf");
   if (els.addCareManualBtn) els.addCareManualBtn.disabled = !canViewData;
   if (els.importCareFileBtn) els.importCareFileBtn.disabled = !canViewData;
+  if (els.cleanupCareLegacyBtn) els.cleanupCareLegacyBtn.disabled = !canViewData;
   if (els.applyInventoryStatsBtn) els.applyInventoryStatsBtn.disabled = !canManageInventory;
   if (els.resetInventoryStatsBtn) els.resetInventoryStatsBtn.disabled = !canManageInventory;
   if (els.openUserModalBtn) els.openUserModalBtn.disabled = !isAdmin;
@@ -7054,6 +7058,52 @@ function normalizeCustomerCareManualRow(item = {}, sourceType = "manual") {
   };
 }
 
+function cleanupLegacyCustomerCareData() {
+  const inputRows = Array.isArray(customerCareManualRows) ? customerCareManualRows : [];
+  const deduped = new Map();
+
+  inputRows.forEach((item) => {
+    const normalized = normalizeCustomerCareManualRow(item, item?.sourceType || "manual");
+    if (!normalized.customerName || !normalized.phone) return;
+    const prev = deduped.get(normalized.key);
+    if (!prev || Number(normalized.updatedAt || 0) >= Number(prev.updatedAt || 0)) {
+      deduped.set(normalized.key, normalized);
+    }
+  });
+
+  const cleanedRows = Array.from(deduped.values());
+  const removedRows = Math.max(0, inputRows.length - cleanedRows.length);
+  customerCareManualRows = cleanedRows;
+
+  const validKeys = new Set();
+  getClosedSchedulesForCare().forEach((item) => {
+    validKeys.add(buildCareRowKey(item.phone, item.customerName));
+  });
+  cleanedRows.forEach((item) => {
+    validKeys.add(item.key);
+  });
+
+  const beforeProgressEntries = countObjectKeys(customerCareProgress);
+  const nextProgress = {};
+  Object.entries(customerCareProgress || {}).forEach(([key, value]) => {
+    if (validKeys.has(key)) nextProgress[key] = value;
+  });
+  const removedProgress = Math.max(0, beforeProgressEntries - countObjectKeys(nextProgress));
+  customerCareProgress = nextProgress;
+
+  if (removedRows > 0) {
+    saveJSON(STORAGE.customerCareManualRows, customerCareManualRows);
+  }
+  if (removedProgress > 0) {
+    saveJSON(STORAGE.customerCareProgress, customerCareProgress);
+  }
+
+  return {
+    removedRows,
+    removedProgress
+  };
+}
+
 function getCustomerCareRows() {
   const map = new Map();
   // Source 2: Auto from signed schedules
@@ -7396,6 +7446,14 @@ function renderCustomerCareTable() {
 }
 
 function renderCustomerCarePage() {
+  if (!customerCareLegacyCleaned) {
+    const cleaned = cleanupLegacyCustomerCareData();
+    customerCareLegacyCleaned = true;
+    if (cleaned.removedRows > 0 || cleaned.removedProgress > 0) {
+      showToast(`Đã lọc dữ liệu cũ: xóa ${cleaned.removedRows} dòng CSKH lỗi/trùng, ${cleaned.removedProgress} tiến độ cũ.`, "success");
+      logActivity("CSKH", "Lọc dữ liệu cũ", `Xóa ${cleaned.removedRows} dòng, ${cleaned.removedProgress} tiến độ`);
+    }
+  }
   renderCustomerCareFilterControls();
   renderCustomerCareTable();
 }
@@ -12354,6 +12412,20 @@ if (els.importCareFileBtn && els.careImportFileInput) {
     } finally {
       els.careImportFileInput.value = "";
     }
+  });
+}
+
+if (els.cleanupCareLegacyBtn) {
+  els.cleanupCareLegacyBtn.addEventListener("click", () => {
+    const cleaned = cleanupLegacyCustomerCareData();
+    customerCareLegacyCleaned = true;
+    if (cleaned.removedRows === 0 && cleaned.removedProgress === 0) {
+      showToast("Không có dữ liệu cũ cần lọc thêm.", "info");
+      return;
+    }
+    showToast(`Đã lọc dữ liệu cũ: xóa ${cleaned.removedRows} dòng CSKH, ${cleaned.removedProgress} tiến độ.`, "success");
+    logActivity("CSKH", "Lọc dữ liệu cũ", `Xóa ${cleaned.removedRows} dòng, ${cleaned.removedProgress} tiến độ`);
+    renderCustomerCarePage();
   });
 }
 
