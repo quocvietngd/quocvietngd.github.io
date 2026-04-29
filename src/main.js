@@ -2037,6 +2037,7 @@ app.innerHTML = `
                   <th>Khách hàng</th>
                   <th>SĐT</th>
                   <th>Dịch vụ</th>
+                  <th>Điểm dịch vụ</th>
                   <th>Tư vấn</th>
                   <th>Điều dưỡng</th>
                   <th>Sale</th>
@@ -6965,9 +6966,11 @@ function getCareProgressForRow(row) {
   const saved = customerCareProgress[row.key] || {};
   const totalSessions = Math.max(1, Number(saved.totalSessions || inferCareTotalSessions(row) || 1));
   const usedSessions = Math.max(0, Math.min(totalSessions, Number(saved.usedSessions || 0)));
+  const serviceScore = Math.max(0, Math.min(5, Number(saved.serviceScore || 0)));
   return {
     totalSessions,
     usedSessions,
+    serviceScore,
     status: saved.status || "Đang chăm sóc",
     nextDate: saved.nextDate || "",
     note: saved.note || ""
@@ -7027,7 +7030,7 @@ function renderCustomerCareTable() {
   const rows = getFilteredCustomerCareRows();
 
   if (!rows.length) {
-    els.careBody.innerHTML = '<tr><td colspan="16" style="text-align:center;">Không có khách đã chốt phù hợp với bộ lọc.</td></tr>';
+    els.careBody.innerHTML = '<tr><td colspan="17" style="text-align:center;">Không có khách đã chốt phù hợp với bộ lọc.</td></tr>';
   } else {
     els.careBody.innerHTML = rows.map((row) => {
       const progress = getCareProgressForRow(row);
@@ -7038,6 +7041,7 @@ function renderCustomerCareTable() {
           <td><strong>${row.customerName || "--"}</strong><div class="muted" style="font-size:0.75rem;">${row.address || ""}</div></td>
           <td>${row.phone || "--"}</td>
           <td>${row.service || "--"}</td>
+          <td><input class="care-inline-input care-inline-number" type="number" min="0" max="5" step="0.5" value="${progress.serviceScore || ""}" data-care-key="${row.key}" data-care-field="serviceScore" placeholder="0-5" style="width:60px;" /></td>
           <td>${row.consultant || "--"}</td>
           <td>${row.nurse || "--"}</td>
           <td>${row.saleStaff || "--"}</td>
@@ -7084,6 +7088,7 @@ function exportFilteredCustomerCareToExcel() {
     "SĐT",
     "Địa chỉ",
     "Dịch vụ",
+    "Điểm dịch vụ",
     "Tư vấn",
     "Điều dưỡng",
     "Sale",
@@ -7106,6 +7111,7 @@ function exportFilteredCustomerCareToExcel() {
       row.phone || "",
       row.address || "",
       row.service || "",
+      progress.serviceScore || "",
       row.consultant || "",
       row.nurse || "",
       row.saleStaff || "",
@@ -7168,6 +7174,7 @@ async function exportFilteredCustomerCareToPdf() {
 }
 
 function saveCustomerCareProgressFromRow(careKey, tableRow) {
+  const serviceScoreInput = tableRow.querySelector('[data-care-field="serviceScore"]');
   const totalInput = tableRow.querySelector('[data-care-field="totalSessions"]');
   const usedInput = tableRow.querySelector('[data-care-field="usedSessions"]');
   const statusInput = tableRow.querySelector('[data-care-field="status"]');
@@ -7177,11 +7184,13 @@ function saveCustomerCareProgressFromRow(careKey, tableRow) {
 
   const totalSessions = Math.max(1, Number(totalInput.value || 1));
   const usedSessions = Math.max(0, Math.min(totalSessions, Number(usedInput.value || 0)));
+  const serviceScore = Math.max(0, Math.min(5, Number(serviceScoreInput.value || 0)));
 
   customerCareProgress[careKey] = {
     ...(customerCareProgress[careKey] || {}),
     totalSessions,
     usedSessions,
+    serviceScore,
     status: String(statusInput.value || "Đang chăm sóc"),
     nextDate: String(nextDateInput.value || ""),
     note: String(noteInput.value || "").trim(),
