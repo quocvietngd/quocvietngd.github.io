@@ -9755,7 +9755,31 @@ function renderReportsPage() {
 
 async function syncTelegramBeforeReportRender() {
   if (!authState.loggedIn) return;
-  const result = await runTelegramRealtimeSync(true, { fullSync: true });
+  const hasDirectConfig = Boolean(String(telegramSourceConfig.token || "").trim() && String(telegramSourceConfig.chatId || "").trim());
+
+  let result = null;
+  try {
+    result = await runTelegramRealtimeSync(true, { fullSync: true });
+  } catch (err) {
+    result = { importedRows: 0, error: err.message || String(err) };
+  }
+
+  // Fallback: if bridge queue has no new rows or bridge fails, pull directly from Telegram API.
+  if (hasDirectConfig && ((result?.importedRows || 0) === 0 || result?.error)) {
+    try {
+      const direct = await fetchAndParseTelegramMessagesDirect();
+      if (direct.importedRows > 0) {
+        showToast(`Đã đọc trực tiếp ${direct.importedRows} báo cáo mới từ Telegram.`, "success");
+      }
+      return;
+    } catch (directErr) {
+      if (result?.error) {
+        showToast(`Không thể đồng bộ Telegram: ${directErr.message || result.error}`, "warning");
+      }
+      return;
+    }
+  }
+
   if (result?.error) {
     showToast(`Không thể tự đồng bộ Telegram: ${result.error}`, "warning");
   }
