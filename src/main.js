@@ -7613,11 +7613,25 @@ function getFilteredSchedulesForMetrics() {
   const end = metricsFilterState.end;
   const dep = metricsFilterState.department;
 
+  const isMarketingRow = (item) => {
+    const source = String(item.source || "").toLowerCase();
+    const sourceHit = ["facebook", "tiktok", "google", "website", "zalo", "instagram", "ads", "marketing", "mkt"].some((key) => source.includes(key));
+    const hasMarketingOwner = Boolean(String(item.marketingName || item.marketingStaff || item.marketer || "").trim());
+    const hasMarketingMetrics = (
+      parseFlexibleNumber(item.marketingMessCount) > 0 ||
+      parseFlexibleNumber(item.marketingPhoneCount) > 0 ||
+      parseFlexibleNumber(item.marketingBookedCount) > 0 ||
+      parseFlexibleNumber(item.marketingContractCount) > 0 ||
+      parseFlexibleNumber(item.marketingRevenue) > 0 ||
+      parseFlexibleNumber(item.marketingBudget) > 0
+    );
+    return sourceHit || hasMarketingOwner || hasMarketingMetrics;
+  };
+
   const matchesDepartment = (item) => {
     if (dep === "all") return true;
     if (dep === "marketing") {
-      const source = String(item.source || "").toLowerCase();
-      return ["facebook", "tiktok", "google", "website", "zalo", "instagram", "ads"].some((key) => source.includes(key));
+      return isMarketingRow(item);
     }
     if (dep === "telesale") return Boolean(String(item.saleStaff || "").trim());
     if (dep === "consultant") return Boolean(String(item.consultant || "").trim());
@@ -7635,10 +7649,19 @@ function getFilteredSchedulesForMetrics() {
 }
 
 function buildMetricsFromRows(rows) {
-  const marketingSources = ["facebook", "tiktok", "google", "website", "zalo", "instagram", "ads", "marketing"];
   const marketingRows = rows.filter((item) => {
     const source = String(item.source || "").toLowerCase();
-    return marketingSources.some((key) => source.includes(key));
+    const sourceHit = ["facebook", "tiktok", "google", "website", "zalo", "instagram", "ads", "marketing", "mkt"].some((key) => source.includes(key));
+    const hasMarketingOwner = Boolean(String(item.marketingName || item.marketingStaff || item.marketer || "").trim());
+    const hasMarketingMetrics = (
+      parseFlexibleNumber(item.marketingMessCount) > 0 ||
+      parseFlexibleNumber(item.marketingPhoneCount) > 0 ||
+      parseFlexibleNumber(item.marketingBookedCount) > 0 ||
+      parseFlexibleNumber(item.marketingContractCount) > 0 ||
+      parseFlexibleNumber(item.marketingRevenue) > 0 ||
+      parseFlexibleNumber(item.marketingBudget) > 0
+    );
+    return sourceHit || hasMarketingOwner || hasMarketingMetrics;
   });
   const marketingPhones = new Set(marketingRows.map((item) => String(item.phone || "").trim()).filter(Boolean));
   const marketingLeadRate = rows.length ? (marketingRows.length / rows.length) * 100 : 0;
@@ -9226,7 +9249,20 @@ function getRowsByReportDepartment(departmentKey, start, end) {
     return true;
   });
   if (departmentKey === "marketing") {
-    return inRange.filter((item) => String(item.source || "").toLowerCase().includes("telegram marketing"));
+    return inRange.filter((item) => {
+      const source = String(item.source || "").toLowerCase();
+      const sourceHit = ["telegram marketing", "telegram mkt", "marketing", "mkt", "facebook", "tiktok", "google", "website", "zalo", "instagram", "ads"].some((key) => source.includes(key));
+      const hasMarketingOwner = Boolean(String(item.marketingName || item.marketingStaff || item.marketer || "").trim());
+      const hasMarketingMetrics = (
+        parseFlexibleNumber(item.marketingMessCount) > 0 ||
+        parseFlexibleNumber(item.marketingPhoneCount) > 0 ||
+        parseFlexibleNumber(item.marketingBookedCount) > 0 ||
+        parseFlexibleNumber(item.marketingContractCount) > 0 ||
+        parseFlexibleNumber(item.marketingRevenue) > 0 ||
+        parseFlexibleNumber(item.marketingBudget) > 0
+      );
+      return sourceHit || hasMarketingOwner || hasMarketingMetrics;
+    });
   }
   if (departmentKey === "telesale") return inRange.filter((item) => String(item.saleStaff || "").trim());
   if (departmentKey === "consultant") return inRange.filter((item) => String(item.consultant || "").trim());
