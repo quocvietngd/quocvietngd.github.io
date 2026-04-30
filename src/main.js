@@ -5246,6 +5246,37 @@ function toDateKey(dateObj) {
   return new Date(dateObj.getTime() - dateObj.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
+function normalizeScheduleDateKey(rawDate) {
+  const value = String(rawDate || "").trim();
+  if (!value) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+
+  const dmy = value.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (dmy) {
+    const dd = dmy[1].padStart(2, "0");
+    const mm = dmy[2].padStart(2, "0");
+    const yyyy = dmy[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  const ymd = value.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+  if (ymd) {
+    const yyyy = ymd[1];
+    const mm = ymd[2].padStart(2, "0");
+    const dd = ymd[3].padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return toDateKey(parsed);
+  }
+  return "";
+}
+
 function getPresetRange(preset) {
   const now = new Date();
   const end = toDateKey(now);
@@ -8199,9 +8230,7 @@ function normalizeImportedScheduleRow(raw) {
   });
 
   const dateRaw = firstValue(sourceObj, ["registrationdate", "date", "ngay", "ngày trải nghiệm", "ngay trai nghiem"]);
-  const normalizedDate = String(dateRaw || "").includes("-")
-    ? String(dateRaw).slice(0, 10)
-    : toDateKey(new Date(dateRaw || Date.now()));
+  const normalizedDate = normalizeScheduleDateKey(dateRaw) || today;
 
   const statusRaw = String(firstValue(sourceObj, ["status", "tình trạng", "tinh trang"]) || "").toLowerCase();
   const status = statusRaw.includes("hủy") || statusRaw.includes("huy") || statusRaw === "cancelled"
@@ -8857,7 +8886,7 @@ function getMarketingReportRows(start, end) {
   const bucket = new Map();
 
   rows.forEach((item) => {
-    const date = item.registrationDate || "";
+    const date = normalizeScheduleDateKey(item.registrationDate) || today;
     const marketingName = getMarketingOwnerName(item);
     if (!marketingName) return;
     const key = `${date}||${marketingName}`;
@@ -9017,7 +9046,7 @@ function getConsultantReportRows(start, end) {
   const bucket = new Map();
 
   rows.forEach((item) => {
-    const date = String(item.registrationDate || today);
+    const date = normalizeScheduleDateKey(item.registrationDate) || today;
     const consultantName = String(item.consultant || "").trim();
     if (!consultantName) return;
 
@@ -9029,13 +9058,14 @@ function getConsultantReportRows(start, end) {
       signedCount: 0,
       postponedCount: 0,
       revenue: 0,
-      receivable: 0
+      receivable: 0,
+      avgInvoice: 0
     };
 
     const contractAmount = Number(item.contractAmount || 0);
     const receivableAmount = Math.max(0, parseVietnameseAmount(item.receivableAmount));
     const status = String(item.status || "").toLowerCase();
-    const noteText = normalizeTextForMatching(item.note || "");
+    const noteText = normalizeTextForMatching(item.note || item.motherCondition || "");
 
     prev.receivedCount += 1;
     if (contractAmount > 0) {
@@ -9054,14 +9084,14 @@ function getConsultantReportRows(start, end) {
   });
 
   const baseRows = Array.from(bucket.values()).map((row) => {
-      const signRate = row.receivedCount ? (row.signedCount / row.receivedCount) * 100 : 0;
-      const avgInvoice = row.signedCount ? row.revenue / row.signedCount : 0;
-      return {
-        ...row,
-        signRate,
-        avgInvoice
-      };
-    });
+    const signRate = row.receivedCount ? (row.signedCount / row.receivedCount) * 100 : 0;
+    const avgInvoice = row.signedCount ? row.revenue / row.signedCount : 0;
+    return {
+      ...row,
+      signRate,
+      avgInvoice
+    };
+  });
 
   const filteredRows = consultantReportState.consultant
     ? baseRows.filter((row) => row.consultantName === consultantReportState.consultant)
@@ -9143,7 +9173,7 @@ function getTelesaleReportRows(start, end) {
   rows.forEach((item) => {
     const saleName = String(item.saleStaff || "").trim();
     if (!saleName) return;
-    const date = item.registrationDate || "";
+    const date = normalizeScheduleDateKey(item.registrationDate) || today;
     const key = `${date}||${saleName}`;
     if (!bucket.has(key)) {
       bucket.set(key, {
@@ -9254,7 +9284,7 @@ function renderTelesaleReportTable(rows) {
 
 function getRowsByReportDepartment(departmentKey, start, end) {
   const inRange = schedules.filter((item) => {
-    const d = item.registrationDate || "";
+    const d = normalizeScheduleDateKey(item.registrationDate) || "";
     if (start && d < start) return false;
     if (end && d > end) return false;
     return true;
