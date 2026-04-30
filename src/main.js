@@ -196,6 +196,8 @@ const STORAGE = {
   usersSyncEndpoint: "nora_users_sync_endpoint_v1",
   usersPendingSync: "nora_users_pending_sync_v1",
   criticalStatePendingSync: "nora_critical_state_pending_sync_v1",
+  reportOutbox: "nora_report_outbox_v1",
+  reportOutboxLastFlushAt: "nora_report_outbox_last_flush_at_v1",
   auth: "nora_auth_v1",
   loginPrefs: "nora_login_prefs_v1",
   users: "nora_users_v1",
@@ -210,7 +212,7 @@ const STORAGE = {
   schedule: "nora_schedule_v1",
   customerCareProgress: "nora_customer_care_progress_v1",
   customerCareFilters: "nora_customer_care_filters_v1",
-    customerCareManualRows: "nora_care_manual_rows_v1",
+  customerCareManualRows: "nora_care_manual_rows_v1",
   accountingCashflow: "nora_accounting_cashflow_v1",
   accountingCashflowFilters: "nora_accounting_cashflow_filters_v1",
   accountingAttendance: "nora_accounting_attendance_v1",
@@ -2727,7 +2729,16 @@ let activityLogs = loadJSON(STORAGE.activities, []);
 let recycleBin = loadJSON(STORAGE.recycleBin, []);
 let hrFiles = loadJSON(STORAGE.hrFiles, {});
 let authState = loadJSON(STORAGE.auth, { loggedIn: false, role: null, username: null, userId: null });
-let reports = loadJSON(STORAGE.reports, seedReports);
+let reports = (Array.isArray(loadJSON(STORAGE.reports, seedReports)) ? loadJSON(STORAGE.reports, seedReports) : seedReports).map((row) => normalizeReportRow(row));
+let reportOutbox = (Array.isArray(loadJSON(STORAGE.reportOutbox, [])) ? loadJSON(STORAGE.reportOutbox, []) : []).map((item) => ({
+  ...item,
+  row: normalizeReportRow(item?.row || {}),
+  retries: Math.max(0, Number(item?.retries || 0)),
+  enqueuedAt: Number(item?.enqueuedAt || Date.now())
+}));
+let reportOutboxTimer = null;
+let reportOutboxFlushInFlight = false;
+let reportOutboxOnlineListenerBound = false;
 let dataSourceConfig = normalizeDataSourceConfig(loadJSON(STORAGE.dataSource, { type: "local", url: "" }));
 let usersSyncTimer = null;
 let usersSyncPromise = null;
@@ -12508,7 +12519,7 @@ els.logoUpload.addEventListener("change", () => {
 
 async function fetchRemoteReports(type, url) {
   if (!url) throw new Error("Thiếu endpoint URL");
-  const response = await fetch(url, { method: "GET" });
+  const response = await fetch(url, { method: "GET", cache: "no-store" });
   if (!response.ok) throw new Error(`Không thể GET từ ${type}`);
 
   if (type === "sheet") {
@@ -12516,7 +12527,7 @@ async function fetchRemoteReports(type, url) {
     const text = await response.text();
     const parsed = parseCsvText(text);
     // Normalize CSV data to report format
-    return parsed.map(row => ({
+    return parsed.map(row => normalizeReportRow({
       date: row.date || row.ngay || today,
       department: row.department || row.phongban || row.bophan || "Chưa xác định",
       completion: Number(row.completion || row.hoanthanh || row.hoan_thanh || 0),
@@ -12529,23 +12540,41 @@ async function fetchRemoteReports(type, url) {
     // Handle JSON for API
     const data = await response.json();
     if (!Array.isArray(data)) throw new Error("Dữ liệu trả về phải là mảng report");
-    return data;
+    return data.map((row) => normalizeReportRow(row));
   }
 }
 
 async function postRemoteReport(type, url, payload) {
   if (!url) throw new Error("Thiếu endpoint URL");
+  const normalizedPayload = normalizeReportRow(payload || {});
   if (type === "sheet") {
     // For Google Sheets, POST is not supported in this simple implementation
     // Would require Google Apps Script web app
     throw new Error("POST không hỗ trợ cho Google Sheets. Chỉ dùng để đồng bộ dữ liệu.");
   }
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) throw new Error(`Không thể POST lên ${type}`);
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(normalizedPayload),
+        signal: controller.signal,
+        keepalive: true
+      });
+      if (!response.ok) {
+        throw new Error(`Không thể POST lên ${type} (${response.status})`);
+      }
+      return;
+    } catch (err) {
+      lastError = err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw new Error(lastError?.message || `Không thể POST lên ${type}`);
 }
 
 els.loginBtn.addEventListener("click", async () => {
@@ -12927,11 +12956,18 @@ syncCriticalStateFromRemote(false).then((updated) => {
 });
 startUsersAutoSync();
 startCriticalStateAutoSync();
+startReportOutboxAutoFlush();
+flushReportOutbox().catch(() => {
+  // Keep queue for next retry cycle.
+});
 
 if (els.sourceType) {
   els.sourceType.addEventListener("change", () => {
     saveDataSourceConfigFromInputs();
     rememberUsersSyncEndpointFromSource();
+    flushReportOutbox().catch(() => {
+      // Keep queue for next retry cycle.
+    });
   });
 }
 
@@ -12939,6 +12975,9 @@ if (els.sourceUrl) {
   els.sourceUrl.addEventListener("change", () => {
     saveDataSourceConfigFromInputs();
     rememberUsersSyncEndpointFromSource();
+    flushReportOutbox().catch(() => {
+      // Keep queue for next retry cycle.
+    });
   });
 }
 
@@ -12956,13 +12995,18 @@ els.syncBtn.addEventListener("click", async () => {
 
   try {
     if (type === "local") {
-      els.submitStatus.textContent = "Đang dùng dữ liệu local.";
+      const flushed = await flushReportOutbox();
+      els.submitStatus.textContent = flushed.left > 0
+        ? `Đang dùng dữ liệu local. Còn ${flushed.left} báo cáo chờ gửi.`
+        : "Đang dùng dữ liệu local.";
       return;
     }
 
     const remoteReports = await fetchRemoteReports(type, url);
-    reports = remoteReports;
-    saveJSON(STORAGE.reports, reports);
+    const mergedReports = mergeReportsByLatest(remoteReports, reports, reportOutbox.map((item) => item.row));
+    saveReportsLocal(mergedReports);
+
+    const flushed = await flushReportOutbox();
     if (type === "api") {
       try {
         await syncUsersFromRemote(false);
@@ -12971,10 +13015,15 @@ els.syncBtn.addEventListener("click", async () => {
       }
     }
     renderAll();
-    showToast("Đồng bộ thành công.");
+    if (flushed.left > 0) {
+      showToast(`Đồng bộ một phần: còn ${flushed.left} báo cáo chờ gửi khi server sẵn sàng.`, "warning");
+    } else {
+      showToast("Đồng bộ thành công.");
+    }
     logActivity("Dữ liệu", "Đồng bộ dữ liệu", `Nguồn: ${type} | Endpoint: ${url}`);
   } catch (err) {
-    showToast(`Lỗi đồng bộ: ${err.message}`, "error");
+    showToast(`Lỗi đồng bộ remote, vẫn giữ dữ liệu local: ${err.message}`, "warning");
+    renderAll();
   }
 });
 
@@ -13035,6 +13084,136 @@ function saveTelegramInputs() {
   if (els.telegramChatId) telegramSourceConfig.chatId = els.telegramChatId.value.trim();
   if (els.telegramWebhookBaseUrl) telegramSourceConfig.webhookBaseUrl = els.telegramWebhookBaseUrl.value.trim();
   saveTelegramSourceConfig();
+}
+
+function getReportRowId(row = {}) {
+  const explicit = String(row.reportId || row.id || "").trim();
+  if (explicit) return explicit;
+  const date = String(row.date || "").slice(0, 10);
+  const department = String(row.department || "").trim();
+  const submitter = String(row.submitter || "").trim();
+  const completion = Number(row.completion || 0);
+  const quality = Number(row.quality || 0);
+  const issues = Number(row.issues || 0);
+  const updatedAt = Number(row.updatedAt || 0);
+  return `${date}|${department}|${submitter}|${completion}|${quality}|${issues}|${updatedAt}`;
+}
+
+function normalizeReportRow(row = {}) {
+  return {
+    reportId: getReportRowId(row),
+    date: String(row.date || today).slice(0, 10),
+    department: String(row.department || "Chưa xác định").trim() || "Chưa xác định",
+    submitter: String(row.submitter || "Unknown").trim() || "Unknown",
+    completion: Math.max(0, Math.min(100, Number(row.completion || 0))),
+    quality: Math.max(0, Math.min(100, Number(row.quality || 0))),
+    issues: Math.max(0, Number(row.issues || 0)),
+    updatedAt: Number(row.updatedAt || Date.now())
+  };
+}
+
+function saveReportsLocal(nextReports = reports) {
+  reports = (Array.isArray(nextReports) ? nextReports : []).map((row) => normalizeReportRow(row));
+  saveJSON(STORAGE.reports, reports);
+}
+
+function mergeReportsByLatest(...lists) {
+  const bucket = new Map();
+  lists.forEach((list) => {
+    (Array.isArray(list) ? list : []).forEach((row) => {
+      const normalized = normalizeReportRow(row);
+      const key = normalized.reportId;
+      const prev = bucket.get(key);
+      if (!prev || Number(normalized.updatedAt || 0) >= Number(prev.updatedAt || 0)) {
+        bucket.set(key, normalized);
+      }
+    });
+  });
+  return Array.from(bucket.values()).sort((a, b) => {
+    if ((b.date || "") !== (a.date || "")) return (b.date || "").localeCompare(a.date || "");
+    return Number(b.updatedAt || 0) - Number(a.updatedAt || 0);
+  });
+}
+
+function saveReportOutboxLocal() {
+  saveJSON(STORAGE.reportOutbox, reportOutbox);
+}
+
+function enqueueReportOutbox(row, reason = "remote-error") {
+  const normalized = normalizeReportRow(row);
+  const idx = reportOutbox.findIndex((item) => String(item?.row?.reportId || "") === normalized.reportId);
+  if (idx >= 0) {
+    reportOutbox[idx] = {
+      ...reportOutbox[idx],
+      row: normalized,
+      reason,
+      updatedAt: Date.now()
+    };
+  } else {
+    reportOutbox.unshift({
+      row: normalized,
+      reason,
+      retries: 0,
+      enqueuedAt: Date.now(),
+      updatedAt: Date.now()
+    });
+  }
+  saveReportOutboxLocal();
+}
+
+async function flushReportOutbox() {
+  if (reportOutboxFlushInFlight) return { sent: 0, left: reportOutbox.length };
+  const cfg = getCurrentDataSourceConfig();
+  if (cfg.type === "local" || !cfg.url) return { sent: 0, left: reportOutbox.length };
+  if (!reportOutbox.length) return { sent: 0, left: 0 };
+
+  reportOutboxFlushInFlight = true;
+  let sent = 0;
+  try {
+    const pending = [...reportOutbox];
+    const failed = [];
+    for (const entry of pending) {
+      try {
+        await postRemoteReport(cfg.type, cfg.url, entry.row);
+        sent += 1;
+      } catch (err) {
+        failed.push({
+          ...entry,
+          retries: Math.max(0, Number(entry.retries || 0)) + 1,
+          lastError: String(err?.message || err || "unknown"),
+          updatedAt: Date.now()
+        });
+      }
+    }
+    reportOutbox = failed;
+    saveReportOutboxLocal();
+    localStorage.setItem(STORAGE.reportOutboxLastFlushAt, String(Date.now()));
+    return { sent, left: failed.length };
+  } finally {
+    reportOutboxFlushInFlight = false;
+  }
+}
+
+function startReportOutboxAutoFlush() {
+  if (reportOutboxTimer) clearInterval(reportOutboxTimer);
+  reportOutboxTimer = setInterval(() => {
+    if (document.hidden) return;
+    flushReportOutbox().then((result) => {
+      if (result.sent > 0) {
+        showToast(`Đã gửi lại ${result.sent} báo cáo chờ đồng bộ.`, "success");
+      }
+    }).catch(() => {
+      // Keep queue for next retry cycle.
+    });
+  }, 15000);
+
+  if (reportOutboxOnlineListenerBound) return;
+  reportOutboxOnlineListenerBound = true;
+  window.addEventListener("online", () => {
+    flushReportOutbox().catch(() => {
+      // Keep queue for next retry cycle.
+    });
+  });
 }
 
 function stopTelegramRealtimeSync() {
@@ -13236,7 +13415,8 @@ els.reportForm.addEventListener("submit", async (event) => {
   }
 
   const formData = new FormData(els.reportForm);
-  const newRow = {
+  const newRow = normalizeReportRow({
+    reportId: `rp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     date: formData.get("reportDate") || els.reportDate.value,
     department: formData.get("department") || document.querySelector("#department").value,
     submitter: formData.get("submitter") || document.querySelector("#submitter").value,
@@ -13244,20 +13424,29 @@ els.reportForm.addEventListener("submit", async (event) => {
     quality: Number(formData.get("quality") || document.querySelector("#quality").value),
     issues: Number(formData.get("issues") || document.querySelector("#issues").value),
     updatedAt: Date.now()
-  };
+  });
 
-  reports.push(newRow);
-  saveJSON(STORAGE.reports, reports);
+  saveReportsLocal(mergeReportsByLatest(reports, [newRow]));
   logActivity("Quy trình", "Nộp báo cáo", `${newRow.department} | ${newRow.submitter} | ${newRow.date}`);
 
   try {
     const type = els.sourceType.value;
     const url = els.sourceUrl.value.trim();
     saveDataSourceConfigFromInputs();
-    if (type !== "local") await postRemoteReport(type, url, newRow);
-    showToast("Nộp báo cáo thành công.");
+    if (type !== "local") {
+      await postRemoteReport(type, url, newRow);
+      const flushed = await flushReportOutbox();
+      if (flushed.sent > 0) {
+        showToast(`Nộp báo cáo thành công. Đã gửi thêm ${flushed.sent} báo cáo chờ trước đó.`, "success");
+      } else {
+        showToast("Nộp báo cáo thành công.", "success");
+      }
+    } else {
+      showToast("Nộp báo cáo thành công (local).", "success");
+    }
   } catch (err) {
-    showToast(`Lưu local thành công, nhưng gửi remote thất bại: ${err.message}`, "warning");
+    enqueueReportOutbox(newRow, "submit-failed");
+    showToast(`Đã lưu local. Remote tạm lỗi, hệ thống sẽ tự gửi lại: ${err.message}`, "warning");
   }
 
   els.reportForm.reset();
