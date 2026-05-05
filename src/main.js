@@ -3615,16 +3615,43 @@ async function syncUsersFromRemote(showToastOnSuccess = false) {
     if (!endpointUrl) return false;
     const storageReady = await ensureDurableCloudStorage(showToastOnSuccess);
     if (!storageReady) return false;
+    const hasPendingUsersSync = Boolean(loadJSON(STORAGE.usersPendingSync, false));
+
+    // Never pull and overwrite local users while we still have unsynced local changes.
+    if (hasPendingUsersSync && users.length) {
+      try {
+        await pushRemoteUsers(endpointUrl, users);
+      } catch (err) {
+        showToast(`Cloud users chưa cập nhật, tạm giữ dữ liệu local để tránh mất dữ liệu: ${err.message}`, "warning");
+        return false;
+      }
+
+      const confirmedUsers = await fetchRemoteUsers(endpointUrl);
+      if (!confirmedUsers.length) {
+        showToast("Cloud users trả về rỗng, tạm giữ dữ liệu local để tránh mất dữ liệu.", "warning");
+        return false;
+      }
+
+      users = confirmedUsers;
+      saveJSON(STORAGE.users, users);
+      saveJSON(STORAGE.usersPendingSync, false);
+      const forcedLogout = enforceActiveSessionAccess();
+      if (forcedLogout) return true;
+      if (showToastOnSuccess) {
+        showToast("Đã đồng bộ users local lên cloud thành công.", "success");
+      }
+      return true;
+    }
+
     const remoteUsers = await fetchRemoteUsers(endpointUrl);
     if (!remoteUsers.length) return false;
 
-    const hasPendingUsersSync = Boolean(loadJSON(STORAGE.usersPendingSync, false));
     const shouldRecoverFromReset =
       users.length &&
       hasRicherLocalUsers(users, remoteUsers) &&
       isDefaultUsersSnapshot(remoteUsers);
 
-    if ((hasPendingUsersSync && users.length && remoteUsers.length < users.length) || shouldRecoverFromReset) {
+    if (shouldRecoverFromReset) {
       try {
         await pushRemoteUsers(endpointUrl, users);
         saveJSON(STORAGE.usersPendingSync, false);
@@ -3685,6 +3712,12 @@ async function persistUsersToRemote(actionLabel = "") {
     if (actionLabel) {
       logActivity("Nhân sự", "Cảnh báo đồng bộ cloud", `${actionLabel} | ${err.message}`);
     }
+    // Trigger an immediate background retry instead of waiting for next interval.
+    setTimeout(() => {
+      syncUsersFromRemote(false).catch(() => {
+        // Keep local fallback and retry in the next cycle.
+      });
+    }, 2500);
     return false;
   }
 }
