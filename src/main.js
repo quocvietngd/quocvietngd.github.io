@@ -9131,15 +9131,23 @@ function renderMarketingReportTable(rows) {
         <td style="text-align:center;">${row.contractCount.toLocaleString("vi-VN")}</td>
         <td style="text-align:right;">${formatMoney(row.revenue)}</td>
         <td style="text-align:center;">${row.costRate.toFixed(1)}%</td>
-        <td style="text-align:center;">
+        <td style="position:relative;text-align:center;">
           <button
-            class="btn warn"
+            class="btn secondary user-action-toggle"
             type="button"
-            data-report-delete-type="marketing"
-            data-report-date="${row.date}"
-            data-report-name="${encodeURIComponent(row.marketingName)}"
+            title="Thao tác"
+            data-report-action-toggle="mk__${row.date}__${encodeURIComponent(row.marketingName)}"
             style="padding:4px 10px;font-size:0.78rem;"
-          >Xóa</button>
+          >...</button>
+          <div class="user-action-menu hidden" data-report-action-menu="mk__${row.date}__${encodeURIComponent(row.marketingName)}">
+            <button
+              class="user-action-item user-action-item--danger"
+              type="button"
+              data-report-delete-type="marketing"
+              data-report-date="${row.date}"
+              data-report-name="${encodeURIComponent(row.marketingName)}"
+            >🗑 Xóa</button>
+          </div>
         </td>
       </tr>
     `).join("")
@@ -9322,15 +9330,23 @@ function renderConsultantReportTable(detailRows) {
         <td style="text-align:right;">${formatMoney(row.revenue)}</td>
         <td style="text-align:right;">${formatMoney(row.receivable)}</td>
         <td style="text-align:right;">${formatMoney(row.avgInvoice)}</td>
-        <td style="text-align:center;">
+        <td style="position:relative;text-align:center;">
           <button
-            class="btn warn"
+            class="btn secondary user-action-toggle"
             type="button"
-            data-report-delete-type="consultant"
-            data-report-date="${row.date}"
-            data-report-name="${encodeURIComponent(row.consultantName)}"
+            title="Thao tác"
+            data-report-action-toggle="cs__${row.date}__${encodeURIComponent(row.consultantName)}"
             style="padding:4px 10px;font-size:0.78rem;"
-          >Xóa</button>
+          >...</button>
+          <div class="user-action-menu hidden" data-report-action-menu="cs__${row.date}__${encodeURIComponent(row.consultantName)}">
+            <button
+              class="user-action-item user-action-item--danger"
+              type="button"
+              data-report-delete-type="consultant"
+              data-report-date="${row.date}"
+              data-report-name="${encodeURIComponent(row.consultantName)}"
+            >🗑 Xóa</button>
+          </div>
         </td>
       </tr>
     `).join("")
@@ -9483,15 +9499,23 @@ function renderTelesaleReportTable(rows) {
         <td style="text-align:center;">${row.cancelledCount.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${row.bookingRate.toFixed(1)}%</td>
         <td style="text-align:right;">${row.revenue.toLocaleString("vi-VN")} đ</td>
-        <td style="text-align:center;">
+        <td style="position:relative;text-align:center;">
           <button
-            class="btn warn"
+            class="btn secondary user-action-toggle"
             type="button"
-            data-report-delete-type="telesale"
-            data-report-date="${row.date}"
-            data-report-name="${encodeURIComponent(row.saleName)}"
+            title="Thao tác"
+            data-report-action-toggle="ts__${row.date}__${encodeURIComponent(row.saleName)}"
             style="padding:4px 10px;font-size:0.78rem;"
-          >Xóa</button>
+          >...</button>
+          <div class="user-action-menu hidden" data-report-action-menu="ts__${row.date}__${encodeURIComponent(row.saleName)}">
+            <button
+              class="user-action-item user-action-item--danger"
+              type="button"
+              data-report-delete-type="telesale"
+              data-report-date="${row.date}"
+              data-report-name="${encodeURIComponent(row.saleName)}"
+            >🗑 Xóa</button>
+          </div>
         </td>
       </tr>
     `).join("")
@@ -11923,8 +11947,22 @@ if (els.reportsSection) {
   els.reportsSection.addEventListener("click", async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+    const reportActionToggle = target.closest("[data-report-action-toggle]");
+    if (reportActionToggle instanceof HTMLElement) {
+      const actionKey = String(reportActionToggle.dataset.reportActionToggle || "").trim();
+      if (!actionKey) return;
+      const matchedMenu = Array.from(els.reportsSection.querySelectorAll("[data-report-action-menu]")).find((el) => {
+        return el instanceof HTMLElement && String(el.dataset.reportActionMenu || "").trim() === actionKey;
+      });
+      if (matchedMenu instanceof HTMLElement) {
+        openActionMenuAtToggle(reportActionToggle, matchedMenu);
+      }
+      return;
+    }
+
     const deleteBtn = target.closest("[data-report-delete-type]");
     if (deleteBtn instanceof HTMLElement) {
+      hideAllActionMenus();
       const reportType = String(deleteBtn.dataset.reportDeleteType || "").trim();
       const reportDate = String(deleteBtn.dataset.reportDate || "").trim();
       const encodedName = String(deleteBtn.dataset.reportName || "").trim();
