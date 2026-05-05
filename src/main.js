@@ -5114,8 +5114,18 @@ function attachNewsDepartment() {
   showToast(`Đã gắn phòng ban: ${department}.`, "info");
 }
 
+const actionMenuMountPoints = new WeakMap();
+
 function hideAllActionMenus() {
   document.querySelectorAll(".user-action-menu").forEach((menu) => {
+    const mountPoint = actionMenuMountPoints.get(menu);
+    if (mountPoint?.parent instanceof Node) {
+      if (mountPoint.nextSibling instanceof Node && mountPoint.parent.contains(mountPoint.nextSibling)) {
+        mountPoint.parent.insertBefore(menu, mountPoint.nextSibling);
+      } else {
+        mountPoint.parent.appendChild(menu);
+      }
+    }
     menu.classList.add("hidden");
     menu.classList.remove("user-action-menu-floating");
     menu.style.left = "";
@@ -5126,10 +5136,18 @@ function hideAllActionMenus() {
 
 function openActionMenuAtToggle(toggleBtn, menuEl) {
   if (!(toggleBtn instanceof HTMLElement) || !(menuEl instanceof HTMLElement)) return;
+  const ownerCell = menuEl.closest("td");
+  if (!actionMenuMountPoints.has(menuEl)) {
+    actionMenuMountPoints.set(menuEl, {
+      parent: menuEl.parentNode,
+      nextSibling: menuEl.nextSibling
+    });
+  }
   hideAllActionMenus();
+  document.body.appendChild(menuEl);
   menuEl.classList.remove("hidden");
   menuEl.classList.add("user-action-menu-floating");
-  menuEl.closest("td")?.classList.add("action-menu-open-cell");
+  ownerCell?.classList.add("action-menu-open-cell");
 
   const rect = toggleBtn.getBoundingClientRect();
   const menuWidth = menuEl.offsetWidth || 170;
