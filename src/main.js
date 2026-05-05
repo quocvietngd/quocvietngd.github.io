@@ -8108,6 +8108,9 @@ function canonicalizeTelegramFieldKey(key) {
   const aliases = {
     nhay: "ngay",
     ngayy: "ngay",
+    bau: "dichvu",
+    ss: "dichvu",
+    tambe: "dichvu",
     dvu: "dichvu",
     dv: "dichvu",
     tenkh: "tenkhach",
