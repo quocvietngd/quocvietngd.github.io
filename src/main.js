@@ -8554,6 +8554,13 @@ function normalizeImportedScheduleRow(raw) {
   ).trim();
 
   const telegramUpdateId = String(firstValue(sourceObj, ["telegramupdateid"]) || "").trim();
+  const telegramMessageId = String(firstValue(sourceObj, ["telegrammessageid"]) || "").trim();
+  const telegramChatId = String(firstValue(sourceObj, ["telegramchatid"]) || "").trim();
+  const telegramRowId = telegramChatId && telegramMessageId
+    ? `tgm-${telegramChatId}:${telegramMessageId}`
+    : telegramUpdateId
+      ? `tg-${telegramUpdateId}`
+      : `sc-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
   const serviceText = String(firstValue(sourceObj, ["service", "dịch vụ", "dich vu"]) || "").trim();
   const sessionDurationText = String(firstValue(sourceObj, ["sessionduration", "thời gian", "thoi gian"]) || "").trim();
   const noteText = String(firstValue(sourceObj, ["note", "ghi chú", "ghi chu"]) || "").trim();
@@ -8568,7 +8575,7 @@ function normalizeImportedScheduleRow(raw) {
   const receivableAmount = explicitReceivableAmount > 0 ? explicitReceivableAmount : extractReceivableAmountFromNote(noteText);
 
   return {
-    id: telegramUpdateId ? `tg-${telegramUpdateId}` : `sc-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+    id: telegramRowId,
     registrationDate: normalizedDate,
     appointmentTime: String(firstValue(sourceObj, ["appointmenttime", "time", "gio", "giờ trải nghiệm", "gio trai nghiem"]) || "").trim(),
     customerName,
@@ -8615,6 +8622,17 @@ function normalizeImportedScheduleRow(raw) {
     updatedAt: Date.now(),
     createdAt: Date.now()
   };
+}
+
+function getEffectiveNurseName(item) {
+  const explicitName = getCanonicalNurseName(item?.nurse);
+  if (explicitName) return explicitName;
+  const source = String(item?.source || "").toLowerCase();
+  const route = String(item?.telegramRoute || "").toLowerCase();
+  if (source.includes("telegram") && (source.includes("nurse") || route === "nurse")) {
+    return "Chưa rõ điều dưỡng";
+  }
+  return "";
 }
 
 function normalizeDeletedScheduleIdMap(rawMap) {
@@ -8959,7 +8977,7 @@ function getNurseDetailedReportMatrix(start, end) {
   const bucketByNurse = new Map();
 
   rows.forEach((item) => {
-    const nurseName = getCanonicalNurseName(item.nurse);
+    const nurseName = getEffectiveNurseName(item);
     if (!nurseName) return;
     const bucket = getNurseServiceBucket(item);
     if (!bucket) return;
@@ -9038,7 +9056,7 @@ function getNurseDetailedReportMatrix(start, end) {
 
 function showNurseDailyDetailModal(nurseName, start, end) {
   const shifts = schedules.filter((item) => {
-    const name = getCanonicalNurseName(item.nurse);
+    const name = getEffectiveNurseName(item);
     if (name !== nurseName) return false;
     if (item.status !== "completed") return false;
     const d = item.registrationDate || "";
@@ -9781,7 +9799,7 @@ function getRowsByReportDepartment(departmentKey, start, end) {
   }
   if (departmentKey === "telesale") return inRange.filter((item) => String(item.saleStaff || "").trim());
   if (departmentKey === "consultant") return inRange.filter((item) => String(item.consultant || "").trim());
-  if (departmentKey === "nurse") return inRange.filter((item) => getCanonicalNurseName(item.nurse));
+  if (departmentKey === "nurse") return inRange.filter((item) => getEffectiveNurseName(item));
   return inRange;
 }
 
