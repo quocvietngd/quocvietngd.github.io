@@ -11886,9 +11886,10 @@ els.userBody.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("click", (e) => {
-  if (!e.target.classList.contains("user-action-toggle")) {
-    hideAllActionMenus();
-  }
+  const target = e.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.closest(".user-action-toggle") || target.closest(".user-action-menu")) return;
+  hideAllActionMenus();
 });
 
 els.openCustomerModalBtn.addEventListener("click", openCustomerModal);
@@ -13437,15 +13438,20 @@ els.saveUserBtn.addEventListener("click", async () => {
   renderAll();
 });
 
-els.userBody.addEventListener("click", async (event) => {
+document.addEventListener("click", async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
+
+  const actionEl = target.closest(
+    ".user-action-toggle[data-user-id], .user-edit-btn[data-user-id], .user-suspend-btn[data-user-id], .user-delete-btn[data-user-id]"
+  );
+  if (!(actionEl instanceof HTMLElement)) return;
   if (!can("canManageUsers")) return;
 
-  const userId = target.dataset.userId;
+  const userId = actionEl.dataset.userId;
   if (!userId) return;
 
-  if (target.classList.contains("user-edit-btn")) {
+  if (actionEl.classList.contains("user-edit-btn")) {
     // close dropdown
     document.querySelectorAll(".user-action-menu").forEach((m) => m.classList.add("hidden"));
     const user = users.find((u) => u.id === userId);
@@ -13475,14 +13481,14 @@ els.userBody.addEventListener("click", async (event) => {
     return;
   }
 
-  if (target.classList.contains("user-action-toggle")) {
+  if (actionEl.classList.contains("user-action-toggle")) {
     // close all other open menus first
     const menu = document.querySelector(`.user-action-menu[data-user-id="${userId}"]`);
-    if (menu instanceof HTMLElement) openActionMenuAtToggle(target, menu);
+    if (menu instanceof HTMLElement) openActionMenuAtToggle(actionEl, menu);
     return;
   }
 
-  if (target.classList.contains("user-suspend-btn")) {
+  if (actionEl.classList.contains("user-suspend-btn")) {
     // close dropdown
     hideAllActionMenus();
     try {
@@ -13545,7 +13551,7 @@ els.userBody.addEventListener("click", async (event) => {
     return;
   }
 
-  if (target.classList.contains("user-delete-btn")) {
+  if (actionEl.classList.contains("user-delete-btn")) {
     // close dropdown
     hideAllActionMenus();
     if (userId === authState.userId) {
