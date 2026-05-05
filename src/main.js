@@ -1069,12 +1069,19 @@ app.innerHTML = `
               </select>
             </div>
             <div>
-              <label>Trạng thái</label>
-              <select id="hrFilterStatus">
-                <option value="">Tất cả trạng thái</option>
-                <option value="active">Đang hoạt động</option>
-                <option value="suspended">Tạm dừng</option>
+              <label>Chi nhánh</label>
+              <select id="hrFilterBranch">
+                <option value="">Tất cả chi nhánh</option>
+                <option value="HN">HN</option>
+                <option value="HCM">HCM</option>
               </select>
+            </div>
+            <div>
+              <label>Nhóm nhân sự</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn secondary" id="hrTabActiveBtn" type="button">Đang hoạt động</button>
+                <button class="btn secondary" id="hrTabFormerBtn" type="button">Đã nghỉ</button>
+              </div>
             </div>
           </div>
           <div class="tables" style="margin-top:10px;">
@@ -1087,7 +1094,10 @@ app.innerHTML = `
                   <th>Username</th>
                   <th>Vai trò</th>
                   <th>Phòng ban</th>
+                  <th>Chi nhánh</th>
                   <th>Trạng thái</th>
+                  <th>Ngày nghỉ việc</th>
+                  <th>Lý do nghỉ</th>
                   <th>Ngày tạo</th>
                   <th>Thao tác</th>
                 </tr>
@@ -1129,11 +1139,26 @@ app.innerHTML = `
                     <option value="admin">Admin</option>
                   </select>
                 </div>
+                <div>
+                  <label>Chi nhánh</label>
+                  <select id="userBranch">
+                    <option value="HN">HN</option>
+                    <option value="HCM">HCM</option>
+                  </select>
+                </div>
                 <div style="grid-column:1/-1;">
                   <label>Phòng ban</label>
                   <select id="userDepartment">
                     ${HR_DEPARTMENTS.map((d) => `<option>${d}</option>`).join("")}
                   </select>
+                </div>
+                <div>
+                  <label>Ngày nghỉ việc</label>
+                  <input id="userResignationDate" type="date" />
+                </div>
+                <div>
+                  <label>Lý do nghỉ việc</label>
+                  <input id="userResignationReason" placeholder="Ví dụ: Chuyển công tác" />
                 </div>
                 <div>
                   <label>Số điện thoại</label>
@@ -2386,13 +2411,18 @@ const els = {
   hrQuickSearch: document.querySelector("#hrQuickSearch"),
   hrFilterRole: document.querySelector("#hrFilterRole"),
   hrFilterDept: document.querySelector("#hrFilterDept"),
-  hrFilterStatus: document.querySelector("#hrFilterStatus"),
+  hrFilterBranch: document.querySelector("#hrFilterBranch"),
+  hrTabActiveBtn: document.querySelector("#hrTabActiveBtn"),
+  hrTabFormerBtn: document.querySelector("#hrTabFormerBtn"),
   userCode: document.querySelector("#userCode"),
   userFullName: document.querySelector("#userFullName"),
   userUsername: document.querySelector("#userUsername"),
   userPassword: document.querySelector("#userPassword"),
   userRoleKey: document.querySelector("#userRoleKey"),
+  userBranch: document.querySelector("#userBranch"),
   userDepartment: document.querySelector("#userDepartment"),
+  userResignationDate: document.querySelector("#userResignationDate"),
+  userResignationReason: document.querySelector("#userResignationReason"),
   userPhone: document.querySelector("#userPhone"),
   userEmail: document.querySelector("#userEmail"),
   userAddress: document.querySelector("#userAddress"),
@@ -2761,6 +2791,7 @@ let activePage = "home";
 let pageHistory = [];
 let filterState = { preset: "today", start: today, end: today };
 let customerFilterState = normalizeCustomerFilterState(loadJSON(STORAGE.customerFilters, { start: "", end: "", owner: "all", status: "all", source: "all", keyword: "" }));
+let hrViewMode = "active";
 let rolePermissionsState = normalizeRolePermissions(loadJSON(STORAGE.rolePermissions, ROLES));
 let permissionEditingRole = "staff";
 let editingNewsPostId = null;
@@ -3472,6 +3503,8 @@ function startCriticalStateAutoSync() {
 }
 
 function normalizeRemoteUser(user = {}) {
+  const rawStatus = String(user.status || "").toLowerCase();
+  const normalizedStatus = rawStatus === "resigned" || rawStatus === "suspended" ? "resigned" : "active";
   return {
     id: String(user.id || `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
     userCode: String(user.userCode || "").trim().toUpperCase(),
@@ -3484,9 +3517,11 @@ function normalizeRemoteUser(user = {}) {
     email: String(user.email || ""),
     address: String(user.address || ""),
     bankAccount: String(user.bankAccount || ""),
-    status: user.status === "suspended" ? "suspended" : "active",
+    status: normalizedStatus,
     createdAt: Number(user.createdAt) || Date.now(),
-    branch: String(user.branch || ""),
+    branch: String(user.branch || "HN").toUpperCase() === "HCM" ? "HCM" : "HN",
+    resignationDate: String(user.resignationDate || ""),
+    resignationReason: String(user.resignationReason || ""),
     employeeGroup: String(user.employeeGroup || ""),
     position: String(user.position || ""),
     dateOfBirth: String(user.dateOfBirth || ""),
@@ -3508,6 +3543,12 @@ function normalizeRemoteUser(user = {}) {
     contractSigningStatus: String(user.contractSigningStatus || ""),
     notes: String(user.notes || "")
   };
+}
+
+function inferBranchFromText(value = "") {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("hcm") || text.includes("ho chi minh") || text.includes("hồ chí minh")) return "HCM";
+  return "HN";
 }
 
 function sanitizeUsersForRemote(list) {
@@ -4317,6 +4358,53 @@ function showToast(message, type = "success") {
   toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 3000);
+}
+
+async function exportElementToPdf({
+  element,
+  filename,
+  orientation = "p",
+  scale = 2,
+  onErrorMessage = "Không thể xuất PDF. Vui lòng thử lại."
+} = {}) {
+  if (!(element instanceof HTMLElement)) {
+    showToast(onErrorMessage, "error");
+    return false;
+  }
+
+  try {
+    const canvas = await html2canvas(element, {
+      scale,
+      useCORS: true,
+      backgroundColor: "#ffffff"
+    });
+    const image = canvas.toDataURL("image/png");
+    const pdf = new jsPDF(orientation, "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imageHeight = (canvas.height * pageWidth) / canvas.width;
+
+    let heightLeft = imageHeight;
+    let position = 0;
+
+    pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
+    heightLeft -= pageHeight;
+
+    while (heightLeft > 0) {
+      position -= pageHeight;
+      pdf.addPage();
+      pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
+      heightLeft -= pageHeight;
+    }
+
+    pdf.save(filename);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Lỗi không xác định";
+    console.error("PDF export failed:", error);
+    showToast(`${onErrorMessage} (${message})`, "error");
+    return false;
+  }
 }
 
 function getInitials(name = "") {
@@ -5557,8 +5645,8 @@ function enforceActiveSessionAccess() {
     performLogout();
     return true;
   }
-  if ((currentUser.status || "active") === "suspended") {
-    showToast("Tài khoản đang bị tạm dừng. Bạn đã được đăng xuất.", "warning");
+  if ((currentUser.status || "active") !== "active") {
+    showToast("Tài khoản hiện không còn hoạt động. Bạn đã được đăng xuất.", "warning");
     performLogout();
     return true;
   }
@@ -5568,11 +5656,11 @@ function enforceActiveSessionAccess() {
 function setAuthUI() {
   if (authState.loggedIn) {
     const user = getCurrentUser();
-    if (!user || (user.status || "active") === "suspended") {
+    if (!user || (user.status || "active") !== "active") {
       authState = { loggedIn: false, role: null, username: null, userId: null };
       saveJSON(STORAGE.auth, authState);
-      if (user && (user.status || "active") === "suspended") {
-        showToast("Tài khoản đang bị tạm dừng. Bạn đã được đăng xuất.", "warning");
+      if (user && (user.status || "active") !== "active") {
+        showToast("Tài khoản hiện không còn hoạt động. Bạn đã được đăng xuất.", "warning");
       }
       setAuthUI();
       return;
@@ -5651,17 +5739,35 @@ function setAuthUI() {
 }
 
 function getFilteredUsers() {
+  const isFormerEmployee = (user) => {
+    const status = String(user.status || "active").toLowerCase();
+    return status === "resigned" || status === "suspended";
+  };
+
   const keyword = (els.hrQuickSearch?.value || "").toLowerCase().trim();
   const role = els.hrFilterRole?.value || "";
   const dept = els.hrFilterDept?.value || "";
-  const status = els.hrFilterStatus?.value || "";
+  const branch = els.hrFilterBranch?.value || "";
   return users.filter((u) => {
+    const normalizedStatus = isFormerEmployee(u) ? "resigned" : "active";
     if (keyword && !u.fullName.toLowerCase().includes(keyword) && !u.username.toLowerCase().includes(keyword) && !(u.userCode || "").toLowerCase().includes(keyword)) return false;
     if (role && u.roleKey !== role) return false;
     if (dept && (u.department || HR_DEPARTMENTS[0]) !== dept) return false;
-    if (status && (u.status || "active") !== status) return false;
+    if (branch && (u.branch || "HN") !== branch) return false;
+    if (hrViewMode === "active" && normalizedStatus !== "active") return false;
+    if (hrViewMode === "former" && normalizedStatus !== "resigned") return false;
     return true;
   });
+}
+
+function updateHrViewTabs() {
+  if (!els.hrTabActiveBtn || !els.hrTabFormerBtn) return;
+  const activeSelected = hrViewMode === "active";
+  const formerSelected = hrViewMode === "former";
+  els.hrTabActiveBtn.classList.toggle("warn", activeSelected);
+  els.hrTabActiveBtn.classList.toggle("secondary", !activeSelected);
+  els.hrTabFormerBtn.classList.toggle("warn", formerSelected);
+  els.hrTabFormerBtn.classList.toggle("secondary", !formerSelected);
 }
 
 function slugify(text = "") {
@@ -5723,6 +5829,7 @@ async function importExcelEmployees(file) {
         const phone = digits(row[1] || "");
         const dateOfBirth = excelDateToIso(row[2]);
         const department = (row[3] || "").toString().trim();
+        const branch = inferBranchFromText(department);
         const position = (row[4] || "").toString().trim();
         const compensation = row[5] ? row[5].toString().trim() : "";
         const startDate = excelDateToIso(row[6]);
@@ -5754,6 +5861,7 @@ async function importExcelEmployees(file) {
         importedUsers.push(normalizeRemoteUser({
           userCode, username, password: "123456", fullName, roleKey,
           department, phone, email, bankAccount, status: "active",
+          branch,
           position, dateOfBirth, identityNumber, insuranceNumber,
           contractType, compensation, startDate,
           permanentAddress, currentAddress, contractSigningStatus, emergencyContact,
@@ -5773,6 +5881,7 @@ async function importExcelEmployees(file) {
           const phone = digits(row[1] || "");
           const identityNumber = digits(row[11] || "");
           const department = (row[4] || "").toString().trim();
+          const branch = sheetName.includes("HCM") ? "HCM" : inferBranchFromText(department || sheetName);
           const position = (row[5] || "").toString().trim();
           const email = (row[10] || "").toString().trim();
           const birthDate = excelDateToIso(row[2]);
@@ -5800,9 +5909,11 @@ async function importExcelEmployees(file) {
           importedUsers.push(normalizeRemoteUser({
             userCode, username, password: "123456", fullName, roleKey,
             department, phone, email, bankAccount,
-            status: sheetName.includes("nghỉ việc") ? "suspended" : "active",
+            status: sheetName.includes("nghỉ việc") ? "resigned" : "active",
+            branch,
             position, dateOfBirth: birthDate, gender, identityNumber,
             insuranceNumber, contractType, compensation, startDate,
+            resignationReason: sheetName.includes("nghỉ việc") ? "Import từ danh sách nghỉ việc" : "",
           }));
         }
       }
@@ -5831,8 +5942,12 @@ async function importExcelEmployees(file) {
 function renderUserTable() {
   const filtered = getFilteredUsers();
   const canManageUsers = can("canManageUsers");
+  updateHrViewTabs();
   if (filtered.length === 0) {
-    els.userBody.innerHTML = '<tr><td colspan="9" style="text-align:center;">Không tìm thấy nhân sự phù hợp.</td></tr>';
+    const emptyText = hrViewMode === "former"
+      ? "Không có nhân sự đã nghỉ phù hợp bộ lọc."
+      : "Không tìm thấy nhân sự đang hoạt động phù hợp.";
+    els.userBody.innerHTML = `<tr><td colspan="12" style="text-align:center;">${emptyText}</td></tr>`;
     return;
   }
   els.userBody.innerHTML = filtered
@@ -5840,26 +5955,32 @@ function renderUserTable() {
     .map((u, idx) => {
       const roleLabel = getRolePermissions(u.roleKey).label;
       const createdAt = u.createdAt ? new Date(u.createdAt).toLocaleDateString("vi-VN") : "--";
-      const isSuspended = (u.status || "active") === "suspended";
-      const statusBadge = isSuspended
-        ? '<span style="background:#fde8e8;color:#c0392b;border-radius:12px;padding:2px 10px;font-size:0.78rem;font-weight:600;">Tạm dừng</span>'
+      const isFormer = String(u.status || "").toLowerCase() === "resigned" || String(u.status || "").toLowerCase() === "suspended";
+      const statusBadge = isFormer
+        ? '<span style="background:#fde8e8;color:#c0392b;border-radius:12px;padding:2px 10px;font-size:0.78rem;font-weight:600;">Đã nghỉ</span>'
         : '<span style="background:#e8f8ef;color:#1a7f4b;border-radius:12px;padding:2px 10px;font-size:0.78rem;font-weight:600;">Hoạt động</span>';
+      const branch = (u.branch || "HN") === "HCM" ? "HCM" : "HN";
+      const resignationDate = u.resignationDate || "--";
+      const resignationReason = u.resignationReason || "--";
       return `
-      <tr${isSuspended ? ' style="opacity:0.6;"' : ''}>
+      <tr${isFormer ? ' style="opacity:0.72;"' : ''}>
         <td class="muted">${idx + 1}</td>
         <td style="font-weight:600;letter-spacing:0.5px;"><span style="background:#eef2ff;color:#4338ca;border-radius:8px;padding:2px 8px;font-size:0.82rem;">${u.userCode || "--"}</span></td>
         <td><button class="user-name-link" data-user-id="${u.id}" type="button">${u.fullName}</button></td>
         <td class="muted">${u.username}</td>
         <td>${roleLabel}</td>
         <td>${u.department || HR_DEPARTMENTS[0]}</td>
+        <td>${branch}</td>
         <td>${statusBadge}</td>
+        <td class="muted" style="font-size:0.8rem;">${resignationDate}</td>
+        <td class="muted" style="font-size:0.8rem;">${resignationReason}</td>
         <td class="muted" style="font-size:0.8rem;">${createdAt}</td>
         <td style="position:relative;">
           ${canManageUsers ? `
           <button class="btn secondary user-action-toggle" data-user-id="${u.id}" type="button" title="Thao tác">⋯</button>
           <div class="user-action-menu hidden" data-user-id="${u.id}">
             <button class="user-action-item user-edit-btn" data-user-id="${u.id}" type="button">✏️ Sửa</button>
-            <button class="user-action-item user-suspend-btn" data-user-id="${u.id}" type="button">${isSuspended ? '▶️ Kích hoạt' : '⏸ Tạm dừng'}</button>
+            <button class="user-action-item user-suspend-btn" data-user-id="${u.id}" type="button">${isFormer ? '▶️ Kích hoạt lại' : '🛑 Nghỉ việc'}</button>
             <button class="user-action-item user-action-item--danger user-delete-btn" data-user-id="${u.id}" type="button">🗑 Xóa</button>
           </div>
           ` : '<span class="muted" style="font-size:0.8rem;">Chỉ xem</span>'}
@@ -6129,27 +6250,14 @@ async function exportFilteredInventoryToPdf() {
   }
 
   showToast("Đang tạo PDF kho...", "info");
-  const canvas = await html2canvas(els.inventorySection, { scale: 2, useCORS: true });
-  const image = canvas.toDataURL("image/png");
-  const pdf = new jsPDF("p", "mm", "a4");
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imageHeight = (canvas.height * pageWidth) / canvas.width;
-
-  let heightLeft = imageHeight;
-  let position = 0;
-
-  pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
-  heightLeft -= pageHeight;
-
-  while (heightLeft > 0) {
-    position -= pageHeight;
-    pdf.addPage();
-    pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
-    heightLeft -= pageHeight;
-  }
-
-  pdf.save(`kho-vat-tu-${today}.pdf`);
+  const exported = await exportElementToPdf({
+    element: els.inventorySection,
+    filename: `kho-vat-tu-${today}.pdf`,
+    orientation: "p",
+    scale: 2,
+    onErrorMessage: "Không thể xuất PDF kho"
+  });
+  if (!exported) return;
   showToast(`Đã xuất PDF ${rows.length} vật tư.`);
   logActivity("Kho", "Xuất PDF kho", `Số vật tư: ${rows.length}`);
   renderActivityTable();
@@ -6160,15 +6268,18 @@ let hrProfileEditMode = false;
 
 function getHrProfileInfoGroups(user) {
   const roleLabel = getRolePermissions(user.roleKey).label;
-  const isSuspended = (user.status || "active") === "suspended";
+  const isFormer = (user.status || "active") !== "active";
   return [
     { title: "Thông tin cơ bản", fields: [
       ["Mã NV", user.userCode || "—"],
       ["Vai trò", roleLabel],
       ["Vị trí", user.position || "—"],
       ["Phòng ban", user.department || HR_DEPARTMENTS[0]],
-      ["Trạng thái", isSuspended ? '<span style="color:#c0392b;">Tạm dừng</span>' : '<span style="color:#1a7f4b;">Hoạt động</span>'],
+      ["Chi nhánh", user.branch || "HN"],
+      ["Trạng thái", isFormer ? '<span style="color:#c0392b;">Đã nghỉ</span>' : '<span style="color:#1a7f4b;">Hoạt động</span>'],
       ["Ngày vào làm", user.startDate || "—"],
+      ["Ngày nghỉ việc", user.resignationDate || "—"],
+      ["Lý do nghỉ", user.resignationReason || "—"],
       ["Loại HĐ", user.contractType || "—"],
       ["Tình trạng ký HĐ", user.contractSigningStatus || "—"],
     ]},
@@ -6211,7 +6322,11 @@ function renderHrProfileInfo(user, editMode = false) {
   const departmentOptions = HR_DEPARTMENTS.map((department) => `<option value="${department}" ${department === (user.department || HR_DEPARTMENTS[0]) ? "selected" : ""}>${department}</option>`).join("");
   const statusOptions = [
     `<option value="active" ${(user.status || "active") === "active" ? "selected" : ""}>Hoạt động</option>`,
-    `<option value="suspended" ${(user.status || "active") === "suspended" ? "selected" : ""}>Tạm dừng</option>`
+    `<option value="resigned" ${(user.status || "active") !== "active" ? "selected" : ""}>Đã nghỉ</option>`
+  ].join("");
+  const branchOptions = [
+    `<option value="HN" ${(user.branch || "HN") === "HN" ? "selected" : ""}>HN</option>`,
+    `<option value="HCM" ${(user.branch || "HN") === "HCM" ? "selected" : ""}>HCM</option>`
   ].join("");
 
   const sections = [
@@ -6220,9 +6335,12 @@ function renderHrProfileInfo(user, editMode = false) {
       fields: [
         { key: "position", label: "Vị trí", type: "text", value: user.position || "" },
         { key: "department", label: "Phòng ban", type: "select", options: departmentOptions },
+        { key: "branch", label: "Chi nhánh", type: "select", options: branchOptions },
         { key: "roleKey", label: "Vai trò", type: "select", options: roleOptions },
         { key: "status", label: "Trạng thái", type: "select", options: statusOptions },
         { key: "startDate", label: "Ngày vào làm", type: "date", value: user.startDate || "" },
+        { key: "resignationDate", label: "Ngày nghỉ việc", type: "date", value: user.resignationDate || "" },
+        { key: "resignationReason", label: "Lý do nghỉ việc", type: "text", value: user.resignationReason || "" },
         { key: "contractType", label: "Loại HĐ", type: "text", value: user.contractType || "" },
         { key: "contractSigningStatus", label: "Tình trạng ký HĐ", type: "text", value: user.contractSigningStatus || "" },
       ]
@@ -6296,7 +6414,12 @@ function saveHrProfileModalChanges() {
   });
 
   if (updates.roleKey && !ROLES[updates.roleKey]) updates.roleKey = "staff";
-  if (updates.status !== "active" && updates.status !== "suspended") updates.status = "active";
+  if (updates.status !== "active" && updates.status !== "resigned") updates.status = "active";
+  updates.branch = updates.branch === "HCM" ? "HCM" : "HN";
+  if (updates.status === "active") {
+    updates.resignationDate = "";
+    updates.resignationReason = "";
+  }
 
   const updatedUser = normalizeRemoteUser({
     ...user,
@@ -6380,7 +6503,10 @@ function resetUserForm() {
   els.userUsername.value = "";
   els.userPassword.value = "";
   els.userRoleKey.value = "staff";
+  els.userBranch.value = "HN";
   els.userDepartment.value = HR_DEPARTMENTS[0];
+  els.userResignationDate.value = "";
+  els.userResignationReason.value = "";
   els.userPhone.value = "";
   els.userEmail.value = "";
   els.userAddress.value = "";
@@ -6719,27 +6845,14 @@ async function exportFilteredCustomersToPdf() {
   }
 
   showToast("Đang tạo PDF khách hàng...", "info");
-  const canvas = await html2canvas(els.customerSection, { scale: 2, useCORS: true });
-  const image = canvas.toDataURL("image/png");
-  const pdf = new jsPDF("p", "mm", "a4");
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imageHeight = (canvas.height * pageWidth) / canvas.width;
-
-  let heightLeft = imageHeight;
-  let position = 0;
-
-  pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
-  heightLeft -= pageHeight;
-
-  while (heightLeft > 0) {
-    position -= pageHeight;
-    pdf.addPage();
-    pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
-    heightLeft -= pageHeight;
-  }
-
-  pdf.save(`khach-hang-loc-${today}.pdf`);
+  const exported = await exportElementToPdf({
+    element: els.customerSection,
+    filename: `khach-hang-loc-${today}.pdf`,
+    orientation: "p",
+    scale: 2,
+    onErrorMessage: "Không thể xuất PDF khách hàng"
+  });
+  if (!exported) return;
   showToast(`Đã xuất PDF ${rows.length} khách hàng.`);
   logActivity("Khách hàng", "Xuất PDF khách hàng", `Số bản ghi: ${rows.length}`);
   renderActivityTable();
@@ -7048,23 +7161,14 @@ async function exportSchedulePdf() {
   const rows = getFilteredSchedules();
   if (rows.length === 0) { showToast("Không có dữ liệu để xuất PDF.", "warning"); return; }
   showToast("Đang tạo PDF lịch...", "info");
-  const canvas = await html2canvas(els.scheduleSection, { scale: 1.5, useCORS: true });
-  const image = canvas.toDataURL("image/png");
-  const pdf = new jsPDF("l", "mm", "a4");
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imageHeight = (canvas.height * pageWidth) / canvas.width;
-  let heightLeft = imageHeight;
-  let position = 0;
-  pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
-  heightLeft -= pageHeight;
-  while (heightLeft > 0) {
-    position -= pageHeight;
-    pdf.addPage();
-    pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
-    heightLeft -= pageHeight;
-  }
-  pdf.save(`lich-khach-hang-${scheduleFilterState.month || today.slice(0,7)}.pdf`);
+  const exported = await exportElementToPdf({
+    element: els.scheduleSection,
+    filename: `lich-khach-hang-${scheduleFilterState.month || today.slice(0, 7)}.pdf`,
+    orientation: "l",
+    scale: 1.5,
+    onErrorMessage: "Không thể xuất PDF lịch"
+  });
+  if (!exported) return;
   showToast("Đã xuất PDF lịch thành công.");
   logActivity("Lịch KH", "Xuất PDF", `Số lịch: ${rows.length}`);
 }
@@ -7595,26 +7699,14 @@ async function exportFilteredCustomerCareToPdf() {
   }
 
   showToast("Đang tạo PDF CSKH...", "info");
-  const canvas = await html2canvas(els.customerCareSection, { scale: 1.8, useCORS: true });
-  const image = canvas.toDataURL("image/png");
-  const pdf = new jsPDF("l", "mm", "a4");
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imageHeight = (canvas.height * pageWidth) / canvas.width;
-
-  let heightLeft = imageHeight;
-  let position = 0;
-  pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
-  heightLeft -= pageHeight;
-
-  while (heightLeft > 0) {
-    position -= pageHeight;
-    pdf.addPage();
-    pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
-    heightLeft -= pageHeight;
-  }
-
-  pdf.save(`cham-soc-khach-hang-${today}.pdf`);
+  const exported = await exportElementToPdf({
+    element: els.customerCareSection,
+    filename: `cham-soc-khach-hang-${today}.pdf`,
+    orientation: "l",
+    scale: 1.8,
+    onErrorMessage: "Không thể xuất PDF CSKH"
+  });
+  if (!exported) return;
   showToast(`Đã xuất PDF CSKH ${rows.length} khách.`);
   logActivity("CSKH", "Xuất PDF", `Số khách: ${rows.length}`);
   renderActivityTable();
@@ -9598,26 +9690,14 @@ async function exportReportDetailPdf() {
   }
 
   showToast("Đang tạo PDF báo cáo...", "info");
-  const canvas = await html2canvas(els.reportsDetailView, { scale: 2, useCORS: true });
-  const image = canvas.toDataURL("image/png");
-  const pdf = new jsPDF("p", "mm", "a4");
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imageHeight = (canvas.height * pageWidth) / canvas.width;
-
-  let heightLeft = imageHeight;
-  let position = 0;
-  pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
-  heightLeft -= pageHeight;
-
-  while (heightLeft > 0) {
-    position -= pageHeight;
-    pdf.addPage();
-    pdf.addImage(image, "PNG", 0, position, pageWidth, imageHeight);
-    heightLeft -= pageHeight;
-  }
-
-  pdf.save(`bao-cao-${activeReportDepartment}-${today}.pdf`);
+  const exported = await exportElementToPdf({
+    element: els.reportsDetailView,
+    filename: `bao-cao-${activeReportDepartment}-${today}.pdf`,
+    orientation: "p",
+    scale: 2,
+    onErrorMessage: "Không thể xuất PDF báo cáo"
+  });
+  if (!exported) return;
   showToast("Đã xuất PDF báo cáo thành công.");
   logActivity("Báo cáo", "Xuất PDF", `${activeReportDepartment} | ${rows.length} dòng`);
   renderActivityTable();
@@ -11287,7 +11367,15 @@ els.userModalBackdrop.addEventListener("click", closeUserModal);
 els.hrQuickSearch.addEventListener("input", renderUserTable);
 els.hrFilterRole.addEventListener("change", renderUserTable);
 els.hrFilterDept.addEventListener("change", renderUserTable);
-els.hrFilterStatus.addEventListener("change", renderUserTable);
+els.hrFilterBranch.addEventListener("change", renderUserTable);
+els.hrTabActiveBtn.addEventListener("click", () => {
+  hrViewMode = "active";
+  renderUserTable();
+});
+els.hrTabFormerBtn.addEventListener("click", () => {
+  hrViewMode = "former";
+  renderUserTable();
+});
 els.closeHrProfileBtn.addEventListener("click", closeHrProfileModal);
 els.hrProfileModalBackdrop.addEventListener("click", closeHrProfileModal);
 els.editHrProfileBtn.addEventListener("click", () => {
@@ -12647,8 +12735,8 @@ els.loginBtn.addEventListener("click", async () => {
     return;
   }
 
-  if ((user.status || "active") === "suspended") {
-    els.authMessage.textContent = "Tài khoản đang tạm dừng. Vui lòng liên hệ quản trị viên.";
+  if ((user.status || "active") !== "active") {
+    els.authMessage.textContent = "Tài khoản đã nghỉ việc hoặc không còn hoạt động. Vui lòng liên hệ quản trị viên.";
     return;
   }
 
@@ -12811,7 +12899,10 @@ els.saveUserBtn.addEventListener("click", async () => {
   const username = els.userUsername.value.trim().toLowerCase();
   const password = els.userPassword.value;
   const roleKey = els.userRoleKey.value;
+  const branch = els.userBranch.value === "HCM" ? "HCM" : "HN";
   const department = els.userDepartment.value;
+  const resignationDate = (els.userResignationDate.value || "").trim();
+  const resignationReason = (els.userResignationReason.value || "").trim();
   const phone = els.userPhone.value.trim();
   const email = els.userEmail.value.trim();
   const address = els.userAddress.value.trim();
@@ -12856,6 +12947,8 @@ els.saveUserBtn.addEventListener("click", async () => {
   if (editingUserId) {
     users = users.map((u) => {
       if (u.id !== editingUserId) return u;
+      const currentStatus = (u.status || "active") === "active" ? "active" : "resigned";
+      const shouldMarkResigned = Boolean(resignationDate || resignationReason) || currentStatus === "resigned";
       return {
         ...u,
         userCode,
@@ -12863,7 +12956,11 @@ els.saveUserBtn.addEventListener("click", async () => {
         username,
         password,
         roleKey,
+        branch,
         department,
+        status: shouldMarkResigned ? "resigned" : "active",
+        resignationDate: shouldMarkResigned ? resignationDate : "",
+        resignationReason: shouldMarkResigned ? resignationReason : "",
         phone,
         email,
         address,
@@ -12879,12 +12976,15 @@ els.saveUserBtn.addEventListener("click", async () => {
       username,
       password,
       roleKey,
+      branch,
       department,
+      status: resignationDate || resignationReason ? "resigned" : "active",
+      resignationDate,
+      resignationReason,
       phone,
       email,
       address,
       bankAccount,
-      status: "active",
       createdAt: Date.now()
     });
     logActivity("Nhân sự", "Tạo tài khoản", `${userCode} | ${username} | Vai trò: ${roleKey}`);
@@ -12925,8 +13025,11 @@ els.userBody.addEventListener("click", async (event) => {
     els.userUsername.value = user.username;
     els.userPassword.value = user.password;
     els.userRoleKey.value = user.roleKey;
+    els.userBranch.value = user.branch === "HCM" ? "HCM" : "HN";
     const preferredDepartment = user.department || HR_DEPARTMENTS[0];
     els.userDepartment.value = HR_DEPARTMENTS.includes(preferredDepartment) ? preferredDepartment : HR_DEPARTMENTS[0];
+    els.userResignationDate.value = user.resignationDate || "";
+    els.userResignationReason.value = user.resignationReason || "";
     els.userPhone.value = user.phone || "";
     els.userEmail.value = user.email || "";
     els.userAddress.value = user.address || "";
@@ -12955,11 +13058,32 @@ els.userBody.addEventListener("click", async (event) => {
       showToast(`Không thể tải users cloud trước khi cập nhật: ${err.message}`, "warning");
     }
     const isSelf = userId === authState.userId;
+    const todayDate = new Date().toISOString().slice(0, 10);
     users = users.map((u) => {
       if (u.id !== userId) return u;
-      const newStatus = (u.status || "active") === "suspended" ? "active" : "suspended";
-      logActivity("Nhân sự", newStatus === "suspended" ? "Tạm dừng tài khoản" : "Kích hoạt tài khoản", `${u.userCode || u.username}`);
-      return { ...u, status: newStatus };
+      const isFormer = (u.status || "active") !== "active";
+      if (!isFormer) {
+        const reasonInput = window.prompt("Nhập lý do nghỉ việc:", u.resignationReason || "") ?? "";
+        const dateInput = window.prompt("Nhập ngày nghỉ việc (YYYY-MM-DD):", u.resignationDate || todayDate);
+        if (dateInput === null) return u;
+        const normalizedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(dateInput).trim()) ? String(dateInput).trim() : todayDate;
+        const normalizedReason = String(reasonInput || "").trim() || "Nghỉ việc";
+        logActivity("Nhân sự", "Đánh dấu nghỉ việc", `${u.userCode || u.username} | ${normalizedDate}`);
+        return {
+          ...u,
+          status: "resigned",
+          resignationDate: normalizedDate,
+          resignationReason: normalizedReason
+        };
+      }
+
+      logActivity("Nhân sự", "Kích hoạt lại tài khoản", `${u.userCode || u.username}`);
+      return {
+        ...u,
+        status: "active",
+        resignationDate: "",
+        resignationReason: ""
+      };
     });
     await persistUsersToRemote("Cập nhật trạng thái tài khoản");
     if (isSelf) {
@@ -13516,15 +13640,14 @@ els.pdfBtn.addEventListener("click", async () => {
 
   showToast("Đang tạo PDF...", "info");
   const target = document.querySelector("#dashboardRoot");
-
-  const canvas = await html2canvas(target, { scale: 2, useCORS: true });
-  const image = canvas.toDataURL("image/png");
-  const pdf = new jsPDF("p", "mm", "a4");
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = (canvas.height * pageWidth) / canvas.width;
-
-  pdf.addImage(image, "PNG", 0, 0, pageWidth, pageHeight);
-  pdf.save(`bao-cao-kpi-${today}.pdf`);
+  const exported = await exportElementToPdf({
+    element: target,
+    filename: `bao-cao-kpi-${today}.pdf`,
+    orientation: "p",
+    scale: 2,
+    onErrorMessage: "Không thể xuất PDF tổng quan"
+  });
+  if (!exported) return;
   showToast("Đã xuất PDF thành công.");
 });
 
