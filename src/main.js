@@ -196,6 +196,7 @@ const STORAGE = {
   usersSyncEndpoint: "nora_users_sync_endpoint_v1",
   usersPendingSync: "nora_users_pending_sync_v1",
   criticalStatePendingSync: "nora_critical_state_pending_sync_v1",
+  criticalStateLocalUpdatedAt: "nora_critical_state_local_updated_at_v1",
   reportOutbox: "nora_report_outbox_v1",
   reportOutboxLastFlushAt: "nora_report_outbox_last_flush_at_v1",
   auth: "nora_auth_v1",
@@ -3099,6 +3100,20 @@ function countObjectKeys(value) {
   return Object.keys(value).length;
 }
 
+function getLocalCriticalStateUpdatedAt() {
+  return Number(loadJSON(STORAGE.criticalStateLocalUpdatedAt, 0)) || 0;
+}
+
+function setLocalCriticalStateUpdatedAt(value) {
+  localStorage.setItem(STORAGE.criticalStateLocalUpdatedAt, JSON.stringify(Number(value) || Date.now()));
+}
+
+function touchLocalCriticalStateUpdatedAt() {
+  const next = Date.now();
+  setLocalCriticalStateUpdatedAt(next);
+  return next;
+}
+
 function hasLocalCriticalData() {
   return (
     (Array.isArray(customers) && customers.length > 0) ||
@@ -3121,7 +3136,7 @@ function hasLocalCriticalData() {
   );
 }
 
-function buildCriticalStatePayload() {
+function buildCriticalStatePayload(updatedAt = Date.now()) {
   return {
     schemaVersion: 2,
     customers: Array.isArray(customers) ? customers : [],
@@ -3149,7 +3164,7 @@ function buildCriticalStatePayload() {
     telegramSource: telegramSourceConfig && typeof telegramSourceConfig === "object" ? telegramSourceConfig : {},
     dataSourceConfig: dataSourceConfig && typeof dataSourceConfig === "object" ? dataSourceConfig : { type: "local", url: "" },
     reports: Array.isArray(reports) ? reports : [],
-    updatedAt: Date.now()
+    updatedAt: Number(updatedAt) || Date.now()
   };
 }
 
@@ -3245,7 +3260,8 @@ function flushCriticalStateToRemoteWithBeacon() {
   if (!pending) return false;
 
   try {
-    const payload = JSON.stringify(buildCriticalStatePayload());
+    const updatedAt = touchLocalCriticalStateUpdatedAt();
+    const payload = JSON.stringify(buildCriticalStatePayload(updatedAt));
     const blob = new Blob([payload], { type: "application/json" });
     const sent = navigator.sendBeacon(endpointUrl, blob);
     if (sent) {
@@ -3264,10 +3280,11 @@ async function tryFlushCriticalStateWithKeepalive() {
   if (!pending) return false;
 
   try {
+    const updatedAt = touchLocalCriticalStateUpdatedAt();
     const response = await fetch(endpointUrl, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildCriticalStatePayload()),
+      body: JSON.stringify(buildCriticalStatePayload(updatedAt)),
       keepalive: true
     });
     if (response.ok) {
@@ -3287,11 +3304,11 @@ async function fetchRemoteCriticalState(endpointUrl) {
   return normalizeRemoteCriticalState(data);
 }
 
-async function pushRemoteCriticalState(endpointUrl) {
+async function pushRemoteCriticalState(endpointUrl, payload) {
   const response = await fetch(endpointUrl, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildCriticalStatePayload())
+    body: JSON.stringify(payload)
   });
   if (!response.ok) throw new Error(`Không thể PUT app-state (${response.status})`);
 }
@@ -3308,7 +3325,8 @@ async function syncCriticalStateToRemote(showToastOnSuccess = false) {
 
   criticalStateSyncInFlight = true;
   try {
-    await pushRemoteCriticalState(endpointUrl);
+    const updatedAt = touchLocalCriticalStateUpdatedAt();
+    await pushRemoteCriticalState(endpointUrl, buildCriticalStatePayload(updatedAt));
     localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
     if (showToastOnSuccess) {
       showToast("Đã đồng bộ toàn bộ dữ liệu nghiệp vụ lên cloud.", "success");
@@ -3328,6 +3346,7 @@ async function syncCriticalStateToRemote(showToastOnSuccess = false) {
 function queueCriticalStateSync(storageKey) {
   if (isApplyingRemoteCriticalState) return;
   if (!APP_STATE_SYNC_KEYS.has(storageKey)) return;
+  touchLocalCriticalStateUpdatedAt();
   localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
   if (criticalStateSyncQueueTimer) clearTimeout(criticalStateSyncQueueTimer);
   criticalStateSyncQueueTimer = setTimeout(() => {
@@ -3351,6 +3370,12 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   }
 
   const remoteState = await fetchRemoteCriticalState(endpointUrl);
+  const localUpdatedAt = getLocalCriticalStateUpdatedAt();
+  if (localUpdatedAt > Number(remoteState.updatedAt || 0)) {
+    const pushed = await syncCriticalStateToRemote(showToastOnSuccess);
+    if (pushed) return true;
+    return false;
+  }
   const remoteRows = getRemoteCriticalStateRowCount(remoteState);
   if (remoteRows === 0 && hasLocalCriticalData()) {
     const pushed = await syncCriticalStateToRemote(showToastOnSuccess);
@@ -3456,6 +3481,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     saveJSON(STORAGE.telegramSource, telegramSourceConfig);
     saveJSON(STORAGE.dataSource, dataSourceConfig);
     saveJSON(STORAGE.reports, reports);
+    setLocalCriticalStateUpdatedAt(remoteState.updatedAt || Date.now());
     localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
   } finally {
     isApplyingRemoteCriticalState = false;
