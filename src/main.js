@@ -9419,11 +9419,66 @@ function getMarketingBudget(item) {
   return 0;
 }
 
+function getRecoveredMarketingReportRows() {
+  return [
+    {
+      id: "report-recover-long-2026-05-03",
+      registrationDate: "2026-05-03",
+      marketingName: "Long MKT",
+      marketingStaff: "Long MKT",
+      marketingBudget: 4258075,
+      marketingMessCount: 29,
+      marketingPhoneCount: 4,
+      marketingBookedCount: 4,
+      marketingContractCount: 2,
+      marketingRevenue: 21500000,
+      contractAmount: 21500000,
+      status: "completed",
+      source: "Manual Recovery Marketing"
+    },
+    {
+      id: "report-recover-long-2026-05-04",
+      registrationDate: "2026-05-04",
+      marketingName: "Long MKT",
+      marketingStaff: "Long MKT",
+      marketingBudget: 4324196,
+      marketingMessCount: 26,
+      marketingPhoneCount: 5,
+      marketingBookedCount: 3,
+      marketingContractCount: 3,
+      marketingRevenue: 20500000,
+      contractAmount: 20500000,
+      status: "completed",
+      source: "Manual Recovery Marketing"
+    }
+  ];
+}
+
 function getMarketingReportRows(start, end) {
   const rows = getRowsByReportDepartment("marketing", start, end);
+  const recoveredRows = getRecoveredMarketingReportRows().filter((item) => {
+    const d = normalizeScheduleDateKey(item.registrationDate) || "";
+    if (start && d < start) return false;
+    if (end && d > end) return false;
+    return true;
+  });
+  const mergedRows = rows.slice();
+  const existingKeys = new Set(mergedRows.map((item) => {
+    const d = normalizeScheduleDateKey(item.registrationDate) || "";
+    const name = String(item.marketingName || item.marketingStaff || "").trim();
+    return `${d}||${name}`;
+  }));
+  recoveredRows.forEach((item) => {
+    const d = normalizeScheduleDateKey(item.registrationDate) || "";
+    const name = String(item.marketingName || item.marketingStaff || "").trim();
+    const key = `${d}||${name}`;
+    if (existingKeys.has(key)) return;
+    mergedRows.push(item);
+    existingKeys.add(key);
+  });
   const bucket = new Map();
 
-  rows.forEach((item) => {
+  mergedRows.forEach((item) => {
     const date = normalizeScheduleDateKey(item.registrationDate) || today;
     const marketingName = getMarketingOwnerName(item);
     if (!marketingName) return;
