@@ -806,6 +806,7 @@ function appendTelegramReport(state, update) {
   const debug = normalizeTelegramDebug(state.telegramDebug);
 
   const markIgnored = (reason, counterKey) => {
+    const messageContent = String(message?.text || message?.caption || "");
     const event = {
       at: Date.now(),
       reason,
@@ -813,7 +814,7 @@ function appendTelegramReport(state, update) {
       chatId,
       chatTitle: String(chatMeta.chatTitle || "").trim(),
       updateType: String(chatMeta.updateType || "unknown"),
-      textPreview: String(message?.text || "").slice(0, 280)
+      textPreview: messageContent.slice(0, 280)
     };
     debug.ignoredCount += 1;
     if (counterKey && typeof debug[counterKey] === "number") debug[counterKey] += 1;
@@ -823,7 +824,8 @@ function appendTelegramReport(state, update) {
     state.telegramDebug = debug;
   };
 
-  if (!message || !message.text) {
+  const messageContent = String(message?.text || message?.caption || "").trim();
+  if (!message || !messageContent) {
     markIgnored("empty_message", "emptyMessageCount");
     return { saved: false, ignored: true, reason: "empty_message" };
   }
@@ -833,7 +835,7 @@ function appendTelegramReport(state, update) {
     return { saved: false, ignored: true, reason: "chat_not_allowed" };
   }
 
-  const raw = parseTelegramReportMessage(message.text);
+  const raw = parseTelegramReportMessage(messageContent);
   if (!raw) {
     markIgnored("parse_failed", "parseFailedCount");
     return { saved: false, ignored: true, reason: "parse_failed" };

@@ -8454,7 +8454,7 @@ async function fetchAndParseTelegramMessagesDirect() {
     const incomingChatId = String(message.chat && message.chat.id);
     if (!allowedChatIds.includes(incomingChatId)) return;
     if (u.update_id > maxUpdateId) maxUpdateId = u.update_id;
-    const parsed = parseTelegramNurseMessage(message.text || "");
+    const parsed = parseTelegramNurseMessage(message.text || message.caption || "");
     if (parsed) rawRows.push({
       ...parsed,
       telegramUpdateId: String(u.update_id || ""),
