@@ -8163,14 +8163,14 @@ function parseTelegramNurseMessage(text) {
     const mahd = obj["mahd"] || obj["mahopdong"] || firstTelegramObjValueByKeyRegex(obj, [/^ma.*hd$/, /^ma.*hopdong$/, /^hd$/]) || "";
     const sobuoi = obj["sobuoi"] || obj["buoi"] || "";
     const khoangcach = obj["khoangcach"] || obj["km"] || obj["distance"] || "";
-    
-    if (!nurse) return null;
+
+    if (!nurse && !(tenkh && nhomDichVu)) return null;
     return {
       ...base,
-      nurse,
+      nurse: nurse || customerName,
       customerName: tenkh || customerName,
       service: nhomDichVu || service,
-      formVersion: "nurse_v2",
+      formVersion: nurse && mahd && sobuoi && khoangcach ? "nurse_v2" : null,
       mahd,
       sobuoi,
       khoangcach,
