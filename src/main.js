@@ -13105,13 +13105,20 @@ els.userBody.addEventListener("click", async (event) => {
 
     if (!userStatusChanged) return;
 
-    await persistUsersToRemote("Cập nhật trạng thái tài khoản");
+    hrViewMode = switchedToFormer ? "former" : "active";
+    renderUserTable();
+
+    try {
+      await persistUsersToRemote("Cập nhật trạng thái tài khoản");
+    } catch (err) {
+      showToast(`Đã cập nhật local nhưng chưa đồng bộ cloud: ${err.message}`, "warning");
+    }
+
     if (isSelf) {
       performLogout();
       return;
     }
 
-    hrViewMode = switchedToFormer ? "former" : "active";
     renderUserTable();
     return;
   }
