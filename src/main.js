@@ -2758,7 +2758,7 @@ let inventoryTransactions = loadJSON(STORAGE.inventoryTransactions, []).map((txn
   createdAt: Number(txn.createdAt) || Date.now(),
   type: txn.type === "out" ? "out" : "in"
 }));
-let activityLogs = loadJSON(STORAGE.activities, []);
+let activityLogs = sortActivityLogsNewestFirst(loadJSON(STORAGE.activities, []));
 let recycleBin = loadJSON(STORAGE.recycleBin, []);
 let hrFiles = loadJSON(STORAGE.hrFiles, {});
 let authState = loadJSON(STORAGE.auth, { loggedIn: false, role: null, username: null, userId: null });
@@ -3402,7 +3402,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     customerCareProgress = mergedCustomerCareProgress;
     customerCareFilterState = normalizeCustomerCareFilterState(remoteState.customerCareFilters || {});
     customerCareManualRows = mergedCustomerCareManualRows.map((item) => normalizeCustomerCareManualRow(item, item?.sourceType || "manual"));
-    activityLogs = mergedActivities;
+    activityLogs = sortActivityLogsNewestFirst(mergedActivities);
     recycleBin = mergedRecycleBin;
     rolePermissionsState = normalizeRolePermissions(mergedRolePermissions, ROLES);
     newsPosts = mergedNewsPosts;
@@ -4158,6 +4158,11 @@ function normalizeDataSourceConfig(rawConfig = {}) {
 
 function clonePlain(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function sortActivityLogsNewestFirst(list) {
+  if (!Array.isArray(list)) return [];
+  return list.slice().sort((a, b) => Number(b?.createdAt || 0) - Number(a?.createdAt || 0));
 }
 
 function normalizeLoginPrefs(rawPrefs = {}) {
@@ -5167,6 +5172,7 @@ function logActivity(module, action, detail, metadata = {}) {
   };
 
   activityLogs.unshift(entry);
+  activityLogs = sortActivityLogsNewestFirst(activityLogs);
   if (activityLogs.length > 300) activityLogs = activityLogs.slice(0, 300);
   saveJSON(STORAGE.activities, activityLogs);
   if (activePage === "activity") {
@@ -5294,7 +5300,7 @@ function getActivityFilteredRows() {
     start = end;
     end = temp;
   }
-  return activityLogs.filter((entry) => {
+  return sortActivityLogsNewestFirst(activityLogs).filter((entry) => {
     const key = toDateKey(new Date(entry.createdAt));
     return key >= start && key <= end;
   });
