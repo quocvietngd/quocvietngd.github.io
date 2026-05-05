@@ -8106,9 +8106,6 @@ function parseTelegramNurseMessage(text) {
   const obj = {};
   const tags = Array.from(new Set((text.match(/#[^\s#]+/g) || []).map((tag) => tag.replace(/^#/, "").trim().toLowerCase())));
 
-  // Ignore untagged messages so casual group conversations are not imported.
-  if (!tags.length) return null;
-
   lines.forEach(line => {
     const sep = line.indexOf(":");
     if (sep === -1) return;

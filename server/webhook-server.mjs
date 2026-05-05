@@ -150,7 +150,8 @@ function normalizeState(raw = {}) {
         const tags = Array.isArray(item?.raw?.telegramTags)
           ? item.raw.telegramTags.map((tag) => String(tag || "").trim()).filter(Boolean)
           : [];
-        return tags.length > 0;
+        const route = String(item?.raw?.telegramRoute || "").trim();
+        return tags.length > 0 || Boolean(route);
       }).slice(-MAX_REPORTS)
     : [];
   return {
@@ -524,9 +525,6 @@ function parseTelegramReportMessage(text) {
   const lines = String(text).split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
   const values = {};
   const hashtags = extractTelegramHashtags(text);
-
-  // Only treat tagged messages as report payloads to avoid importing normal chat messages.
-  if (!hashtags.length) return null;
 
   for (const line of lines) {
     const separatorIndex = line.indexOf(":");
