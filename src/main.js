@@ -3263,11 +3263,7 @@ function flushCriticalStateToRemoteWithBeacon() {
     const updatedAt = touchLocalCriticalStateUpdatedAt();
     const payload = JSON.stringify(buildCriticalStatePayload(updatedAt));
     const blob = new Blob([payload], { type: "application/json" });
-    const sent = navigator.sendBeacon(endpointUrl, blob);
-    if (sent) {
-      localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
-    }
-    return sent;
+    return navigator.sendBeacon(endpointUrl, blob);
   } catch {
     return false;
   }
