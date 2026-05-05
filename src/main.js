@@ -2297,11 +2297,11 @@ hopdong: 5000000</code>
           <div class="form-grid activity-controls" style="margin-bottom:10px;grid-template-columns:minmax(180px,240px) minmax(180px,240px) auto auto auto;align-items:end;">
             <div>
               <label>Từ ngày</label>
-              <input id="activityFilterStartDate" type="date" value="${today}" />
+              <input id="activityFilterStartDate" type="date" value="" />
             </div>
             <div>
               <label>Đến ngày</label>
-              <input id="activityFilterEndDate" type="date" value="${today}" />
+              <input id="activityFilterEndDate" type="date" value="" />
             </div>
             <button class="btn secondary" id="applyActivityFilterBtn" type="button">Áp dụng</button>
             <button class="btn secondary" id="resetActivityFilterBtn" type="button">Hôm nay</button>
@@ -2803,8 +2803,8 @@ let activeNewsDetail = null;
 let pendingNewsPostAttachments = [];
 let pendingNewsEventAttachments = [];
 let activityViewState = {
-  start: today,
-  end: today,
+  start: "",
+  end: "",
   page: 1,
   pageSize: 30
 };
@@ -5169,6 +5169,9 @@ function logActivity(module, action, detail, metadata = {}) {
   activityLogs.unshift(entry);
   if (activityLogs.length > 300) activityLogs = activityLogs.slice(0, 300);
   saveJSON(STORAGE.activities, activityLogs);
+  if (activePage === "activity") {
+    renderActivityTable();
+  }
 }
 
 function addToRecycleBin(entityType, payload, label) {
@@ -12105,7 +12108,7 @@ if (els.reportsSection) {
           }
         }
       );
-      renderReportsPage();
+      renderAll();
       showToast(`Đã xóa ${removedCount} bản ghi nguồn khỏi báo cáo ${labels[reportType]}.`, "success");
       return;
     }
