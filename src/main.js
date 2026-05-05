@@ -1096,8 +1096,8 @@ app.innerHTML = `
                   <th>Phòng ban</th>
                   <th>Chi nhánh</th>
                   <th>Trạng thái</th>
-                  <th>Ngày nghỉ việc</th>
-                  <th>Lý do nghỉ</th>
+                  <th id="hrFormerDateCol">Ngày nghỉ việc</th>
+                  <th id="hrFormerReasonCol">Lý do nghỉ</th>
                   <th>Ngày tạo</th>
                   <th>Thao tác</th>
                 </tr>
@@ -2430,6 +2430,8 @@ const els = {
   saveUserBtn: document.querySelector("#saveUserBtn"),
   userManageStatus: document.querySelector("#userManageStatus"),
   userBody: document.querySelector("#userBody"),
+  hrFormerDateCol: document.querySelector("#hrFormerDateCol"),
+  hrFormerReasonCol: document.querySelector("#hrFormerReasonCol"),
   userModalStatus: document.querySelector("#userModalStatus"),
   hrProfileModal: document.querySelector("#hrProfileModal"),
   hrProfileModalBackdrop: document.querySelector("#hrProfileModalBackdrop"),
@@ -5942,12 +5944,18 @@ async function importExcelEmployees(file) {
 function renderUserTable() {
   const filtered = getFilteredUsers();
   const canManageUsers = can("canManageUsers");
+  const showFormerCols = hrViewMode === "former";
+
+  if (els.hrFormerDateCol) els.hrFormerDateCol.classList.toggle("hidden", !showFormerCols);
+  if (els.hrFormerReasonCol) els.hrFormerReasonCol.classList.toggle("hidden", !showFormerCols);
+
   updateHrViewTabs();
   if (filtered.length === 0) {
     const emptyText = hrViewMode === "former"
       ? "Không có nhân sự đã nghỉ phù hợp bộ lọc."
       : "Không tìm thấy nhân sự đang hoạt động phù hợp.";
-    els.userBody.innerHTML = `<tr><td colspan="12" style="text-align:center;">${emptyText}</td></tr>`;
+    const colSpan = showFormerCols ? 12 : 10;
+    els.userBody.innerHTML = `<tr><td colspan="${colSpan}" style="text-align:center;">${emptyText}</td></tr>`;
     return;
   }
   els.userBody.innerHTML = filtered
@@ -5962,6 +5970,10 @@ function renderUserTable() {
       const branch = (u.branch || "HN") === "HCM" ? "HCM" : "HN";
       const resignationDate = u.resignationDate || "--";
       const resignationReason = u.resignationReason || "--";
+      const formerCells = showFormerCols
+        ? `<td class="muted" style="font-size:0.8rem;">${resignationDate}</td>
+        <td class="muted" style="font-size:0.8rem;">${resignationReason}</td>`
+        : "";
       return `
       <tr${isFormer ? ' style="opacity:0.72;"' : ''}>
         <td class="muted">${idx + 1}</td>
@@ -5972,8 +5984,7 @@ function renderUserTable() {
         <td>${u.department || HR_DEPARTMENTS[0]}</td>
         <td>${branch}</td>
         <td>${statusBadge}</td>
-        <td class="muted" style="font-size:0.8rem;">${resignationDate}</td>
-        <td class="muted" style="font-size:0.8rem;">${resignationReason}</td>
+        ${formerCells}
         <td class="muted" style="font-size:0.8rem;">${createdAt}</td>
         <td style="position:relative;">
           ${canManageUsers ? `

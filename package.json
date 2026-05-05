@@ -9,7 +9,8 @@
     "dev:realtime": "node server/webhook-server.mjs & vite",
     "start:server": "node server/webhook-server.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:pages": "bash ./scripts/deploy-pages.sh"
   },
   "dependencies": {
     "chart.js": "^4.4.3",
