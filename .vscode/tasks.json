@@ -18,7 +18,7 @@
 			"command": "zsh",
 			"args": [
 				"-lc",
-				"cd \"/Users/tranquocviet/Documents/Web báo cáo demo\" && git add -A ':!server/telegram-bridge-state.json' && if git diff --cached --quiet; then echo 'No changes to deploy.'; else git commit -m \"chore: auto deploy $(date '+%Y-%m-%d %H:%M:%S')\" && git push origin main; fi"
+				"cd \"/Users/tranquocviet/Documents/Web báo cáo demo\" && git add -A . && git restore --staged server/telegram-bridge-state.json 2>/dev/null; if git diff --cached --quiet; then echo \"No changes to deploy.\"; else git commit -m \"chore: auto deploy $(date +%Y-%m-%d_%H-%M-%S)\" && git push origin main; fi"
 			],
 			"group": "build"
 		}
