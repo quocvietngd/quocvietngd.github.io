@@ -3806,6 +3806,105 @@ if (Array.isArray(schedules)) {
   }
 }
 
+function ensureRecoveredLongMarketingRows() {
+  if (!Array.isArray(schedules)) return;
+
+  const recoveredRows = [
+    {
+      id: "manual-mkt-long-2026-05-03",
+      registrationDate: "2026-05-03",
+      marketingName: "Long MKT",
+      marketingStaff: "Long MKT",
+      marketingBudget: 4258075,
+      marketingMessCount: 29,
+      marketingPhoneCount: 4,
+      marketingBookedCount: 4,
+      marketingContractCount: 2,
+      marketingRevenue: 21500000,
+      contractAmount: 21500000
+    },
+    {
+      id: "manual-mkt-long-2026-05-04",
+      registrationDate: "2026-05-04",
+      marketingName: "Long MKT",
+      marketingStaff: "Long MKT",
+      marketingBudget: 4324196,
+      marketingMessCount: 26,
+      marketingPhoneCount: 5,
+      marketingBookedCount: 3,
+      marketingContractCount: 3,
+      marketingRevenue: 20500000,
+      contractAmount: 20500000
+    }
+  ];
+
+  const now = Date.now();
+  let changed = false;
+  recoveredRows.forEach((row) => {
+    const idx = schedules.findIndex((item) => String(item?.id || "") === row.id);
+    const payload = {
+      appointmentTime: "",
+      customerName: "Long MKT",
+      phone: "",
+      address: "",
+      motherAge: "",
+      birthHistory: "",
+      babyBirthday: "",
+      priority: "",
+      service: "",
+      stage: "",
+      motherCondition: "",
+      babyCondition: "",
+      consultant: "",
+      nurse: "",
+      saleStaff: "",
+      experiencePrice: 0,
+      sessionDuration: "",
+      source: "Manual Recovery Marketing",
+      receivableAmount: 0,
+      shiftMinutes: 0,
+      caCancelled: 0,
+      distanceKm: 0,
+      renewContractAmount: 0,
+      productSalesAmount: 0,
+      hotBonus: 0,
+      monthlyCompetitionBonus: 0,
+      socialInsuranceDeduction: 0,
+      trainingDeduction: 0,
+      unionDeduction: 0,
+      violationDeduction: 0,
+      status: "completed",
+      note: "Recovered from screenshot 03/05-04/05",
+      reportSource: "manual",
+      createdSource: "manual",
+      telegramRoute: "",
+      telegramTags: [],
+      ...row,
+      updatedAt: now
+    };
+
+    if (idx >= 0) {
+      schedules[idx] = {
+        ...schedules[idx],
+        ...payload,
+        id: row.id,
+        createdAt: Number(schedules[idx]?.createdAt) || now
+      };
+      changed = true;
+      return;
+    }
+
+    schedules.unshift({
+      id: row.id,
+      createdAt: now,
+      ...payload
+    });
+    changed = true;
+  });
+
+  if (changed) saveJSON(STORAGE.schedule, schedules);
+}
+
 function parseVietnameseAmount(value) {
   const text = String(value || "").trim();
   if (!text) return 0;
@@ -3887,6 +3986,7 @@ function purgeLegacyTelegramRowsWithoutHashtag() {
   }
 }
 
+ensureRecoveredLongMarketingRows();
 purgeLegacyTelegramRowsWithoutHashtag();
 migrateLegacyReceivableAmounts();
 
