@@ -13070,6 +13070,8 @@ els.userBody.addEventListener("click", async (event) => {
     }
     const isSelf = userId === authState.userId;
     const todayDate = new Date().toISOString().slice(0, 10);
+    let userStatusChanged = false;
+    let switchedToFormer = false;
     users = users.map((u) => {
       if (u.id !== userId) return u;
       const isFormer = (u.status || "active") !== "active";
@@ -13079,6 +13081,8 @@ els.userBody.addEventListener("click", async (event) => {
         if (dateInput === null) return u;
         const normalizedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(dateInput).trim()) ? String(dateInput).trim() : todayDate;
         const normalizedReason = String(reasonInput || "").trim() || "Nghỉ việc";
+        userStatusChanged = true;
+        switchedToFormer = true;
         logActivity("Nhân sự", "Đánh dấu nghỉ việc", `${u.userCode || u.username} | ${normalizedDate}`);
         return {
           ...u,
@@ -13088,6 +13092,8 @@ els.userBody.addEventListener("click", async (event) => {
         };
       }
 
+      userStatusChanged = true;
+      switchedToFormer = false;
       logActivity("Nhân sự", "Kích hoạt lại tài khoản", `${u.userCode || u.username}`);
       return {
         ...u,
@@ -13096,11 +13102,16 @@ els.userBody.addEventListener("click", async (event) => {
         resignationReason: ""
       };
     });
+
+    if (!userStatusChanged) return;
+
     await persistUsersToRemote("Cập nhật trạng thái tài khoản");
     if (isSelf) {
       performLogout();
       return;
     }
+
+    hrViewMode = switchedToFormer ? "former" : "active";
     renderUserTable();
     return;
   }
