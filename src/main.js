@@ -5318,7 +5318,12 @@ function renderActivityTable() {
         <td>${item.detail}</td>
         <td>
           ${(item.restoreRef || item.restoreAction) && !item.restoredAt
-            ? `<button class="btn secondary" type="button" data-restore-ref="${item.restoreRef || ""}" data-restore-activity-id="${item.id}">Khôi phục</button>`
+            ? `<div class="user-action-wrap">
+                <button class="btn secondary user-action-toggle" type="button" data-activity-action-toggle="${item.id}" aria-label="Mở menu khôi phục">...</button>
+                <div class="user-action-menu hidden" data-activity-action-menu="${item.id}">
+                  <button class="menu-item danger activity-restore-btn" type="button" data-restore-ref="${item.restoreRef || ""}" data-restore-activity-id="${item.id}">↩ Khôi phục</button>
+                </div>
+              </div>`
             : item.restoredAt
               ? "Đã khôi phục"
               : "--"}
@@ -11826,9 +11831,20 @@ if (els.activityBody) {
     if (!(target instanceof HTMLElement)) return;
     if (!can("canManageUsers")) return;
 
+    const actionToggle = target.closest("[data-activity-action-toggle]");
+    if (actionToggle instanceof HTMLElement) {
+      const actionId = actionToggle.dataset.activityActionToggle;
+      if (!actionId) return;
+      const menu = document.querySelector(`.user-action-menu[data-activity-action-menu="${actionId}"]`);
+      if (menu instanceof HTMLElement) openActionMenuAtToggle(actionToggle, menu);
+      return;
+    }
+
     const restoreRef = target.dataset.restoreRef;
     const restoreActivityId = target.dataset.restoreActivityId;
     if (!restoreRef && !restoreActivityId) return;
+
+    hideAllActionMenus();
 
     let restored = false;
     if (restoreRef) {
