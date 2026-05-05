@@ -5145,7 +5145,7 @@ function openActionMenuAtToggle(toggleBtn, menuEl) {
   if (left < 8) left = 8;
   if (left + menuWidth > viewportWidth - 8) left = viewportWidth - menuWidth - 8;
 
-  let top = isHrUserMenu ? rect.top - 2 : rect.bottom + 4;
+  let top = rect.bottom + (isHrUserMenu ? 6 : 4);
   if (top + menuHeight > viewportHeight - 8) {
     top = rect.top - menuHeight - 4;
   }
