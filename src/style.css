@@ -697,7 +697,7 @@ textarea {
   right: auto;
   top: 0;
   left: 0;
-  z-index: 9999;
+  z-index: 20000;
 }
 
 td.action-menu-open-cell {
@@ -717,6 +717,15 @@ td.action-menu-open-cell {
   cursor: pointer;
   color: #334155;
   transition: background 0.15s;
+}
+
+.user-action-menu[data-user-id] {
+  min-width: 220px;
+}
+
+.user-action-menu[data-user-id] .user-action-item {
+  padding: 11px 18px;
+  font-size: 0.96rem;
 }
 
 .user-action-item:hover {

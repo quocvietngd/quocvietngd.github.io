@@ -5136,12 +5136,16 @@ function openActionMenuAtToggle(toggleBtn, menuEl) {
   const menuHeight = menuEl.offsetHeight || 120;
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
+  const isHrUserMenu = menuEl.hasAttribute("data-user-id");
 
-  let left = rect.right - menuWidth;
+  let left = isHrUserMenu ? rect.right + 10 : rect.right - menuWidth;
+  if (isHrUserMenu && left + menuWidth > viewportWidth - 8) {
+    left = rect.left - menuWidth - 10;
+  }
   if (left < 8) left = 8;
   if (left + menuWidth > viewportWidth - 8) left = viewportWidth - menuWidth - 8;
 
-  let top = rect.bottom + 4;
+  let top = isHrUserMenu ? rect.top - 2 : rect.bottom + 4;
   if (top + menuHeight > viewportHeight - 8) {
     top = rect.top - menuHeight - 4;
   }
