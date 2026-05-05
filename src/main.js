@@ -3554,7 +3554,14 @@ function inferBranchFromText(value = "") {
 }
 
 function sanitizeUsersForRemote(list) {
-  return list.map((user) => normalizeRemoteUser(user));
+  return list.map((user) => {
+    const normalized = normalizeRemoteUser(user);
+    return {
+      ...normalized,
+      // Keep compatibility with older servers that only understand active/suspended.
+      status: normalized.status === "resigned" ? "suspended" : "active"
+    };
+  });
 }
 
 function isDefaultUsersSnapshot(list = []) {

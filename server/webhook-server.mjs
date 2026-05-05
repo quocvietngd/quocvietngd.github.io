@@ -310,6 +310,8 @@ async function writeState(nextState) {
 }
 
 function normalizeUser(input = {}) {
+  const rawStatus = String(input.status || "").toLowerCase();
+  const normalizedStatus = rawStatus === "resigned" || rawStatus === "suspended" ? "resigned" : "active";
   return {
     id: String(input.id || `u-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
     userCode: String(input.userCode || "").trim().toUpperCase(),
@@ -322,9 +324,11 @@ function normalizeUser(input = {}) {
     email: String(input.email || ""),
     address: String(input.address || ""),
     bankAccount: String(input.bankAccount || ""),
-    status: input.status === "suspended" ? "suspended" : "active",
+    status: normalizedStatus,
     createdAt: Number(input.createdAt) || Date.now(),
-    branch: String(input.branch || ""),
+    branch: String(input.branch || "HN").toUpperCase() === "HCM" ? "HCM" : "HN",
+    resignationDate: String(input.resignationDate || ""),
+    resignationReason: String(input.resignationReason || ""),
     employeeGroup: String(input.employeeGroup || ""),
     position: String(input.position || ""),
     dateOfBirth: String(input.dateOfBirth || ""),
