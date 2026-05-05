@@ -9103,6 +9103,7 @@ function getMarketingReportRows(start, end) {
 
 function renderMarketingReportTable(rows) {
   if (!els.reportsTable) return;
+  const formatMoney = (value) => `${Math.round(Number(value) || 0).toLocaleString("vi-VN")} đ`;
 
   const totalBudget = rows.reduce((sum, row) => sum + row.budget, 0);
   const totalMess = rows.reduce((sum, row) => sum + row.messCount, 0);
@@ -9120,15 +9121,15 @@ function renderMarketingReportTable(rows) {
       <tr>
         <td>${row.date}</td>
         <td>${row.marketingName}</td>
-        <td style="text-align:right;">${row.budget.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(row.budget)}</td>
         <td style="text-align:center;">${row.messCount.toLocaleString("vi-VN")}</td>
-        <td style="text-align:right;">${row.costPerMess.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(row.costPerMess)}</td>
         <td style="text-align:center;">${row.phoneCount.toLocaleString("vi-VN")}</td>
-        <td style="text-align:right;">${row.costPerPhone.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(row.costPerPhone)}</td>
         <td style="text-align:center;">${row.bookedCount.toLocaleString("vi-VN")}</td>
-        <td style="text-align:right;">${row.costPerBooked.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(row.costPerBooked)}</td>
         <td style="text-align:center;">${row.contractCount.toLocaleString("vi-VN")}</td>
-        <td style="text-align:right;">${row.revenue.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(row.revenue)}</td>
         <td style="text-align:center;">${row.costRate.toFixed(1)}%</td>
       </tr>
     `).join("")
@@ -9153,15 +9154,15 @@ function renderMarketingReportTable(rows) {
       <tr style="background:#eef6ff;font-weight:700;">
         <td>Tổng</td>
         <td>${rows.length} dòng</td>
-        <td style="text-align:right;">${totalBudget.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(totalBudget)}</td>
         <td style="text-align:center;">${totalMess.toLocaleString("vi-VN")}</td>
-        <td style="text-align:right;">${totalCostPerMess.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(totalCostPerMess)}</td>
         <td style="text-align:center;">${totalPhones.toLocaleString("vi-VN")}</td>
-        <td style="text-align:right;">${totalCostPerPhone.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(totalCostPerPhone)}</td>
         <td style="text-align:center;">${totalBooked.toLocaleString("vi-VN")}</td>
-        <td style="text-align:right;">${totalCostPerBooked.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(totalCostPerBooked)}</td>
         <td style="text-align:center;">${totalContracts.toLocaleString("vi-VN")}</td>
-        <td style="text-align:right;">${totalRevenue.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(totalRevenue)}</td>
         <td style="text-align:center;">${totalCostRate.toFixed(1)}%</td>
       </tr>
     </thead>
@@ -9287,6 +9288,7 @@ function getConsultantReportRows(start, end) {
 
 function renderConsultantReportTable(detailRows) {
   if (!els.reportsTable) return;
+  const formatMoney = (value) => `${Math.round(Number(value) || 0).toLocaleString("vi-VN")} đ`;
 
   const totalReceived = detailRows.reduce((sum, row) => sum + row.receivedCount, 0);
   const totalSigned = detailRows.reduce((sum, row) => sum + row.signedCount, 0);
@@ -9305,9 +9307,9 @@ function renderConsultantReportTable(detailRows) {
         <td style="text-align:center;">${row.signedCount.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${row.signRate.toFixed(1)}%</td>
         <td style="text-align:center;">${row.postponedCount.toLocaleString("vi-VN")}</td>
-        <td style="text-align:right;">${row.revenue.toLocaleString("vi-VN")} đ</td>
-        <td style="text-align:right;">${row.receivable.toLocaleString("vi-VN")} đ</td>
-        <td style="text-align:right;">${row.avgInvoice.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(row.revenue)}</td>
+        <td style="text-align:right;">${formatMoney(row.receivable)}</td>
+        <td style="text-align:right;">${formatMoney(row.avgInvoice)}</td>
       </tr>
     `).join("")
     : '<tr><td colspan="9" style="text-align:center;">Không có dữ liệu tư vấn trong khoảng ngày đã chọn.</td></tr>';
@@ -9332,9 +9334,9 @@ function renderConsultantReportTable(detailRows) {
         <td style="text-align:center;">${totalSigned.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${totalSignRate.toFixed(1)}%</td>
         <td style="text-align:center;">${totalPostponed.toLocaleString("vi-VN")}</td>
-        <td style="text-align:right;">${totalRevenue.toLocaleString("vi-VN")} đ</td>
-        <td style="text-align:right;">${totalReceivable.toLocaleString("vi-VN")} đ</td>
-        <td style="text-align:right;">${totalAvgInvoice.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${formatMoney(totalRevenue)}</td>
+        <td style="text-align:right;">${formatMoney(totalReceivable)}</td>
+        <td style="text-align:right;">${formatMoney(totalAvgInvoice)}</td>
       </tr>
     </thead>
     <tbody>${tbody}</tbody>
