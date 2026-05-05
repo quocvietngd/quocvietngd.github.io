@@ -9104,6 +9104,17 @@ function getMarketingReportRows(start, end) {
 function renderMarketingReportTable(rows) {
   if (!els.reportsTable) return;
 
+  const totalBudget = rows.reduce((sum, row) => sum + row.budget, 0);
+  const totalMess = rows.reduce((sum, row) => sum + row.messCount, 0);
+  const totalPhones = rows.reduce((sum, row) => sum + row.phoneCount, 0);
+  const totalBooked = rows.reduce((sum, row) => sum + row.bookedCount, 0);
+  const totalContracts = rows.reduce((sum, row) => sum + row.contractCount, 0);
+  const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+  const totalCostPerMess = totalMess ? totalBudget / totalMess : 0;
+  const totalCostPerPhone = totalPhones ? totalBudget / totalPhones : 0;
+  const totalCostPerBooked = totalBooked ? totalBudget / totalBooked : 0;
+  const totalCostRate = totalRevenue ? (totalBudget / totalRevenue) * 100 : 0;
+
   const tbody = rows.length
     ? rows.map((row) => `
       <tr>
@@ -9138,6 +9149,20 @@ function renderMarketingReportTable(rows) {
         <th style="text-align:center;">Hợp đồng</th>
         <th style="text-align:right;">Doanh số</th>
         <th style="text-align:center;">% chi phí/doanh số</th>
+      </tr>
+      <tr style="background:#eef6ff;font-weight:700;">
+        <td>Tổng</td>
+        <td>${rows.length} dòng</td>
+        <td style="text-align:right;">${totalBudget.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:center;">${totalMess.toLocaleString("vi-VN")}</td>
+        <td style="text-align:right;">${totalCostPerMess.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:center;">${totalPhones.toLocaleString("vi-VN")}</td>
+        <td style="text-align:right;">${totalCostPerPhone.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:center;">${totalBooked.toLocaleString("vi-VN")}</td>
+        <td style="text-align:right;">${totalCostPerBooked.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:center;">${totalContracts.toLocaleString("vi-VN")}</td>
+        <td style="text-align:right;">${totalRevenue.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:center;">${totalCostRate.toFixed(1)}%</td>
       </tr>
     </thead>
     <tbody>${tbody}</tbody>
@@ -9262,6 +9287,15 @@ function getConsultantReportRows(start, end) {
 
 function renderConsultantReportTable(detailRows) {
   if (!els.reportsTable) return;
+
+  const totalReceived = detailRows.reduce((sum, row) => sum + row.receivedCount, 0);
+  const totalSigned = detailRows.reduce((sum, row) => sum + row.signedCount, 0);
+  const totalPostponed = detailRows.reduce((sum, row) => sum + row.postponedCount, 0);
+  const totalRevenue = detailRows.reduce((sum, row) => sum + row.revenue, 0);
+  const totalReceivable = detailRows.reduce((sum, row) => sum + row.receivable, 0);
+  const totalSignRate = totalReceived ? (totalSigned / totalReceived) * 100 : 0;
+  const totalAvgInvoice = totalSigned ? totalRevenue / totalSigned : 0;
+
   const tbody = detailRows.length
     ? detailRows.map((row) => `
       <tr>
@@ -9290,6 +9324,17 @@ function renderConsultantReportTable(detailRows) {
         <th style="cursor:pointer;user-select:none;text-align:right;" data-consultant-sort="revenue">Doanh số${getConsultantSortIndicator("revenue")}</th>
         <th style="cursor:pointer;user-select:none;text-align:right;" data-consultant-sort="receivable">Công nợ${getConsultantSortIndicator("receivable")}</th>
         <th style="cursor:pointer;user-select:none;text-align:right;" data-consultant-sort="avgInvoice">Đầu hoá đơn trung bình${getConsultantSortIndicator("avgInvoice")}</th>
+      </tr>
+      <tr style="background:#eef6ff;font-weight:700;">
+        <td>Tổng</td>
+        <td>${detailRows.length} dòng</td>
+        <td style="text-align:center;">${totalReceived.toLocaleString("vi-VN")}</td>
+        <td style="text-align:center;">${totalSigned.toLocaleString("vi-VN")}</td>
+        <td style="text-align:center;">${totalSignRate.toFixed(1)}%</td>
+        <td style="text-align:center;">${totalPostponed.toLocaleString("vi-VN")}</td>
+        <td style="text-align:right;">${totalRevenue.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${totalReceivable.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:right;">${totalAvgInvoice.toLocaleString("vi-VN")} đ</td>
       </tr>
     </thead>
     <tbody>${tbody}</tbody>
@@ -9393,6 +9438,14 @@ function getTelesaleReportRows(start, end) {
 
 function renderTelesaleReportTable(rows) {
   if (!els.reportsTable) return;
+
+  const totalMess = rows.reduce((sum, row) => sum + row.messCount, 0);
+  const totalPhones = rows.reduce((sum, row) => sum + row.phoneCount, 0);
+  const totalBooked = rows.reduce((sum, row) => sum + row.bookedCount, 0);
+  const totalCancelled = rows.reduce((sum, row) => sum + row.cancelledCount, 0);
+  const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+  const totalBookingRate = totalMess ? (totalBooked / totalMess) * 100 : 0;
+
   const tbody = rows.length
     ? rows.map((row) => `
       <tr>
@@ -9419,6 +9472,16 @@ function renderTelesaleReportTable(rows) {
         <th style="cursor:pointer;user-select:none;text-align:center;" data-telesale-sort="cancelledCount">Ca hoãn huỷ${getTelesaleSortIndicator("cancelledCount")}</th>
         <th style="cursor:pointer;user-select:none;text-align:center;" data-telesale-sort="bookingRate">Tỉ lệ đặt lịch/mess${getTelesaleSortIndicator("bookingRate")}</th>
         <th style="cursor:pointer;user-select:none;text-align:right;" data-telesale-sort="revenue">Doanh số${getTelesaleSortIndicator("revenue")}</th>
+      </tr>
+      <tr style="background:#eef6ff;font-weight:700;">
+        <td>Tổng</td>
+        <td>${rows.length} dòng</td>
+        <td style="text-align:center;">${totalMess.toLocaleString("vi-VN")}</td>
+        <td style="text-align:center;">${totalPhones.toLocaleString("vi-VN")}</td>
+        <td style="text-align:center;">${totalBooked.toLocaleString("vi-VN")}</td>
+        <td style="text-align:center;">${totalCancelled.toLocaleString("vi-VN")}</td>
+        <td style="text-align:center;">${totalBookingRate.toFixed(1)}%</td>
+        <td style="text-align:right;">${totalRevenue.toLocaleString("vi-VN")} đ</td>
       </tr>
     </thead>
     <tbody>${tbody}</tbody>
