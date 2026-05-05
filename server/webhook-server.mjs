@@ -431,6 +431,13 @@ function normalizeDate(dateText) {
     const yyyy = ddmmyyyy[3];
     return `${yyyy}-${mm}-${dd}`;
   }
+  const ddmm = value.match(/^(\d{1,2})[\/-](\d{1,2})$/);
+  if (ddmm) {
+    const dd = ddmm[1].padStart(2, "0");
+    const mm = ddmm[2].padStart(2, "0");
+    const yyyy = String(new Date().getFullYear());
+    return `${yyyy}-${mm}-${dd}`;
+  }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return new Date().toISOString().slice(0, 10);
   return parsed.toISOString().slice(0, 10);
@@ -670,8 +677,24 @@ function parseTelegramReportMessage(text) {
   }
 
   if (route === "marketing") {
-    const marketingName = String(firstTelegramValue(values, ["tennv", "ten", "marketing", "mkt", "marketer", "nhanvien"]) || "").trim();
-    const effectiveMarketingName = marketingName || customerName;
+    const marketingName = String(firstTelegramValue(values, [
+      "tennvmkt",
+      "tennvmarketing",
+      "tenmkt",
+      "tenmarketing",
+      "tennv",
+      "marketingname",
+      "marketingstaff",
+      "marketing",
+      "mkt",
+      "marketer",
+      "nhanvienmkt",
+      "nhanvienmarketing",
+      "nhanvien",
+      "ten"
+    ]) || "").trim();
+    const customerLooksLikeMarketer = /(mkt|marketing)/i.test(String(customerName || ""));
+    const effectiveMarketingName = marketingName || (customerLooksLikeMarketer ? customerName : "");
     const chiphí = parseFlexibleNumber(firstTelegramValue(values, ["chiphi", "chiphí", "chi", "ngansach", "budget"]));
     const mess = parseFlexibleNumber(firstTelegramValue(values, ["mess", "luongmess", "interactions"])) || 0;
     const sdt = parseFlexibleNumber(firstTelegramValue(values, ["sdt", "sodienthoai", "phone", "phones"])) || 0;

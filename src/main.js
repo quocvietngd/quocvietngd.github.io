@@ -5475,6 +5475,14 @@ function normalizeScheduleDateKey(rawDate) {
     return `${yyyy}-${mm}-${dd}`;
   }
 
+  const dm = value.match(/^(\d{1,2})[\/\-.](\d{1,2})$/);
+  if (dm) {
+    const dd = dm[1].padStart(2, "0");
+    const mm = dm[2].padStart(2, "0");
+    const yyyy = String(new Date().getFullYear());
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
   const ymd = value.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
   if (ymd) {
     const yyyy = ymd[1];
@@ -8254,8 +8262,22 @@ function parseTelegramNurseMessage(text) {
   }
 
   if (route === "marketing") {
-    const marketingName = obj["tennv"] || obj["ten"] || obj["marketing"] || obj["mkt"] || obj["marketer"] || "";
-    const effectiveMarketingName = marketingName || customerName;
+    const marketingName = obj["tennvmkt"]
+      || obj["tennvmarketing"]
+      || obj["tenmkt"]
+      || obj["tenmarketing"]
+      || obj["tennv"]
+      || obj["marketingname"]
+      || obj["marketingstaff"]
+      || obj["marketing"]
+      || obj["mkt"]
+      || obj["marketer"]
+      || obj["nhanvienmkt"]
+      || obj["nhanvienmarketing"]
+      || obj["ten"]
+      || "";
+    const customerLooksLikeMarketer = /(mkt|marketing)/i.test(String(customerName || ""));
+    const effectiveMarketingName = String(marketingName || "").trim() || (customerLooksLikeMarketer ? customerName : "");
     const chiphi = parseFloat(String(obj["chiphi"] || obj["chiphí"] || obj["chi"] || obj["ngansach"] || 0).replace(/[^\d.-]/g, "")) || 0;
     const mess = parseFloat(obj["mess"] || obj["luongmess"] || obj["interactions"] || 0) || 0;
     const sdt = parseFloat(obj["sdt"] || obj["sodienthoai"] || obj["phone"] || 0) || 0;
@@ -8589,8 +8611,8 @@ function normalizeImportedScheduleRow(raw) {
     stage: "",
     motherCondition: "",
     babyCondition: "",
-    marketingName: String(firstValue(sourceObj, ["marketingname", "marketingstaff", "tennv", "marketing", "mkt", "marketer"]) || "").trim(),
-    marketingStaff: String(firstValue(sourceObj, ["marketingstaff", "marketingname", "tennv", "marketing", "mkt", "marketer"]) || "").trim(),
+    marketingName: String(firstValue(sourceObj, ["marketingname", "marketingstaff", "tennvmkt", "tennvmarketing", "tenmkt", "tenmarketing", "tennv", "marketing", "mkt", "marketer", "nhanvienmkt", "nhanvienmarketing"]) || "").trim(),
+    marketingStaff: String(firstValue(sourceObj, ["marketingstaff", "marketingname", "tennvmkt", "tennvmarketing", "tenmkt", "tenmarketing", "tennv", "marketing", "mkt", "marketer", "nhanvienmkt", "nhanvienmarketing"]) || "").trim(),
     consultant: String(firstValue(sourceObj, ["consultant", "tư vấn", "tu van"]) || "").trim(),
     nurse: String(firstValue(sourceObj, ["nurse", "điều dưỡng", "dieu duong"]) || "").trim(),
     saleStaff: String(firstValue(sourceObj, ["salestaff", "telesale", "sale", "telesale phụ trách", "telesale phu trach"]) || "").trim(),
