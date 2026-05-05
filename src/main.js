@@ -8084,6 +8084,78 @@ function firstTelegramObjValueByKeyRegex(obj, regexList = []) {
   return "";
 }
 
+const TELEGRAM_FALLBACK_LINE_RULES = [
+  { label: "ten dieu duong", key: "tendieuduong" },
+  { label: "ten dd", key: "tendd" },
+  { label: "ten khach", key: "tenkhach" },
+  { label: "ten kh", key: "tenkh" },
+  { label: "ma hd", key: "mahd" },
+  { label: "so buoi", key: "sobuoi" },
+  { label: "khoang cach", key: "khoangcach" },
+  { label: "dich vu", key: "dichvu" },
+  { label: "trang thai", key: "trangthai" },
+  { label: "ghi chu", key: "ghichu" },
+  { label: "nhay", key: "ngay" },
+  { label: "ngay", key: "ngay" },
+  { label: "gio", key: "gio" },
+  { label: "bau", key: "dichvu", servicePrefix: "Cham soc bau" },
+  { label: "ss", key: "dichvu", servicePrefix: "Cham soc me sau sinh" },
+  { label: "tam be", key: "dichvu", servicePrefix: "Tam be" }
+];
+
+function canonicalizeTelegramFieldKey(key) {
+  const normalized = normalizeTelegramFieldKey(key);
+  const aliases = {
+    nhay: "ngay",
+    ngayy: "ngay",
+    dvu: "dichvu",
+    dv: "dichvu",
+    tenkh: "tenkhach",
+    tenkhh: "tenkhach",
+    tennv: "ten",
+    kc: "khoangcach"
+  };
+  return aliases[normalized] || normalized;
+}
+
+function parseTelegramLineToField(line) {
+  const raw = String(line || "").trim();
+  if (!raw) return null;
+
+  const separatorIndex = raw.indexOf(":");
+  if (separatorIndex >= 0) {
+    const key = canonicalizeTelegramFieldKey(raw.slice(0, separatorIndex));
+    const value = raw.slice(separatorIndex + 1).trim();
+    if (!key || !value) return null;
+    return { key, value };
+  }
+
+  const plain = raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đ]/g, "d")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!plain) return null;
+
+  const plainTokens = plain.split(" ");
+  const rawTokens = raw.split(/\s+/);
+  for (const rule of TELEGRAM_FALLBACK_LINE_RULES) {
+    const labelTokens = rule.label.split(" ");
+    if (plainTokens.length <= labelTokens.length) continue;
+    const matched = labelTokens.every((token, idx) => plainTokens[idx] === token);
+    if (!matched) continue;
+    let value = rawTokens.slice(labelTokens.length).join(" ").trim();
+    if (!value) return null;
+    if (rule.servicePrefix) value = `${rule.servicePrefix} ${value}`.trim();
+    return { key: rule.key, value };
+  }
+
+  return null;
+}
+
 async function callTelegramBridge(path, options = {}) {
   const base = getTelegramBridgeApiBase();
   if (!base) throw new Error("Chưa cấu hình Telegram Bridge API URL.");
@@ -8104,14 +8176,15 @@ function parseTelegramNurseMessage(text) {
   if (!text) return null;
   const lines = text.split(/[\n\r]+/);
   const obj = {};
-  const tags = Array.from(new Set((text.match(/#[^\s#]+/g) || []).map((tag) => tag.replace(/^#/, "").trim().toLowerCase())));
+  const tags = Array.from(new Set((text.match(/#[^\s#]+/g) || []).map((tag) => canonicalizeTelegramFieldKey(tag.replace(/^#/, "").replace(/_/g, "").trim()))));
+
+  // Require at least one hashtag so only intentional report messages are imported.
+  if (!tags.length) return null;
 
   lines.forEach(line => {
-    const sep = line.indexOf(":");
-    if (sep === -1) return;
-    const key = normalizeTelegramFieldKey(line.slice(0, sep));
-    const val = line.slice(sep + 1).trim();
-    if (key && val) obj[key] = val;
+    const parsedField = parseTelegramLineToField(line);
+    if (!parsedField) return;
+    obj[parsedField.key] = parsedField.value;
   });
 
   const hasTag = (candidates) => candidates.some((tag) => tags.includes(tag));
@@ -8122,7 +8195,7 @@ function parseTelegramNurseMessage(text) {
       ? "consultant"
       : hasTag(["telesale", "sale", "ts"])
         ? "telesale"
-        : hasTag(["dieuduong", "dd", "baocao", "nurse"])
+        : hasTag(["dieuduong", "dieu_duong", "dd", "baocao", "nurse"])
           ? "nurse"
           : hasAnyKey(["marketing", "mkt", "marketer", "ngansach", "budget", "ads", "mess", "luongmess", "chiphi"])
             ? "marketing"
@@ -8164,10 +8237,9 @@ function parseTelegramNurseMessage(text) {
     const sobuoi = obj["sobuoi"] || obj["buoi"] || "";
     const khoangcach = obj["khoangcach"] || obj["km"] || obj["distance"] || "";
 
-    if (!nurse && !(tenkh && nhomDichVu)) return null;
     return {
       ...base,
-      nurse: nurse || customerName,
+      nurse: nurse || "",
       customerName: tenkh || customerName,
       service: nhomDichVu || service,
       formVersion: nurse && mahd && sobuoi && khoangcach ? "nurse_v2" : null,
@@ -8188,7 +8260,6 @@ function parseTelegramNurseMessage(text) {
     const hopdong = parseFloat(obj["hopdong"] || obj["hd"] || obj["contract"] || 0) || 0;
     const doanso = parseFloat(String(obj["doanso"] || obj["doanhso"] || obj["revenue"] || 0).replace(/[^\d.-]/g, "")) || 0;
     
-    if (!marketingName && mess <= 0 && sdt <= 0 && lich <= 0 && hopdong <= 0 && doanso <= 0 && chiphi <= 0) return null;
     return {
       ...base,
       customerName: customerName || effectiveMarketingName,
@@ -8215,7 +8286,6 @@ function parseTelegramNurseMessage(text) {
     const pttt = obj["pttt"] || obj["phuongthuc"] || obj["method"] || "";
     const ghichu = obj["ghichu"] || obj["note"] || obj["ghi"] || "";
     
-    if (!consultant) return null;
     return {
       ...base,
       consultant,
@@ -8240,8 +8310,6 @@ function parseTelegramNurseMessage(text) {
   const hopdong = parseFloat(obj["hopdong"] || obj["hd"] || obj["contract"] || 0) || 0;
   const doanso = parseFloat(String(obj["doanso"] || obj["doanhso"] || obj["revenue"] || 0).replace(/[^\d.-]/g, "")) || 0;
   
-  if (!saleStaff && mess <= 0 && sdt <= 0 && lich <= 0 && hopdong <= 0 && doanso <= 0) return null;
-
   return {
     ...base,
     saleStaff,
@@ -8453,7 +8521,8 @@ function normalizeImportedScheduleRow(raw) {
   });
 
   const dateRaw = firstValue(sourceObj, ["registrationdate", "date", "ngay", "ngày trải nghiệm", "ngay trai nghiem"]);
-  const normalizedDate = normalizeScheduleDateKey(dateRaw) || today;
+  const telegramRouteRaw = String(firstValue(sourceObj, ["telegramroute"]) || "").trim();
+  const normalizedDate = normalizeScheduleDateKey(dateRaw) || (telegramRouteRaw ? "" : today);
 
   const statusRaw = String(firstValue(sourceObj, ["status", "tình trạng", "tinh trang"]) || "").toLowerCase();
   const status = statusRaw.includes("hủy") || statusRaw.includes("huy") || statusRaw === "cancelled"
@@ -8480,7 +8549,6 @@ function normalizeImportedScheduleRow(raw) {
       "nurse"
     ]) || ""
   ).trim();
-  if (!customerName) return null;
 
   const telegramUpdateId = String(firstValue(sourceObj, ["telegramupdateid"]) || "").trim();
   const serviceText = String(firstValue(sourceObj, ["service", "dịch vụ", "dich vu"]) || "").trim();
