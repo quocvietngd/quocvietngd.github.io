@@ -9131,9 +9131,19 @@ function renderMarketingReportTable(rows) {
         <td style="text-align:center;">${row.contractCount.toLocaleString("vi-VN")}</td>
         <td style="text-align:right;">${formatMoney(row.revenue)}</td>
         <td style="text-align:center;">${row.costRate.toFixed(1)}%</td>
+        <td style="text-align:center;">
+          <button
+            class="btn warn"
+            type="button"
+            data-report-delete-type="marketing"
+            data-report-date="${row.date}"
+            data-report-name="${encodeURIComponent(row.marketingName)}"
+            style="padding:4px 10px;font-size:0.78rem;"
+          >Xóa</button>
+        </td>
       </tr>
     `).join("")
-    : '<tr><td colspan="12" style="text-align:center;">Không có dữ liệu marketing trong khoảng ngày đã chọn.</td></tr>';
+    : '<tr><td colspan="13" style="text-align:center;">Không có dữ liệu marketing trong khoảng ngày đã chọn.</td></tr>';
 
   els.reportsTable.innerHTML = `
     <thead>
@@ -9150,6 +9160,7 @@ function renderMarketingReportTable(rows) {
         <th style="text-align:center;">Hợp đồng</th>
         <th style="text-align:right;">Doanh số</th>
         <th style="text-align:center;">% chi phí/doanh số</th>
+        <th style="text-align:center;">Thao tác</th>
       </tr>
       <tr style="background:#eef6ff;font-weight:700;">
         <td>Tổng</td>
@@ -9164,6 +9175,7 @@ function renderMarketingReportTable(rows) {
         <td style="text-align:center;">${totalContracts.toLocaleString("vi-VN")}</td>
         <td style="text-align:right;">${formatMoney(totalRevenue)}</td>
         <td style="text-align:center;">${totalCostRate.toFixed(1)}%</td>
+        <td style="text-align:center;">--</td>
       </tr>
     </thead>
     <tbody>${tbody}</tbody>
@@ -9310,9 +9322,19 @@ function renderConsultantReportTable(detailRows) {
         <td style="text-align:right;">${formatMoney(row.revenue)}</td>
         <td style="text-align:right;">${formatMoney(row.receivable)}</td>
         <td style="text-align:right;">${formatMoney(row.avgInvoice)}</td>
+        <td style="text-align:center;">
+          <button
+            class="btn warn"
+            type="button"
+            data-report-delete-type="consultant"
+            data-report-date="${row.date}"
+            data-report-name="${encodeURIComponent(row.consultantName)}"
+            style="padding:4px 10px;font-size:0.78rem;"
+          >Xóa</button>
+        </td>
       </tr>
     `).join("")
-    : '<tr><td colspan="9" style="text-align:center;">Không có dữ liệu tư vấn trong khoảng ngày đã chọn.</td></tr>';
+    : '<tr><td colspan="10" style="text-align:center;">Không có dữ liệu tư vấn trong khoảng ngày đã chọn.</td></tr>';
 
   els.reportsTable.innerHTML = `
     <thead>
@@ -9326,6 +9348,7 @@ function renderConsultantReportTable(detailRows) {
         <th style="cursor:pointer;user-select:none;text-align:right;" data-consultant-sort="revenue">Doanh số${getConsultantSortIndicator("revenue")}</th>
         <th style="cursor:pointer;user-select:none;text-align:right;" data-consultant-sort="receivable">Công nợ${getConsultantSortIndicator("receivable")}</th>
         <th style="cursor:pointer;user-select:none;text-align:right;" data-consultant-sort="avgInvoice">Đầu hoá đơn trung bình${getConsultantSortIndicator("avgInvoice")}</th>
+        <th style="text-align:center;">Thao tác</th>
       </tr>
       <tr style="background:#eef6ff;font-weight:700;">
         <td>Tổng</td>
@@ -9337,6 +9360,7 @@ function renderConsultantReportTable(detailRows) {
         <td style="text-align:right;">${formatMoney(totalRevenue)}</td>
         <td style="text-align:right;">${formatMoney(totalReceivable)}</td>
         <td style="text-align:right;">${formatMoney(totalAvgInvoice)}</td>
+        <td style="text-align:center;">--</td>
       </tr>
     </thead>
     <tbody>${tbody}</tbody>
@@ -9459,9 +9483,19 @@ function renderTelesaleReportTable(rows) {
         <td style="text-align:center;">${row.cancelledCount.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${row.bookingRate.toFixed(1)}%</td>
         <td style="text-align:right;">${row.revenue.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:center;">
+          <button
+            class="btn warn"
+            type="button"
+            data-report-delete-type="telesale"
+            data-report-date="${row.date}"
+            data-report-name="${encodeURIComponent(row.saleName)}"
+            style="padding:4px 10px;font-size:0.78rem;"
+          >Xóa</button>
+        </td>
       </tr>
     `).join("")
-    : '<tr><td colspan="8" style="text-align:center;">Không có dữ liệu telesale trong khoảng ngày đã chọn.</td></tr>';
+    : '<tr><td colspan="9" style="text-align:center;">Không có dữ liệu telesale trong khoảng ngày đã chọn.</td></tr>';
 
   els.reportsTable.innerHTML = `
     <thead>
@@ -9474,6 +9508,7 @@ function renderTelesaleReportTable(rows) {
         <th style="cursor:pointer;user-select:none;text-align:center;" data-telesale-sort="cancelledCount">Ca hoãn huỷ${getTelesaleSortIndicator("cancelledCount")}</th>
         <th style="cursor:pointer;user-select:none;text-align:center;" data-telesale-sort="bookingRate">Tỉ lệ đặt lịch/mess${getTelesaleSortIndicator("bookingRate")}</th>
         <th style="cursor:pointer;user-select:none;text-align:right;" data-telesale-sort="revenue">Doanh số${getTelesaleSortIndicator("revenue")}</th>
+        <th style="text-align:center;">Thao tác</th>
       </tr>
       <tr style="background:#eef6ff;font-weight:700;">
         <td>Tổng</td>
@@ -9484,6 +9519,7 @@ function renderTelesaleReportTable(rows) {
         <td style="text-align:center;">${totalCancelled.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${totalBookingRate.toFixed(1)}%</td>
         <td style="text-align:right;">${totalRevenue.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:center;">--</td>
       </tr>
     </thead>
     <tbody>${tbody}</tbody>
@@ -9517,6 +9553,46 @@ function getRowsByReportDepartment(departmentKey, start, end) {
   if (departmentKey === "consultant") return inRange.filter((item) => String(item.consultant || "").trim());
   if (departmentKey === "nurse") return inRange.filter((item) => getCanonicalNurseName(item.nurse));
   return inRange;
+}
+
+function deleteSchedulesByReportRow(type, dateKey, personName) {
+  const normalizedDate = String(dateKey || "").trim();
+  const normalizedName = String(personName || "").trim();
+  if (!normalizedDate || !normalizedName) return 0;
+
+  let removedCount = 0;
+  schedules = schedules.filter((item) => {
+    const itemDate = normalizeScheduleDateKey(item.registrationDate) || today;
+    if (itemDate !== normalizedDate) return true;
+
+    if (type === "marketing") {
+      const ownerName = getMarketingOwnerName(item);
+      if (ownerName !== normalizedName) return true;
+      removedCount += 1;
+      return false;
+    }
+
+    if (type === "consultant") {
+      const consultantName = String(item.consultant || "").trim();
+      if (consultantName !== normalizedName) return true;
+      removedCount += 1;
+      return false;
+    }
+
+    if (type === "telesale") {
+      const telesaleName = String(item.saleStaff || "").trim();
+      if (telesaleName !== normalizedName) return true;
+      removedCount += 1;
+      return false;
+    }
+
+    return true;
+  });
+
+  if (removedCount > 0) {
+    saveJSON(STORAGE.schedule, schedules);
+  }
+  return removedCount;
 }
 
 function toDailyReportRows(departmentKey, rows) {
@@ -11847,6 +11923,41 @@ if (els.reportsSection) {
   els.reportsSection.addEventListener("click", async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+    const deleteBtn = target.closest("[data-report-delete-type]");
+    if (deleteBtn instanceof HTMLElement) {
+      const reportType = String(deleteBtn.dataset.reportDeleteType || "").trim();
+      const reportDate = String(deleteBtn.dataset.reportDate || "").trim();
+      const encodedName = String(deleteBtn.dataset.reportName || "").trim();
+      const reportName = decodeURIComponent(encodedName || "").trim();
+
+      if (!["marketing", "consultant", "telesale"].includes(reportType)) return;
+      if (!reportDate || !reportName) {
+        showToast("Thiếu thông tin dòng báo cáo để xóa.", "warning");
+        return;
+      }
+
+      const labels = {
+        marketing: "Marketing",
+        consultant: "Tư vấn",
+        telesale: "Telesale"
+      };
+      const confirmed = window.confirm(
+        `Xóa dòng báo cáo ${labels[reportType]}\nNgày: ${reportDate}\nNhân sự: ${reportName}\n\nThao tác này sẽ xóa dữ liệu nguồn khỏi lịch đã lưu. Tiếp tục?`
+      );
+      if (!confirmed) return;
+
+      const removedCount = deleteSchedulesByReportRow(reportType, reportDate, reportName);
+      if (!removedCount) {
+        showToast("Không tìm thấy dữ liệu nguồn khớp để xóa.", "warning");
+        return;
+      }
+
+      logActivity("Báo cáo", "Xóa dòng báo cáo", `${labels[reportType]} | ${reportDate} | ${reportName} | ${removedCount} lịch`);
+      renderReportsPage();
+      showToast(`Đã xóa ${removedCount} bản ghi nguồn khỏi báo cáo ${labels[reportType]}.`, "success");
+      return;
+    }
+
     const consultantSortHeader = target.closest("[data-consultant-sort]");
     if (consultantSortHeader instanceof HTMLElement && activeReportDepartment === "consultant") {
       const sortKey = consultantSortHeader.dataset.consultantSort;
