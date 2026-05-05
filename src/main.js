@@ -8617,6 +8617,11 @@ function normalizeImportedScheduleRow(raw) {
     unionDeduction: Number(firstValue(sourceObj, ["uniondeduction", "phi cong doan", "phí công đoàn", "khau tru cong doan", "khấu trừ công đoàn"]) || 0),
     violationDeduction: Number(firstValue(sourceObj, ["violationdeduction", "phat vi pham", "phạt vi phạm", "tien phat", "tiền phạt"]) || 0),
     telegramUpdateId,
+    telegramMessageId,
+    telegramChatId,
+    telegramRoute: telegramRouteRaw,
+    reportSource: "telegram",
+    createdSource: "telegram",
     status,
     note: noteText,
     updatedAt: Date.now(),
@@ -8649,24 +8654,65 @@ function normalizeDeletedScheduleIdMap(rawMap) {
   return normalized;
 }
 
-function isScheduleRestorationBlocked(scheduleId) {
-  const id = String(scheduleId || "").trim();
-  if (!id) return false;
-  return Boolean(deletedScheduleIds[id]);
+function isTelegramScheduleRow(item) {
+  const id = String(item?.id || "").trim().toLowerCase();
+  const source = String(item?.source || item?.reportSource || item?.createdSource || "").toLowerCase();
+  return id.startsWith("tg-") || id.startsWith("tgm-") || source.includes("telegram");
+}
+
+function getTelegramDeletionFingerprint(item) {
+  if (!isTelegramScheduleRow(item)) return "";
+  const route = normalizeTextForMatching(item?.telegramRoute || "");
+  const date = normalizeScheduleDateKey(item?.registrationDate || item?.date || "") || "";
+  const saleName = normalizeTextForMatching(item?.saleStaff || "");
+  const consultant = normalizeTextForMatching(item?.consultant || "");
+  const nurse = normalizeTextForMatching(item?.nurse || "");
+  const customerName = normalizeTextForMatching(item?.customerName || "");
+  const phone = String(item?.phone || "").replace(/\D/g, "");
+  const appointmentTime = normalizeTextForMatching(item?.appointmentTime || "");
+  const service = normalizeTextForMatching(item?.service || "");
+  return `tgfp:${route}|${date}|${saleName}|${consultant}|${nurse}|${customerName}|${phone}|${appointmentTime}|${service}`;
+}
+
+function buildScheduleDeleteMarkerKeys(scheduleLike) {
+  const keys = new Set();
+  const row = scheduleLike && typeof scheduleLike === "object" ? scheduleLike : null;
+  const id = row ? String(row.id || "").trim() : String(scheduleLike || "").trim();
+  if (id) keys.add(id);
+
+  if (row) {
+    const updateId = String(row.telegramUpdateId || "").trim();
+    const messageId = String(row.telegramMessageId || "").trim();
+    const chatId = String(row.telegramChatId || "").trim();
+    if (updateId) keys.add(`tg-${updateId}`);
+    if (chatId && messageId) keys.add(`tgm-${chatId}:${messageId}`);
+    const fingerprint = getTelegramDeletionFingerprint(row);
+    if (fingerprint) keys.add(fingerprint);
+  }
+
+  return Array.from(keys);
+}
+
+function isScheduleRestorationBlocked(scheduleLike) {
+  const markerKeys = buildScheduleDeleteMarkerKeys(scheduleLike);
+  if (!markerKeys.length) return false;
+  return markerKeys.some((key) => Boolean(deletedScheduleIds[key]));
 }
 
 function markDeletedScheduleRows(rows, reason = "manual-delete") {
   const list = Array.isArray(rows) ? rows : [];
   let changed = false;
   list.forEach((row) => {
-    const id = String(row?.id || "").trim();
-    if (!id) return;
+    const keys = buildScheduleDeleteMarkerKeys(row);
+    if (!keys.length) return;
     const nextReason = String(reason || "manual-delete").trim();
-    const prev = deletedScheduleIds[id];
-    if (!prev || prev.reason !== nextReason) {
-      deletedScheduleIds[id] = { deletedAt: Date.now(), reason: nextReason };
-      changed = true;
-    }
+    keys.forEach((key) => {
+      const prev = deletedScheduleIds[key];
+      if (!prev || prev.reason !== nextReason) {
+        deletedScheduleIds[key] = { deletedAt: Date.now(), reason: nextReason };
+        changed = true;
+      }
+    });
   });
   if (changed) saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
   return changed;
@@ -8676,10 +8722,13 @@ function clearDeletedScheduleRows(rows) {
   const list = Array.isArray(rows) ? rows : [];
   let changed = false;
   list.forEach((row) => {
-    const id = String(row?.id || "").trim();
-    if (!id || !deletedScheduleIds[id]) return;
-    delete deletedScheduleIds[id];
-    changed = true;
+    const keys = buildScheduleDeleteMarkerKeys(row);
+    if (!keys.length) return;
+    keys.forEach((key) => {
+      if (!deletedScheduleIds[key]) return;
+      delete deletedScheduleIds[key];
+      changed = true;
+    });
   });
   if (changed) saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
   return changed;
@@ -8687,7 +8736,7 @@ function clearDeletedScheduleRows(rows) {
 
 function filterImportedSchedulesByDeleteMarkers(rows) {
   const list = Array.isArray(rows) ? rows : [];
-  return list.filter((item) => !isScheduleRestorationBlocked(item?.id));
+  return list.filter((item) => !isScheduleRestorationBlocked(item));
 }
 
 function mergeImportedSchedules(imported) {
@@ -9805,7 +9854,7 @@ function getRowsByReportDepartment(departmentKey, start, end) {
 
 function deleteSchedulesByReportRow(type, dateKey, personName) {
   const normalizedDate = String(dateKey || "").trim();
-  const normalizedName = String(personName || "").trim();
+  const normalizedName = normalizeTextForMatching(personName);
   if (!normalizedDate || !normalizedName) return { removedCount: 0, deletedRows: [] };
 
   let removedCount = 0;
@@ -9815,7 +9864,7 @@ function deleteSchedulesByReportRow(type, dateKey, personName) {
     if (itemDate !== normalizedDate) return true;
 
     if (type === "marketing") {
-      const ownerName = getMarketingOwnerName(item);
+      const ownerName = normalizeTextForMatching(getMarketingOwnerName(item));
       if (ownerName !== normalizedName) return true;
       deletedRows.push(clonePlain(item));
       removedCount += 1;
@@ -9823,7 +9872,7 @@ function deleteSchedulesByReportRow(type, dateKey, personName) {
     }
 
     if (type === "consultant") {
-      const consultantName = String(item.consultant || "").trim();
+      const consultantName = normalizeTextForMatching(item.consultant);
       if (consultantName !== normalizedName) return true;
       deletedRows.push(clonePlain(item));
       removedCount += 1;
@@ -9831,7 +9880,7 @@ function deleteSchedulesByReportRow(type, dateKey, personName) {
     }
 
     if (type === "telesale") {
-      const telesaleName = String(item.saleStaff || "").trim();
+      const telesaleName = normalizeTextForMatching(item.saleStaff);
       if (telesaleName !== normalizedName) return true;
       deletedRows.push(clonePlain(item));
       removedCount += 1;
