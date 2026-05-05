@@ -210,6 +210,7 @@ const STORAGE = {
   recycleBin: "nora_recycle_bin_v1",
   hrFiles: "nora_hr_files_v1",
   schedule: "nora_schedule_v1",
+  deletedScheduleIds: "nora_deleted_schedule_ids_v1",
   customerCareProgress: "nora_customer_care_progress_v1",
   customerCareFilters: "nora_customer_care_filters_v1",
   customerCareManualRows: "nora_care_manual_rows_v1",
@@ -2974,6 +2975,7 @@ function getUsersSyncEndpoint() {
 const APP_STATE_SYNC_KEYS = new Set([
   STORAGE.customers,
   STORAGE.schedule,
+  STORAGE.deletedScheduleIds,
   STORAGE.inventoryItems,
   STORAGE.inventoryTransactions,
   STORAGE.hrFiles,
@@ -3101,6 +3103,7 @@ function hasLocalCriticalData() {
   return (
     (Array.isArray(customers) && customers.length > 0) ||
     (Array.isArray(schedules) && schedules.length > 0) ||
+    countObjectKeys(deletedScheduleIds) > 0 ||
     (Array.isArray(inventoryItems) && inventoryItems.length > 0) ||
     (Array.isArray(inventoryTransactions) && inventoryTransactions.length > 0) ||
     countObjectKeys(hrFiles) > 0 ||
@@ -3123,6 +3126,7 @@ function buildCriticalStatePayload() {
     schemaVersion: 2,
     customers: Array.isArray(customers) ? customers : [],
     schedules: Array.isArray(schedules) ? schedules : [],
+    deletedScheduleIds: deletedScheduleIds && typeof deletedScheduleIds === "object" ? deletedScheduleIds : {},
     inventoryItems: Array.isArray(inventoryItems) ? inventoryItems : [],
     inventoryTransactions: Array.isArray(inventoryTransactions) ? inventoryTransactions : [],
     hrFiles: hrFiles && typeof hrFiles === "object" ? hrFiles : {},
@@ -3154,6 +3158,7 @@ function normalizeRemoteCriticalState(raw = {}) {
     schemaVersion: Number(raw.schemaVersion) || 1,
     customers: Array.isArray(raw.customers) ? raw.customers : [],
     schedules: Array.isArray(raw.schedules) ? raw.schedules : [],
+    deletedScheduleIds: raw.deletedScheduleIds && typeof raw.deletedScheduleIds === "object" ? raw.deletedScheduleIds : {},
     inventoryItems: Array.isArray(raw.inventoryItems) ? raw.inventoryItems : [],
     inventoryTransactions: Array.isArray(raw.inventoryTransactions) ? raw.inventoryTransactions : [],
     hrFiles: raw.hrFiles && typeof raw.hrFiles === "object" ? raw.hrFiles : {},
@@ -3214,6 +3219,7 @@ function getRemoteCriticalStateRowCount(remoteState) {
   return (
     (remoteState.customers?.length || 0) +
     (remoteState.schedules?.length || 0) +
+    countObjectKeys(remoteState.deletedScheduleIds) +
     (remoteState.inventoryItems?.length || 0) +
     (remoteState.inventoryTransactions?.length || 0) +
     countObjectKeys(remoteState.hrFiles) +
@@ -3356,6 +3362,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   try {
     const mergedCustomers = preferRemoteList(remoteState.customers, customers);
     const mergedSchedules = preferRemoteList(remoteState.schedules, schedules);
+    const mergedDeletedScheduleIds = preferRemoteObject(remoteState.deletedScheduleIds, deletedScheduleIds);
     const mergedInventoryItems = preferRemoteList(remoteState.inventoryItems, inventoryItems);
     const mergedInventoryTransactions = preferRemoteList(remoteState.inventoryTransactions, inventoryTransactions);
     const mergedHrFiles = preferRemoteObject(remoteState.hrFiles, hrFiles);
@@ -3374,6 +3381,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
 
     customers = mergedCustomers.map((customer) => normalizeCustomer(customer));
     schedules = mergedSchedules;
+    deletedScheduleIds = normalizeDeletedScheduleIdMap(mergedDeletedScheduleIds);
     inventoryItems = mergedInventoryItems.map((item) => ({
       ...item,
       purchasePrice: Number(item.purchasePrice) || 0,
@@ -3425,6 +3433,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
 
     saveJSON(STORAGE.customers, customers);
     saveJSON(STORAGE.schedule, schedules);
+    saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
     saveJSON(STORAGE.inventoryItems, inventoryItems);
     saveJSON(STORAGE.inventoryTransactions, inventoryTransactions);
     saveJSON(STORAGE.hrFiles, hrFiles);
@@ -3765,6 +3774,7 @@ function startUsersAutoSync() {
 let attendanceAutoSyncSignature = "";
 let telegramRealtimeSyncTimer = null;
 let schedules = loadJSON(STORAGE.schedule, seedSchedule);
+let deletedScheduleIds = normalizeDeletedScheduleIdMap(loadJSON(STORAGE.deletedScheduleIds, {}));
 if (Array.isArray(schedules)) {
   const existingIds = new Set(schedules.map((item) => item.id));
   const missingSamples = seedSchedule.filter((item) => !existingIds.has(item.id));
@@ -5245,6 +5255,21 @@ function restoreActivityAction(activityId) {
     const exists = schedules.some((entry) => entry.id === scheduleData.id);
     if (!exists) schedules.unshift(scheduleData);
     saveJSON(STORAGE.schedule, schedules);
+    clearDeletedScheduleRows([scheduleData]);
+  } else if (action.kind === "schedule-bulk-delete-report-row" && Array.isArray(action.deletedSchedules)) {
+    const restoredRows = [];
+    action.deletedSchedules.forEach((rawSchedule) => {
+      const scheduleData = clonePlain(rawSchedule);
+      if (!scheduleData || !scheduleData.id) return;
+      const exists = schedules.some((entry) => entry.id === scheduleData.id);
+      if (!exists) {
+        schedules.unshift(scheduleData);
+      }
+      restoredRows.push(scheduleData);
+    });
+    if (!restoredRows.length) return false;
+    saveJSON(STORAGE.schedule, schedules);
+    clearDeletedScheduleRows(restoredRows);
   } else {
     return false;
   }
@@ -8471,8 +8496,63 @@ function normalizeImportedScheduleRow(raw) {
   };
 }
 
+function normalizeDeletedScheduleIdMap(rawMap) {
+  if (!rawMap || typeof rawMap !== "object") return {};
+  const normalized = {};
+  Object.entries(rawMap).forEach(([rawId, rawMeta]) => {
+    const id = String(rawId || "").trim();
+    if (!id) return;
+    normalized[id] = {
+      deletedAt: Number(rawMeta?.deletedAt) || Date.now(),
+      reason: String(rawMeta?.reason || "manual-delete").trim()
+    };
+  });
+  return normalized;
+}
+
+function isScheduleRestorationBlocked(scheduleId) {
+  const id = String(scheduleId || "").trim();
+  if (!id) return false;
+  return Boolean(deletedScheduleIds[id]);
+}
+
+function markDeletedScheduleRows(rows, reason = "manual-delete") {
+  const list = Array.isArray(rows) ? rows : [];
+  let changed = false;
+  list.forEach((row) => {
+    const id = String(row?.id || "").trim();
+    if (!id) return;
+    const nextReason = String(reason || "manual-delete").trim();
+    const prev = deletedScheduleIds[id];
+    if (!prev || prev.reason !== nextReason) {
+      deletedScheduleIds[id] = { deletedAt: Date.now(), reason: nextReason };
+      changed = true;
+    }
+  });
+  if (changed) saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
+  return changed;
+}
+
+function clearDeletedScheduleRows(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  let changed = false;
+  list.forEach((row) => {
+    const id = String(row?.id || "").trim();
+    if (!id || !deletedScheduleIds[id]) return;
+    delete deletedScheduleIds[id];
+    changed = true;
+  });
+  if (changed) saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
+  return changed;
+}
+
+function filterImportedSchedulesByDeleteMarkers(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  return list.filter((item) => !isScheduleRestorationBlocked(item?.id));
+}
+
 function mergeImportedSchedules(imported) {
-  const normalized = imported.map(normalizeImportedScheduleRow).filter(Boolean);
+  const normalized = filterImportedSchedulesByDeleteMarkers(imported.map(normalizeImportedScheduleRow).filter(Boolean));
   if (!normalized.length) return 0;
 
   const current = Array.isArray(schedules) ? schedules.slice() : [];
@@ -8515,7 +8595,7 @@ function mergeImportedSchedules(imported) {
 }
 
 function replaceTelegramSchedules(imported) {
-  const normalizedTelegramRows = imported.map(normalizeImportedScheduleRow).filter(Boolean);
+  const normalizedTelegramRows = filterImportedSchedulesByDeleteMarkers(imported.map(normalizeImportedScheduleRow).filter(Boolean));
   const incomingTelegramIds = new Set(normalizedTelegramRows.map((item) => String(item.id || "")).filter(Boolean));
   const existingTelegramRows = (schedules || []).filter((item) => {
     const id = String(item.id || "");
@@ -9587,9 +9667,10 @@ function getRowsByReportDepartment(departmentKey, start, end) {
 function deleteSchedulesByReportRow(type, dateKey, personName) {
   const normalizedDate = String(dateKey || "").trim();
   const normalizedName = String(personName || "").trim();
-  if (!normalizedDate || !normalizedName) return 0;
+  if (!normalizedDate || !normalizedName) return { removedCount: 0, deletedRows: [] };
 
   let removedCount = 0;
+  const deletedRows = [];
   schedules = schedules.filter((item) => {
     const itemDate = normalizeScheduleDateKey(item.registrationDate) || today;
     if (itemDate !== normalizedDate) return true;
@@ -9597,6 +9678,7 @@ function deleteSchedulesByReportRow(type, dateKey, personName) {
     if (type === "marketing") {
       const ownerName = getMarketingOwnerName(item);
       if (ownerName !== normalizedName) return true;
+      deletedRows.push(clonePlain(item));
       removedCount += 1;
       return false;
     }
@@ -9604,6 +9686,7 @@ function deleteSchedulesByReportRow(type, dateKey, personName) {
     if (type === "consultant") {
       const consultantName = String(item.consultant || "").trim();
       if (consultantName !== normalizedName) return true;
+      deletedRows.push(clonePlain(item));
       removedCount += 1;
       return false;
     }
@@ -9611,6 +9694,7 @@ function deleteSchedulesByReportRow(type, dateKey, personName) {
     if (type === "telesale") {
       const telesaleName = String(item.saleStaff || "").trim();
       if (telesaleName !== normalizedName) return true;
+      deletedRows.push(clonePlain(item));
       removedCount += 1;
       return false;
     }
@@ -9620,8 +9704,9 @@ function deleteSchedulesByReportRow(type, dateKey, personName) {
 
   if (removedCount > 0) {
     saveJSON(STORAGE.schedule, schedules);
+    markDeletedScheduleRows(deletedRows, `report-row-${type}`);
   }
-  return removedCount;
+  return { removedCount, deletedRows };
 }
 
 function toDailyReportRows(departmentKey, rows) {
@@ -12000,13 +12085,26 @@ if (els.reportsSection) {
       );
       if (!confirmed) return;
 
-      const removedCount = deleteSchedulesByReportRow(reportType, reportDate, reportName);
+      const { removedCount, deletedRows } = deleteSchedulesByReportRow(reportType, reportDate, reportName);
       if (!removedCount) {
         showToast("Không tìm thấy dữ liệu nguồn khớp để xóa.", "warning");
         return;
       }
 
-      logActivity("Báo cáo", "Xóa dòng báo cáo", `${labels[reportType]} | ${reportDate} | ${reportName} | ${removedCount} lịch`);
+      logActivity(
+        "Báo cáo",
+        "Xóa dòng báo cáo",
+        `${labels[reportType]} | ${reportDate} | ${reportName} | ${removedCount} lịch`,
+        {
+          restoreAction: {
+            kind: "schedule-bulk-delete-report-row",
+            deletedSchedules: deletedRows,
+            reportType,
+            reportDate,
+            reportName
+          }
+        }
+      );
       renderReportsPage();
       showToast(`Đã xóa ${removedCount} bản ghi nguồn khỏi báo cáo ${labels[reportType]}.`, "success");
       return;
@@ -12706,6 +12804,7 @@ els.scheduleBody.addEventListener("click", (event) => {
     if (!confirm(`Xóa lịch của "${s.customerName}" ngày ${s.registrationDate}?`)) return;
     schedules = schedules.filter((x) => x.id !== id);
     saveJSON(STORAGE.schedule, schedules);
+    markDeletedScheduleRows([s], "manual-schedule-delete");
     renderScheduleTable();
     renderCustomerCarePage();
     showToast("Đã xóa lịch.");
