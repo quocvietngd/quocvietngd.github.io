@@ -3908,22 +3908,24 @@ function ensureRecoveredLongMarketingRows() {
 function parseVietnameseAmount(value) {
   const text = String(value || "").trim();
   if (!text) return 0;
-  const cleaned = text.replace(/[^\d,.-]/g, "");
+  const hasKSuffix = /k\s*$/i.test(text);
+  const cleaned = text.replace(/k\s*$/i, "").replace(/[^\d,.-]/g, "");
   if (!cleaned) return 0;
 
+  let parsed = 0;
   if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(cleaned)) {
-    const parsed = Number.parseFloat(cleaned.replace(/\./g, "").replace(/,/g, "."));
-    return Number.isFinite(parsed) ? parsed : 0;
+    parsed = Number.parseFloat(cleaned.replace(/\./g, "").replace(/,/g, "."));
+  } else {
+    const dotCount = (cleaned.match(/\./g) || []).length;
+    if (dotCount > 1 && /^\d+(\.\d{3})+$/.test(cleaned)) {
+      parsed = Number.parseFloat(cleaned.replace(/\./g, ""));
+    } else {
+      parsed = Number.parseFloat(cleaned.replace(/,/g, "."));
+    }
   }
 
-  const dotCount = (cleaned.match(/\./g) || []).length;
-  if (dotCount > 1 && /^\d+(\.\d{3})+$/.test(cleaned)) {
-    const parsed = Number.parseFloat(cleaned.replace(/\./g, ""));
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  const parsed = Number.parseFloat(cleaned.replace(/,/g, "."));
-  return Number.isFinite(parsed) ? parsed : 0;
+  if (!Number.isFinite(parsed)) return 0;
+  return hasKSuffix ? parsed * 1000 : parsed;
 }
 
 function extractReceivableAmountFromNote(note) {
@@ -9098,9 +9100,17 @@ function parseFlexibleNumber(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const text = String(value || "").trim();
   if (!text) return 0;
-  const normalized = text.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
+  const hasKSuffix = /k\s*$/i.test(text);
+  const raw = text.replace(/k\s*$/i, "").trim();
+  let normalized;
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw.replace(/[^\d.,]/g, ""))) {
+    normalized = raw.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(/,/g, ".");
+  } else {
+    normalized = raw.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
+  }
   const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
+  if (!Number.isFinite(parsed)) return 0;
+  return hasKSuffix ? parsed * 1000 : parsed;
 }
 
 function getDistanceKm(item) {

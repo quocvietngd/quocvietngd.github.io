@@ -447,17 +447,20 @@ function parseFlexibleNumber(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const text = String(value || "").trim();
   if (!text) return 0;
+  const hasKSuffix = /k\s*$/i.test(text);
+  const raw = text.replace(/k\s*$/i, "").trim();
   // Vietnamese format: 20.000.000 (dots as thousands separators)
   // Detect: multiple dots OR dot-groups-of-3 pattern
   let normalized;
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(text.replace(/[^\d.,]/g, ""))) {
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw.replace(/[^\d.,]/g, ""))) {
     // Vietnamese: dots=thousands, comma=decimal
-    normalized = text.replace(/[^\d.,]/g, "").replace(/\./g, "").replace(/,/g, ".");
+    normalized = raw.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(/,/g, ".");
   } else {
-    normalized = text.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
+    normalized = raw.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
   }
   const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
+  if (!Number.isFinite(parsed)) return 0;
+  return hasKSuffix ? parsed * 1000 : parsed;
 }
 
 function parseTelegramAllowedChatIds(chatIdValue) {
