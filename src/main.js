@@ -8555,11 +8555,12 @@ async function discoverTelegramChats() {
   return Array.from(discovered.values()).sort((a, b) => String(a.chatTitle || a.chatId).localeCompare(String(b.chatTitle || b.chatId), "vi"));
 }
 
-async function fetchAndParseTelegramMessagesDirect() {
+async function fetchAndParseTelegramMessagesDirect(options = {}) {
+  const { fullSync = false } = options;
   const { token, chatId, lastUpdateId } = telegramSourceConfig;
   if (!token || !chatId) throw new Error("Chưa nhập Bot Token hoặc Chat ID.");
   const allowedChatIds = parseTelegramAllowedChatIds(chatId);
-  const offset = lastUpdateId ? lastUpdateId + 1 : undefined;
+  const offset = !fullSync && lastUpdateId ? lastUpdateId + 1 : undefined;
   const url = "https://api.telegram.org/bot" + token + "/getUpdates?limit=100" +
     (offset ? "&offset=" + offset : "");
   const res = await fetch(url);
@@ -8580,6 +8581,7 @@ async function fetchAndParseTelegramMessagesDirect() {
     if (parsed) rawRows.push({
       ...parsed,
       telegramUpdateId: String(u.update_id || ""),
+      telegramMessageId: String(message.message_id || ""),
       telegramChatId: incomingChatId,
       telegramChatTitle: String(message.chat?.title || message.chat?.username || "").trim()
     });
@@ -8623,10 +8625,24 @@ async function pullTelegramWebhookReports(options = {}) {
 
 async function runTelegramRealtimeSync(silent = false, options = {}) {
   try {
-    const result = await pullTelegramWebhookReports(options);
+    const bridgeResult = await pullTelegramWebhookReports(options);
+    let directResult = { totalUpdates: 0, importedRows: 0, parsedMessages: 0 };
+    try {
+      directResult = await fetchAndParseTelegramMessagesDirect(options);
+    } catch (directErr) {
+      directResult = { totalUpdates: 0, importedRows: 0, parsedMessages: 0, error: directErr.message };
+    }
+    const result = {
+      ...bridgeResult,
+      importedRows: Number(bridgeResult.importedRows || 0) + Number(directResult.importedRows || 0),
+      bridgeImportedRows: Number(bridgeResult.importedRows || 0),
+      directImportedRows: Number(directResult.importedRows || 0),
+      directParsedMessages: Number(directResult.parsedMessages || 0),
+      directTotalUpdates: Number(directResult.totalUpdates || 0)
+    };
     if (!silent) {
       const msg = result.importedRows > 0
-        ? `Đã nhập ${result.importedRows} ca từ webhook Telegram.`
+        ? `Đã nhập ${result.importedRows} ca từ Telegram (${result.bridgeImportedRows} bridge, ${result.directImportedRows} trực tiếp).`
         : "Không có báo cáo Telegram mới.";
       showToast(msg, result.importedRows > 0 ? "success" : "info");
     }
