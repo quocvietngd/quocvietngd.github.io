@@ -3363,9 +3363,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
 
   const hasPendingSync = Boolean(loadJSON(STORAGE.criticalStatePendingSync, false));
   if (hasPendingSync) {
-    const pushed = await syncCriticalStateToRemote(showToastOnSuccess);
-    if (pushed) return true;
-    return false;
+    await syncCriticalStateToRemote(showToastOnSuccess);
   }
 
   const remoteState = await fetchRemoteCriticalState(endpointUrl);
