@@ -1940,7 +1940,18 @@ const server = createServer(async (req, res) => {
   if (method === "GET" && url.pathname === "/api/app-state") {
     try {
       const state = await readState();
-      sendJson(res, 200, state.appState || normalizeAppState());
+      const appState = state.appState || normalizeAppState();
+      // Migrate legacy rows: thucthu stored as 0 should be null so frontend
+      // falls back to contractAmount - receivableAmount correctly.
+      if (Array.isArray(appState.schedules)) {
+        appState.schedules = appState.schedules.map((s) => {
+          if (Number(s.thucthu) === 0 && s.thucthu !== undefined) {
+            return { ...s, thucthu: null };
+          }
+          return s;
+        });
+      }
+      sendJson(res, 200, appState);
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Read app state failed" });
     }

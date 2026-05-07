@@ -9978,8 +9978,8 @@ function getConsultantReportRows(start, end) {
 
     const contractAmount = normalizeLegacyConsultantAmount(parseVietnameseAmount(item.contractAmount), item);
     const receivableAmount = Math.max(0, parseVietnameseAmount(item.receivableAmount));
-    const explicitThucthu = item.thucthu != null ? parseVietnameseAmount(item.thucthu) : null;
-    const revenue = explicitThucthu != null && explicitThucthu >= 0
+    const explicitThucthu = item.thucthu != null && Number(item.thucthu) > 0 ? parseVietnameseAmount(item.thucthu) : null;
+    const revenue = explicitThucthu != null
       ? explicitThucthu
       : Math.max(0, contractAmount - receivableAmount);
     const status = String(item.status || "").toLowerCase();
@@ -10053,8 +10053,8 @@ function showConsultantDetailModal(key) {
   const tbody = items.map((item, idx) => {
     const contractAmount = normalizeLegacyConsultantAmount(parseVietnameseAmount(item.contractAmount), item);
     const receivableAmount = Math.max(0, parseVietnameseAmount(item.receivableAmount));
-    const explicitThucthu = item.thucthu != null ? parseVietnameseAmount(item.thucthu) : null;
-    const revenue = explicitThucthu != null && explicitThucthu >= 0 ? explicitThucthu : Math.max(0, contractAmount - receivableAmount);
+    const explicitThucthu = item.thucthu != null && Number(item.thucthu) > 0 ? parseVietnameseAmount(item.thucthu) : null;
+    const revenue = explicitThucthu != null ? explicitThucthu : Math.max(0, contractAmount - receivableAmount);
     return `<tr style="${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">
       <td style="text-align:center;padding:7px 8px;">${idx + 1}</td>
       <td style="padding:7px 8px;">${item.customerName || "—"}</td>
