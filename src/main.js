@@ -9835,8 +9835,11 @@ function getConsultantReportRows(start, end) {
     const status = String(item.status || "").toLowerCase();
     const noteText = normalizeTextForMatching(item.note || item.motherCondition || "");
 
+    const kqText = normalizeTextForMatching(item.kq || "");
+    const isFail = kqText.includes("fail");
+
     prev.receivedCount += 1;
-    if (contractAmount > 0) {
+    if (contractAmount > 0 && !isFail) {
       prev.signedCount += 1;
       prev.contractValue += contractAmount;
       prev.revenue += revenue;
