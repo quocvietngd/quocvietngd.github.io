@@ -469,23 +469,47 @@ function parseFlexibleNumber(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const text = String(value || "").trim();
   if (!text) return 0;
-  const hasKSuffix = /k\s*$/i.test(text);
-  const raw = text.replace(/k\s*$/i, "").trim();
-  // Vietnamese format: 20.000.000 (dots as thousands) or 20,000,000 (commas as thousands)
-  let normalized;
-  const rawDigits = raw.replace(/[^\d.,]/g, "");
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(rawDigits)) {
-    // Vietnamese: dots=thousands, comma=decimal → strip dots
-    normalized = raw.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(/,/g, ".");
-  } else if (/^\d{1,3}(,\d{3})+(\,\d+)?$/.test(rawDigits) || /^\d{1,3}(,\d{3})+$/.test(rawDigits)) {
-    // Comma as thousands separator: 1,399 → 1399
-    normalized = raw.replace(/[^\d.,-]/g, "").replace(/,/g, "");
-  } else {
-    normalized = raw.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
+
+  const parseSingleAmount = (input) => {
+    const sample = String(input || "").trim();
+    if (!sample) return 0;
+    const tokenMatch = sample.match(/-?\d[\d.,]*\s*k?/i);
+    const token = tokenMatch ? tokenMatch[0].trim() : sample;
+    const hasKSuffix = /k\s*$/i.test(token);
+    const raw = token.replace(/k\s*$/i, "").trim();
+    if (!raw) return 0;
+
+    let normalized;
+    const rawDigits = raw.replace(/[^\d.,]/g, "");
+    if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(rawDigits)) {
+      normalized = raw.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(/,/g, ".");
+    } else if (/^\d{1,3}(,\d{3})+$/.test(rawDigits)) {
+      normalized = raw.replace(/[^\d.,-]/g, "").replace(/,/g, "");
+    } else {
+      normalized = raw.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
+    }
+
+    const parsed = Number.parseFloat(normalized);
+    if (!Number.isFinite(parsed)) return 0;
+    return hasKSuffix ? parsed * 1000 : parsed;
+  };
+
+  // Handle expressions like "249k + 150k pp" by summing each amount term.
+  const expressionParts = text.split("+").map((part) => part.trim()).filter(Boolean);
+  if (expressionParts.length > 1) {
+    let sum = 0;
+    let parsedAny = false;
+    expressionParts.forEach((part) => {
+      const valuePart = parseSingleAmount(part);
+      if (valuePart > 0) {
+        sum += valuePart;
+        parsedAny = true;
+      }
+    });
+    if (parsedAny) return sum;
   }
-  const parsed = Number.parseFloat(normalized);
-  if (!Number.isFinite(parsed)) return 0;
-  return hasKSuffix ? parsed * 1000 : parsed;
+
+  return parseSingleAmount(text);
 }
 
 function parseTelegramAllowedChatIds(chatIdValue) {
@@ -1533,6 +1557,76 @@ const server = createServer(async (req, res) => {
       sendJson(res, 200, { ok: true, route, threshold, patchedCount, log });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/telegram/admin/patch-amounts") {
+    // Targeted correction for specific telegram updates.
+    try {
+      const payload = await parseJsonBody(req);
+      const patches = Array.isArray(payload?.patches) ? payload.patches : [];
+      if (!patches.length) {
+        sendJson(res, 400, { ok: false, error: "Thiếu patches" });
+        return;
+      }
+
+      const patchMap = new Map();
+      patches.forEach((item) => {
+        const updateId = String(item?.updateId || "").trim();
+        const values = item?.values && typeof item.values === "object" ? item.values : null;
+        if (!updateId || !values) return;
+        patchMap.set(updateId, values);
+      });
+
+      if (!patchMap.size) {
+        sendJson(res, 400, { ok: false, error: "patches không hợp lệ" });
+        return;
+      }
+
+      const state = await readState();
+      const reports = Array.isArray(state.reports) ? state.reports : [];
+      let patchedCount = 0;
+      const log = [];
+
+      const nextReports = reports.map((item) => {
+        const raw = item?.raw || {};
+        const updateId = String(raw.telegramUpdateId || item.id || "");
+        const values = patchMap.get(updateId);
+        if (!values) return item;
+
+        const newRaw = { ...raw };
+        const newItem = { ...item };
+        const before = {};
+        const after = {};
+
+        Object.entries(values).forEach(([field, value]) => {
+          const numericValue = Number(value);
+          if (!Number.isFinite(numericValue)) return;
+          before[field] = Number(raw[field] ?? item[field] ?? 0);
+          newRaw[field] = numericValue;
+          newItem[field] = numericValue;
+          after[field] = numericValue;
+        });
+
+        newItem.raw = newRaw;
+        patchedCount += 1;
+        log.push({
+          updateId,
+          date: raw.registrationDate,
+          name: raw.consultant || raw.marketingName || raw.saleStaff || raw.nurse || "",
+          before,
+          after
+        });
+        return newItem;
+      });
+
+      state.reports = nextReports;
+      state.updatedAt = Date.now();
+      await writeState(state);
+      sendJson(res, 200, { ok: true, patchedCount, log });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Patch amounts failed" });
     }
     return;
   }

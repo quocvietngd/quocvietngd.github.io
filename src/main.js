@@ -3911,28 +3911,49 @@ function ensureRecoveredLongMarketingRows() {
 function parseVietnameseAmount(value) {
   const text = String(value || "").trim();
   if (!text) return 0;
-  const hasKSuffix = /k\s*$/i.test(text);
-  const cleaned = text.replace(/k\s*$/i, "").replace(/[^\d,.-]/g, "");
-  if (!cleaned) return 0;
 
-  let parsed = 0;
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(cleaned)) {
-    // Vietnamese: dots=thousands, comma=decimal
-    parsed = Number.parseFloat(cleaned.replace(/\./g, "").replace(/,/g, "."));
-  } else if (/^\d{1,3}(,\d{3})+$/.test(cleaned)) {
-    // Comma as thousands separator: 1,399 → 1399
-    parsed = Number.parseFloat(cleaned.replace(/,/g, ""));
-  } else {
-    const dotCount = (cleaned.match(/\./g) || []).length;
-    if (dotCount > 1 && /^\d+(\.\d{3})+$/.test(cleaned)) {
-      parsed = Number.parseFloat(cleaned.replace(/\./g, ""));
+  const parseSingleAmount = (input) => {
+    const sample = String(input || "").trim();
+    if (!sample) return 0;
+    const tokenMatch = sample.match(/-?\d[\d.,]*\s*k?/i);
+    const token = tokenMatch ? tokenMatch[0].trim() : sample;
+    const hasKSuffix = /k\s*$/i.test(token);
+    const cleaned = token.replace(/k\s*$/i, "").replace(/[^\d,.-]/g, "");
+    if (!cleaned) return 0;
+
+    let parsed = 0;
+    if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(cleaned)) {
+      parsed = Number.parseFloat(cleaned.replace(/\./g, "").replace(/,/g, "."));
+    } else if (/^\d{1,3}(,\d{3})+$/.test(cleaned)) {
+      parsed = Number.parseFloat(cleaned.replace(/,/g, ""));
     } else {
-      parsed = Number.parseFloat(cleaned.replace(/,/g, "."));
+      const dotCount = (cleaned.match(/\./g) || []).length;
+      if (dotCount > 1 && /^\d+(\.\d{3})+$/.test(cleaned)) {
+        parsed = Number.parseFloat(cleaned.replace(/\./g, ""));
+      } else {
+        parsed = Number.parseFloat(cleaned.replace(/,/g, "."));
+      }
     }
+
+    if (!Number.isFinite(parsed)) return 0;
+    return hasKSuffix ? parsed * 1000 : parsed;
+  };
+
+  const expressionParts = text.split("+").map((part) => part.trim()).filter(Boolean);
+  if (expressionParts.length > 1) {
+    let sum = 0;
+    let parsedAny = false;
+    expressionParts.forEach((part) => {
+      const valuePart = parseSingleAmount(part);
+      if (valuePart > 0) {
+        sum += valuePart;
+        parsedAny = true;
+      }
+    });
+    if (parsedAny) return sum;
   }
 
-  if (!Number.isFinite(parsed)) return 0;
-  return hasKSuffix ? parsed * 1000 : parsed;
+  return parseSingleAmount(text);
 }
 
 function extractReceivableAmountFromNote(note) {
@@ -9126,20 +9147,46 @@ function parseFlexibleNumber(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const text = String(value || "").trim();
   if (!text) return 0;
-  const hasKSuffix = /k\s*$/i.test(text);
-  const raw = text.replace(/k\s*$/i, "").trim();
-  let normalized;
-  const rawDigits = raw.replace(/[^\d.,]/g, "");
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(rawDigits)) {
-    normalized = raw.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(/,/g, ".");
-  } else if (/^\d{1,3}(,\d{3})+$/.test(rawDigits)) {
-    normalized = raw.replace(/[^\d.,-]/g, "").replace(/,/g, "");
-  } else {
-    normalized = raw.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
+
+  const parseSingleAmount = (input) => {
+    const sample = String(input || "").trim();
+    if (!sample) return 0;
+    const tokenMatch = sample.match(/-?\d[\d.,]*\s*k?/i);
+    const token = tokenMatch ? tokenMatch[0].trim() : sample;
+    const hasKSuffix = /k\s*$/i.test(token);
+    const raw = token.replace(/k\s*$/i, "").trim();
+    if (!raw) return 0;
+
+    let normalized;
+    const rawDigits = raw.replace(/[^\d.,]/g, "");
+    if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(rawDigits)) {
+      normalized = raw.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(/,/g, ".");
+    } else if (/^\d{1,3}(,\d{3})+$/.test(rawDigits)) {
+      normalized = raw.replace(/[^\d.,-]/g, "").replace(/,/g, "");
+    } else {
+      normalized = raw.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
+    }
+
+    const parsed = Number.parseFloat(normalized);
+    if (!Number.isFinite(parsed)) return 0;
+    return hasKSuffix ? parsed * 1000 : parsed;
+  };
+
+  const expressionParts = text.split("+").map((part) => part.trim()).filter(Boolean);
+  if (expressionParts.length > 1) {
+    let sum = 0;
+    let parsedAny = false;
+    expressionParts.forEach((part) => {
+      const valuePart = parseSingleAmount(part);
+      if (valuePart > 0) {
+        sum += valuePart;
+        parsedAny = true;
+      }
+    });
+    if (parsedAny) return sum;
   }
-  const parsed = Number.parseFloat(normalized);
-  if (!Number.isFinite(parsed)) return 0;
-  return hasKSuffix ? parsed * 1000 : parsed;
+
+  return parseSingleAmount(text);
 }
 
 function getDistanceKm(item) {
