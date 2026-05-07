@@ -3370,12 +3370,19 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
 
   const remoteState = await fetchRemoteCriticalState(endpointUrl);
   const localUpdatedAt = getLocalCriticalStateUpdatedAt();
-  if (localUpdatedAt > Number(remoteState.updatedAt || 0)) {
+  const remoteUpdatedAt = Number(remoteState.updatedAt || 0);
+  const remoteRows = getRemoteCriticalStateRowCount(remoteState);
+  const localRows = getRemoteCriticalStateRowCount(buildCriticalStatePayload(localUpdatedAt || Date.now()));
+  const remoteScheduleCount = Array.isArray(remoteState.schedules) ? remoteState.schedules.length : 0;
+  const localScheduleCount = Array.isArray(schedules) ? schedules.length : 0;
+  const shouldPreferRemote = remoteRows > localRows + 10 || remoteScheduleCount > localScheduleCount + 5;
+
+  if (localUpdatedAt > remoteUpdatedAt && !shouldPreferRemote) {
     const pushed = await syncCriticalStateToRemote(showToastOnSuccess);
     if (pushed) return true;
     return false;
   }
-  const remoteRows = getRemoteCriticalStateRowCount(remoteState);
+
   if (remoteRows === 0 && hasLocalCriticalData()) {
     const pushed = await syncCriticalStateToRemote(showToastOnSuccess);
     if (!pushed) return false;
