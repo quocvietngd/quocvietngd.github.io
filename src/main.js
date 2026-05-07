@@ -9850,7 +9850,7 @@ function getConsultantReportRows(start, end) {
 
   const baseRows = Array.from(bucket.values()).map((row) => {
     const signRate = row.receivedCount ? (row.signedCount / row.receivedCount) * 100 : 0;
-    const avgInvoice = row.signedCount ? row.contractValue / row.signedCount : 0;
+    const avgInvoice = row.signedCount ? row.revenue / row.signedCount : 0;
     return {
       ...row,
       signRate,
@@ -9894,7 +9894,7 @@ function renderConsultantReportTable(detailRows) {
   const totalRevenue = detailRows.reduce((sum, row) => sum + row.revenue, 0);
   const totalReceivable = detailRows.reduce((sum, row) => sum + row.receivable, 0);
   const totalSignRate = totalReceived ? (totalSigned / totalReceived) * 100 : 0;
-  const totalAvgInvoice = totalSigned ? totalContractValue / totalSigned : 0;
+  const totalAvgInvoice = totalSigned ? totalRevenue / totalSigned : 0;
 
   const tbody = detailRows.length
     ? detailRows.map((row) => `
