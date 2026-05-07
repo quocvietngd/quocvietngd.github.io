@@ -645,13 +645,43 @@ function parseTelegramLineToField(line) {
   const raw = String(line || "").trim();
   if (!raw) return null;
 
-  const kvMatch = raw.match(/^(.{1,60}?)\s*[:=\-]\s*(.+)$/);
+  const kvMatch = raw.match(/^(.{1,60}?)\s*(?:[:=\-–—|;,]+|\.)\s*(.+)$/u);
   if (kvMatch) {
     const key = canonicalizeTelegramFieldKey(kvMatch[1]);
     const value = kvMatch[2].trim();
     if (!key || !value) return null;
     return { key, value };
   }
+
+  const isLooseTokenMatch = (actual, expected) => {
+    const a = String(actual || "");
+    const e = String(expected || "");
+    if (!a || !e) return false;
+    if (a === e) return true;
+    if (a.startsWith(e) || e.startsWith(a)) return true;
+    if (Math.abs(a.length - e.length) > 1) return false;
+
+    let i = 0;
+    let j = 0;
+    let edits = 0;
+    while (i < a.length && j < e.length) {
+      if (a[i] === e[j]) {
+        i += 1;
+        j += 1;
+        continue;
+      }
+      edits += 1;
+      if (edits > 1) return false;
+      if (a.length > e.length) i += 1;
+      else if (e.length > a.length) j += 1;
+      else {
+        i += 1;
+        j += 1;
+      }
+    }
+    if (i < a.length || j < e.length) edits += 1;
+    return edits <= 1;
+  };
 
   const plain = raw
     .toLowerCase()
@@ -668,7 +698,7 @@ function parseTelegramLineToField(line) {
   for (const rule of TELEGRAM_FALLBACK_LINE_RULES) {
     const labelTokens = rule.label.split(" ");
     if (plainTokens.length <= labelTokens.length) continue;
-    const matched = labelTokens.every((token, idx) => plainTokens[idx] === token);
+    const matched = labelTokens.every((token, idx) => isLooseTokenMatch(plainTokens[idx], token));
     if (!matched) continue;
     let value = rawTokens.slice(labelTokens.length).join(" ").trim();
     if (!value) return null;
