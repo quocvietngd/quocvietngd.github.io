@@ -653,7 +653,11 @@ function parseTelegramLineToField(line) {
     return { key, value };
   }
 
-  const plain = normalizeVietnamese(raw)
+  const plain = raw
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đ]/g, "d")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
