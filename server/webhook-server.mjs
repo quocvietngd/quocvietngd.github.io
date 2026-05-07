@@ -1004,10 +1004,9 @@ function getDiscoveredTelegramChats(state) {
   return Array.from(discovered.values()).sort((a, b) => String(a.chatTitle || a.chatId).localeCompare(String(b.chatTitle || b.chatId), "vi"));
 }
 
-async function fetchTelegramUpdates(state) {
-  if (!state.token) return [];
-  const offset = Number(state.lastUpdateId || 0) > 0 ? Number(state.lastUpdateId) + 1 : undefined;
-  const endpoint = `https://api.telegram.org/bot${state.token}/getUpdates?limit=100${offset ? `&offset=${offset}` : ""}`;
+async function fetchTelegramUpdatesBatch(token, offset) {
+  if (!token) return { updates: [], offsetUsed: offset || 0, recoveredOffsetSkew: false };
+  const endpoint = `https://api.telegram.org/bot${token}/getUpdates?limit=100${offset ? `&offset=${offset}` : ""}`;
   const response = await fetch(endpoint);
   const payload = await response.json();
   if (!response.ok || payload.ok === false) {
@@ -1015,7 +1014,44 @@ async function fetchTelegramUpdates(state) {
     error.code = payload.error_code || response.status;
     throw error;
   }
-  return Array.isArray(payload.result) ? payload.result : [];
+  return {
+    updates: Array.isArray(payload.result) ? payload.result : [],
+    offsetUsed: Number(offset || 0),
+    recoveredOffsetSkew: false
+  };
+}
+
+async function fetchTelegramUpdates(state) {
+  if (!state.token) return { updates: [], offsetUsed: 0, recoveredOffsetSkew: false };
+
+  const currentOffset = Number(state.lastUpdateId || 0) > 0 ? Number(state.lastUpdateId) + 1 : undefined;
+  const primary = await fetchTelegramUpdatesBatch(state.token, currentOffset);
+  if (primary.updates.length > 0) return primary;
+
+  if (!currentOffset) return primary;
+
+  try {
+    const webhookInfo = await getWebhookInfo(state.token);
+    const pendingUpdateCount = Number(webhookInfo?.pending_update_count || 0);
+    if (pendingUpdateCount <= 0) return primary;
+
+    const fallback = await fetchTelegramUpdatesBatch(state.token);
+    if (!fallback.updates.length) return primary;
+
+    const firstUpdateId = Number(fallback.updates[0]?.update_id || 0);
+    if (!firstUpdateId || firstUpdateId > Number(state.lastUpdateId || 0)) return primary;
+
+    return {
+      updates: fallback.updates,
+      offsetUsed: 0,
+      recoveredOffsetSkew: true,
+      resetLastUpdateIdTo: Math.max(0, firstUpdateId - 1),
+      pendingUpdateCount
+    };
+  } catch (error) {
+    console.error("[telegram-webhook-bridge] offset recovery probe failed:", error.message);
+    return primary;
+  }
 }
 
 async function pollTelegramUpdatesOnce() {
@@ -1032,7 +1068,8 @@ async function pollTelegramUpdatesOnce() {
   }
 
   try {
-    const updates = await fetchTelegramUpdates(state);
+    const fetchResult = await fetchTelegramUpdates(state);
+    const updates = Array.isArray(fetchResult?.updates) ? fetchResult.updates : [];
     if (!updates.length) {
       return {
         configured: true,
@@ -1040,8 +1077,13 @@ async function pollTelegramUpdatesOnce() {
         savedReports: 0,
         updatedReports: 0,
         ignoredUpdates: 0,
-        lastUpdateId: Number(state.lastUpdateId || 0)
+        lastUpdateId: Number(state.lastUpdateId || 0),
+        recoveredOffsetSkew: Boolean(fetchResult?.recoveredOffsetSkew)
       };
+    }
+
+    if (Number(fetchResult?.resetLastUpdateIdTo || 0) >= 0 && fetchResult?.recoveredOffsetSkew) {
+      state.lastUpdateId = Number(fetchResult.resetLastUpdateIdTo || 0);
     }
 
     let savedReports = 0;
@@ -1062,7 +1104,10 @@ async function pollTelegramUpdatesOnce() {
       savedReports,
       updatedReports,
       ignoredUpdates,
-      lastUpdateId: Number(state.lastUpdateId || 0)
+      lastUpdateId: Number(state.lastUpdateId || 0),
+      recoveredOffsetSkew: Boolean(fetchResult?.recoveredOffsetSkew),
+      offsetUsed: Number(fetchResult?.offsetUsed || 0),
+      pendingUpdateCount: Number(fetchResult?.pendingUpdateCount || 0)
     };
   } catch (error) {
     if (error.code === 409) {

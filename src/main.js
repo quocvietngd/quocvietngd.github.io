@@ -3218,6 +3218,9 @@ function mergeTelegramSourceFromLocalAndRemote(localCfg = {}, remoteCfg = {}) {
   const localChatIds = parseTelegramAllowedChatIds(localCfg.chatId || "");
   const remoteChatIds = parseTelegramAllowedChatIds(remoteCfg.chatId || "");
   const mergedChatIds = Array.from(new Set([...remoteChatIds, ...localChatIds]));
+  const remoteLastUpdateId = Number(remoteCfg.lastUpdateId || 0);
+  const localLastUpdateId = Number(localCfg.lastUpdateId || 0);
+  const mergedLastUpdateId = remoteLastUpdateId > 0 ? remoteLastUpdateId : localLastUpdateId;
 
   return {
     ...remoteCfg,
@@ -3225,7 +3228,7 @@ function mergeTelegramSourceFromLocalAndRemote(localCfg = {}, remoteCfg = {}) {
     webhookBaseUrl: String(remoteCfg.webhookBaseUrl || localCfg.webhookBaseUrl || "").trim(),
     bridgeApiUrl: String(remoteCfg.bridgeApiUrl || localCfg.bridgeApiUrl || "").trim(),
     chatId: mergedChatIds.join(","),
-    lastUpdateId: Math.max(Number(remoteCfg.lastUpdateId || 0), Number(localCfg.lastUpdateId || 0)),
+    lastUpdateId: mergedLastUpdateId,
     lastSyncedAt: Math.max(Number(remoteCfg.lastSyncedAt || 0), Number(localCfg.lastSyncedAt || 0))
   };
 }
