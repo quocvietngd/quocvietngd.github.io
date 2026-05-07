@@ -8291,6 +8291,8 @@ function normalizeContractCode(value) {
 const TELEGRAM_FALLBACK_LINE_RULES = [
   { label: "ten dieu duong", key: "tendieuduong" },
   { label: "ten dd", key: "tendd" },
+  { label: "ten tu van", key: "tentv" },
+  { label: "ten tv", key: "tentv" },
   { label: "ten khach", key: "tenkhach" },
   { label: "ten kh", key: "tenkh" },
   { label: "ma hd", key: "mahd" },
@@ -8299,6 +8301,13 @@ const TELEGRAM_FALLBACK_LINE_RULES = [
   { label: "dich vu", key: "dichvu" },
   { label: "trang thai", key: "trangthai" },
   { label: "ghi chu", key: "ghichu" },
+  { label: "ket qua", key: "ketqua" },
+  { label: "gia tri hd", key: "giatrihd" },
+  { label: "gia tri hop dong", key: "giatrihd" },
+  { label: "thuc thu", key: "thucthu" },
+  { label: "cong no", key: "congno" },
+  { label: "pt tt", key: "pttt" },
+  { label: "phuong thuc tt", key: "pttt" },
   { label: "nhay", key: "ngay" },
   { label: "ngay", key: "ngay" },
   { label: "gio", key: "gio" },
@@ -8320,7 +8329,16 @@ function canonicalizeTelegramFieldKey(key) {
     tenkh: "tenkhach",
     tenkhh: "tenkhach",
     tennv: "ten",
-    kc: "khoangcach"
+    kc: "khoangcach",
+    kq: "ketqua",
+    ketqua: "ketqua",
+    thucthu: "thucthu",
+    congno: "congno",
+    conno: "congno",
+    pttt: "pttt",
+    tentv: "tentv",
+    giatrihd: "giatrihd",
+    giatri: "giatrihd"
   };
   const exact = aliases[normalized] || normalized;
   if (exact !== normalized) return exact;
@@ -8333,6 +8351,12 @@ function canonicalizeTelegramFieldKey(key) {
   if (normalized.includes("ghichu") || normalized.includes("note") || normalized.includes("noidung")) return "ghichu";
   if (normalized.includes("mahd") || normalized.includes("hopdong") || normalized === "hd") return "mahd";
   if (normalized.includes("khoangcach") || normalized === "km") return "khoangcach";
+  if (normalized.includes("ketqua") || normalized === "result") return "ketqua";
+  if (normalized.includes("giatrihd") || normalized === "giatri") return "giatrihd";
+  if (normalized.includes("thucthu")) return "thucthu";
+  if (normalized.includes("congno") || normalized === "conno") return "congno";
+  if (normalized.includes("phuongthuc") || normalized === "pttt") return "pttt";
+  if (normalized.includes("tentv") || normalized === "tuvan") return "tentv";
   return normalized;
 }
 
@@ -8560,7 +8584,10 @@ function parseTelegramNurseMessage(text) {
     const tenkh = obj["tenkhach"] || obj["tenkh"] || obj["khach"] || obj["customer"] || "";
     const kq = obj["ketqua"] || obj["kq"] || obj["result"] || "";
     const mahd = obj["mahd"] || obj["mahopdong"] || "";
-    const sotien = parseFlexibleNumber(obj["sotien"] || obj["so"] || obj["amount"] || obj["tien"] || 0);
+    const giaTriHD = parseFlexibleNumber(obj["giatrihd"] || obj["giatri"] || obj["sotien"] || obj["so"] || obj["amount"] || obj["tien"] || 0);
+    const thucthu = parseFlexibleNumber(obj["thucthu"] || 0);
+    const receivableAmount = parseFlexibleNumber(obj["congno"] || obj["conno"] || obj["receivable"] || 0);
+    const sotien = giaTriHD || thucthu;
     const pttt = obj["pttt"] || obj["phuongthuc"] || obj["method"] || "";
     const ghichu = obj["ghichu"] || obj["note"] || obj["ghi"] || "";
     
@@ -8574,7 +8601,9 @@ function parseTelegramNurseMessage(text) {
       sotien,
       pttt,
       note: ghichu || note,
-      contractAmount: sotien,
+      contractAmount: giaTriHD || sotien,
+      thucthu: thucthu > 0 ? thucthu : (giaTriHD > 0 && receivableAmount > 0 ? giaTriHD - receivableAmount : null),
+      receivableAmount: receivableAmount || null,
       source: "Telegram Tu Van #tuvan"
     };
   }

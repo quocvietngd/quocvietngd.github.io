@@ -596,6 +596,8 @@ function firstTelegramValueByKeyRegex(values, regexList = []) {
 const TELEGRAM_FALLBACK_LINE_RULES = [
   { label: "ten dieu duong", key: "tendieuduong" },
   { label: "ten dd", key: "tendd" },
+  { label: "ten tu van", key: "tentv" },
+  { label: "ten tv", key: "tentv" },
   { label: "ten khach", key: "tenkhach" },
   { label: "ten kh", key: "tenkh" },
   { label: "ma hd", key: "mahd" },
@@ -604,6 +606,13 @@ const TELEGRAM_FALLBACK_LINE_RULES = [
   { label: "dich vu", key: "dichvu" },
   { label: "trang thai", key: "trangthai" },
   { label: "ghi chu", key: "ghichu" },
+  { label: "ket qua", key: "ketqua" },
+  { label: "gia tri hd", key: "giatrihd" },
+  { label: "gia tri hop dong", key: "giatrihd" },
+  { label: "thuc thu", key: "thucthu" },
+  { label: "cong no", key: "congno" },
+  { label: "pt tt", key: "pttt" },
+  { label: "phuong thuc tt", key: "pttt" },
   { label: "nhay", key: "ngay" },
   { label: "ngay", key: "ngay" },
   { label: "gio", key: "gio" },
@@ -625,7 +634,16 @@ function canonicalizeTelegramFieldKey(key) {
     tenkh: "tenkhach",
     tenkhh: "tenkhach",
     tennv: "ten",
-    kc: "khoangcach"
+    kc: "khoangcach",
+    kq: "ketqua",
+    ketqua: "ketqua",
+    thucthu: "thucthu",
+    congno: "congno",
+    conno: "congno",
+    pttt: "pttt",
+    tentv: "tentv",
+    giatrihd: "giatrihd",
+    giatri: "giatrihd"
   };
   const exact = aliases[normalized] || normalized;
   if (exact !== normalized) return exact;
@@ -638,6 +656,12 @@ function canonicalizeTelegramFieldKey(key) {
   if (normalized.includes("ghichu") || normalized.includes("note") || normalized.includes("noidung")) return "ghichu";
   if (normalized.includes("mahd") || normalized.includes("hopdong") || normalized === "hd") return "mahd";
   if (normalized.includes("khoangcach") || normalized === "km") return "khoangcach";
+  if (normalized.includes("ketqua") || normalized === "result") return "ketqua";
+  if (normalized.includes("giatrihd") || normalized === "giatri") return "giatrihd";
+  if (normalized.includes("thucthu")) return "thucthu";
+  if (normalized.includes("congno") || normalized === "conno") return "congno";
+  if (normalized.includes("phuongthuc") || normalized === "pttt") return "pttt";
+  if (normalized.includes("tentv") || normalized === "tuvan") return "tentv";
   return normalized;
 }
 
@@ -844,8 +868,8 @@ function parseTelegramReportMessage(text) {
       consultant: consultant || customerName,
       customerName: tenkh || customerName,
       mahd,
-      thucthu,
-      receivableAmount: conno,
+      thucthu: thucthu > 0 ? thucthu : null,
+      receivableAmount: conno || null,
       pttt,
       note: ghichu || note,
       source: `Telegram Cong No #congno`
@@ -875,8 +899,8 @@ function parseTelegramReportMessage(text) {
       pttt,
       note: ghichu || note,
       contractAmount: giaTriHD || sotien,
-      thucthu: thucthu || (giaTriHD && receivableAmount ? giaTriHD - receivableAmount : 0),
-      receivableAmount,
+      thucthu: thucthu > 0 ? thucthu : (giaTriHD > 0 && receivableAmount > 0 ? giaTriHD - receivableAmount : null),
+      receivableAmount: receivableAmount || null,
       source: route ? `Telegram Tu Van #${route}` : "Telegram Webhook"
     };
   }
