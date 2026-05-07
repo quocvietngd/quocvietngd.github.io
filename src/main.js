@@ -8222,6 +8222,15 @@ function firstTelegramObjValueByKeyRegex(obj, regexList = []) {
   return "";
 }
 
+function normalizeContractCode(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const compact = raw.toUpperCase().replace(/\s+/g, "");
+  if (/^NR[0-9A-Z\/-]+$/.test(compact)) return compact;
+  if (/^[0-9][0-9A-Z\/-]*$/.test(compact)) return `NR${compact}`;
+  return compact;
+}
+
 const TELEGRAM_FALLBACK_LINE_RULES = [
   { label: "ten dieu duong", key: "tendieuduong" },
   { label: "ten dd", key: "tendd" },
@@ -8390,7 +8399,7 @@ function parseTelegramNurseMessage(text) {
       || firstTelegramObjValueByKeyRegex(obj, [/^ten.*dd$/, /^ten.*dieu/, /^dd$/, /^dieuduong$/, /^ten(?!.*kh)/]) || "";
     const nhomDichVu = obj["dichvu"] || obj["service"] || "";
     const tenkh = obj["tenkhach"] || obj["tenkh"] || obj["khach"] || obj["customer"] || "";
-    const mahd = obj["mahd"] || obj["mahopdong"] || firstTelegramObjValueByKeyRegex(obj, [/^ma.*hd$/, /^ma.*hopdong$/, /^hd$/]) || "";
+    const mahd = normalizeContractCode(obj["mahd"] || obj["mahopdong"] || firstTelegramObjValueByKeyRegex(obj, [/^ma.*hd$/, /^ma.*hopdong$/, /^hd$/]) || "");
     const sobuoi = obj["sobuoi"] || obj["buoi"] || "";
     const khoangcach = obj["khoangcach"] || obj["km"] || obj["distance"] || "";
 

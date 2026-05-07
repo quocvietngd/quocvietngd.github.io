@@ -512,6 +512,15 @@ function parseFlexibleNumber(value) {
   return parseSingleAmount(text);
 }
 
+function normalizeContractCode(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const compact = raw.toUpperCase().replace(/\s+/g, "");
+  if (/^NR[0-9A-Z\/-]+$/.test(compact)) return compact;
+  if (/^[0-9][0-9A-Z\/-]*$/.test(compact)) return `NR${compact}`;
+  return compact;
+}
+
 function parseTelegramAllowedChatIds(chatIdValue) {
   return String(chatIdValue || "")
     .split(/[\s,;|]+/)
@@ -708,11 +717,11 @@ function parseTelegramReportMessage(text) {
     ).trim();
     const nhomDichVu = String(firstTelegramValue(values, ["dichvu", "service"]) || "").trim();
     const tenkh = String(firstTelegramValue(values, ["tenkhach", "tenkh", "khach", "khachhang", "customer"]) || "").trim();
-    const mahd = String(
+    const mahd = normalizeContractCode(String(
       firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) ||
       firstTelegramValueByKeyRegex(values, [/^ma.*hd$/, /^ma.*hopdong$/, /^hd$/]) ||
       ""
-    ).trim();
+    ).trim());
     const sobuoi = String(firstTelegramValue(values, ["sobuoi", "buoi"]) || "").trim();
     const khoangcach = String(firstTelegramValue(values, ["khoangcach", "km", "distance"]) || "").trim();
     
@@ -775,7 +784,7 @@ function parseTelegramReportMessage(text) {
   if (route === "congno") {
     const consultant = String(firstTelegramValue(values, ["tentv", "ten", "tuvan", "consultant", "tv", "nhanvien"]) || "").trim();
     const tenkh = String(firstTelegramValue(values, ["tenkhach", "tenkh", "khach", "khachhang", "customer"]) || "").trim();
-    const mahd = String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim();
+    const mahd = normalizeContractCode(String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim());
     const thucthu = parseFlexibleNumber(firstTelegramValue(values, ["thucthu", "thuc thu"]));
     const conno = parseFlexibleNumber(firstTelegramValue(values, ["conno", "con no", "conn", "noco", "congno", "cong no"]));
     const pttt = String(firstTelegramValue(values, ["pttt", "phuongthuc", "method"]) || "").trim();
@@ -797,7 +806,7 @@ function parseTelegramReportMessage(text) {
     const consultant = String(firstTelegramValue(values, ["tentv", "ten", "tuvan", "consultant", "tv", "nhanvien"]) || "").trim();
     const tenkh = String(firstTelegramValue(values, ["tenkhach", "tenkh", "khach", "khachhang", "customer"]) || "").trim();
     const kq = String(firstTelegramValue(values, ["ketqua", "kq", "result"]) || "").trim();
-    const mahd = String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim();
+    const mahd = normalizeContractCode(String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim());
     const giaTriHD = parseFlexibleNumber(firstTelegramValue(values, ["giatrihd", "giatri", "sotien", "so", "amount", "tien"]));
     const thucthu = parseFlexibleNumber(firstTelegramValue(values, ["thucthu", "thuc thu", "thực thu"]));
     const receivableAmount = parseFlexibleNumber(firstTelegramValue(values, ["congno", "cong no", "receivable", "debt"]));
@@ -1007,12 +1016,12 @@ function appendTelegramReport(state, update) {
 
     // If this is a congno (debt payment) report, patch matching consultant records by mahd
     if (raw.telegramRoute === "congno" && raw.mahd) {
-      const targetMahd = String(raw.mahd).trim().toLowerCase();
+      const targetMahd = normalizeContractCode(raw.mahd).toLowerCase();
       const newReceivable = Number(raw.receivableAmount) || 0;
       let patched = 0;
       state.reports = state.reports.map((item) => {
         if (String(item?.raw?.telegramRoute || "") !== "consultant") return item;
-        if (String(item?.raw?.mahd || "").trim().toLowerCase() !== targetMahd) return item;
+        if (normalizeContractCode(item?.raw?.mahd).toLowerCase() !== targetMahd) return item;
         patched++;
         return { ...item, raw: { ...item.raw, receivableAmount: newReceivable } };
       });
