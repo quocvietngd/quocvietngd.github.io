@@ -8740,7 +8740,17 @@ function normalizeImportedScheduleRow(raw) {
 
   const dateRaw = firstValue(sourceObj, ["registrationdate", "date", "ngay", "ngày trải nghiệm", "ngay trai nghiem"]);
   const telegramRouteRaw = String(firstValue(sourceObj, ["telegramroute"]) || "").trim();
-  const normalizedDate = normalizeScheduleDateKey(dateRaw) || (telegramRouteRaw ? "" : today);
+  const telegramChatId = String(firstValue(sourceObj, ["telegramchatid"]) || "").trim();
+  let normalizedDate = normalizeScheduleDateKey(dateRaw) || (telegramRouteRaw ? "" : today);
+  if (telegramRouteRaw === "nurse" && ["-5245022922", "-5243335674", "-5213014363"].includes(telegramChatId)) {
+    const maybeSwapped = String(normalizedDate || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (maybeSwapped) {
+      const [, yyyy, mm, dd] = maybeSwapped;
+      const month = Number(mm);
+      const day = Number(dd);
+      if (month !== 5 && day === 5) normalizedDate = `${yyyy}-${dd}-${mm}`;
+    }
+  }
 
   const statusRaw = String(firstValue(sourceObj, ["status", "tình trạng", "tinh trang"]) || "").toLowerCase();
   const status = statusRaw.includes("hủy") || statusRaw.includes("huy") || statusRaw === "cancelled"
@@ -8770,7 +8780,6 @@ function normalizeImportedScheduleRow(raw) {
 
   const telegramUpdateId = String(firstValue(sourceObj, ["telegramupdateid"]) || "").trim();
   const telegramMessageId = String(firstValue(sourceObj, ["telegrammessageid"]) || "").trim();
-  const telegramChatId = String(firstValue(sourceObj, ["telegramchatid"]) || "").trim();
   const telegramRowId = telegramChatId && telegramMessageId
     ? `tgm-${telegramChatId}:${telegramMessageId}`
     : telegramUpdateId
