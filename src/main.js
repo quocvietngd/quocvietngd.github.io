@@ -9823,8 +9823,10 @@ function getConsultantReportRows(start, end) {
       contractValue: 0,
       revenue: 0,
       receivable: 0,
-      avgInvoice: 0
+      avgInvoice: 0,
+      items: []
     };
+    prev.items.push(item);
 
     const contractAmount = normalizeLegacyConsultantAmount(parseVietnameseAmount(item.contractAmount), item);
     const receivableAmount = Math.max(0, parseVietnameseAmount(item.receivableAmount));
@@ -9890,8 +9892,73 @@ function getConsultantReportRows(start, end) {
   });
 }
 
+const consultantDetailCache = new Map();
+
+function showConsultantDetailModal(key) {
+  const items = consultantDetailCache.get(key);
+  if (!items || !items.length) return;
+  const [date, consultantName] = key.split("__");
+  const formatMoney = (v) => v ? `${Math.round(Number(v) || 0).toLocaleString("vi-VN")} đ` : "—";
+  const tbody = items.map((item, idx) => {
+    const contractAmount = normalizeLegacyConsultantAmount(parseVietnameseAmount(item.contractAmount), item);
+    const receivableAmount = Math.max(0, parseVietnameseAmount(item.receivableAmount));
+    const explicitThucthu = item.thucthu != null ? parseVietnameseAmount(item.thucthu) : null;
+    const revenue = explicitThucthu != null && explicitThucthu >= 0 ? explicitThucthu : Math.max(0, contractAmount - receivableAmount);
+    return `<tr style="${idx % 2 === 1 ? 'background:#f8fafc;' : ''}">
+      <td style="text-align:center;padding:7px 8px;">${idx + 1}</td>
+      <td style="padding:7px 8px;">${item.customerName || "—"}</td>
+      <td style="padding:7px 8px;">${item.phone || "—"}</td>
+      <td style="padding:7px 8px;">${item.kq || "—"}</td>
+      <td style="padding:7px 8px;">${item.mahd || "—"}</td>
+      <td style="padding:7px 8px;text-align:right;">${contractAmount ? formatMoney(contractAmount) : "—"}</td>
+      <td style="padding:7px 8px;text-align:right;">${revenue ? formatMoney(revenue) : "—"}</td>
+      <td style="padding:7px 8px;text-align:right;">${receivableAmount ? formatMoney(receivableAmount) : "—"}</td>
+      <td style="padding:7px 8px;">${item.pttt || "—"}</td>
+      <td style="padding:7px 8px;">${item.note || "—"}</td>
+    </tr>`;
+  }).join("");
+  const modalEl = document.createElement("div");
+  modalEl.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-start;justify-content:center;background:rgba(5,18,30,0.5);overflow-y:auto;padding:24px 12px;";
+  modalEl.innerHTML = `
+    <div style="position:relative;width:min(1000px,96vw);background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,0.18);padding:20px 22px 24px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;">
+        <div>
+          <h3 style="margin:0;font-size:1.08rem;">Chi tiết ca tư vấn — ${consultantName}</h3>
+          <p style="margin:4px 0 0;font-size:0.82rem;color:#6b7a99;">Ngày: ${date} &nbsp;|&nbsp; ${items.length} ca</p>
+        </div>
+        <button id="closeConsultantDetailModalBtn" style="border:none;background:#f1f5f9;cursor:pointer;border-radius:8px;padding:7px 16px;font-size:0.9rem;font-weight:600;white-space:nowrap;">Đóng</button>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+          <thead>
+            <tr style="background:#f1f5f9;">
+              <th style="padding:8px;text-align:center;border-bottom:2px solid #e2e8f0;min-width:36px;">STT</th>
+              <th style="padding:8px;border-bottom:2px solid #e2e8f0;min-width:140px;">Tên KH</th>
+              <th style="padding:8px;border-bottom:2px solid #e2e8f0;min-width:110px;">SĐT</th>
+              <th style="padding:8px;border-bottom:2px solid #e2e8f0;min-width:110px;">Kết quả</th>
+              <th style="padding:8px;border-bottom:2px solid #e2e8f0;min-width:110px;">Mã HĐ</th>
+              <th style="padding:8px;text-align:right;border-bottom:2px solid #e2e8f0;min-width:120px;">Giá trị HĐ</th>
+              <th style="padding:8px;text-align:right;border-bottom:2px solid #e2e8f0;min-width:110px;">Thực thu</th>
+              <th style="padding:8px;text-align:right;border-bottom:2px solid #e2e8f0;min-width:110px;">Công nợ</th>
+              <th style="padding:8px;border-bottom:2px solid #e2e8f0;min-width:120px;">PTTT</th>
+              <th style="padding:8px;border-bottom:2px solid #e2e8f0;min-width:160px;">Ghi chú</th>
+            </tr>
+          </thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modalEl);
+  modalEl.addEventListener("click", (e) => {
+    if (e.target.id === "closeConsultantDetailModalBtn" || e.target === modalEl) modalEl.remove();
+  });
+}
+
 function renderConsultantReportTable(detailRows) {
   if (!els.reportsTable) return;
+  consultantDetailCache.clear();
+  detailRows.forEach((row) => { if (row.items) consultantDetailCache.set(`${row.date}__${row.consultantName}`, row.items); });
   const formatMoney = (value) => `${Math.round(Number(value) || 0).toLocaleString("vi-VN")} đ`;
 
   const totalReceived = detailRows.reduce((sum, row) => sum + row.receivedCount, 0);
@@ -9908,7 +9975,7 @@ function renderConsultantReportTable(detailRows) {
       <tr>
         <td>${row.date}</td>
         <td>${row.consultantName}</td>
-        <td style="text-align:center;">${row.receivedCount.toLocaleString("vi-VN")}</td>
+        <td style="text-align:center;cursor:pointer;color:var(--primary,#5b5bd6);font-weight:600;text-decoration:underline;" data-consultant-detail-key="${row.date}__${row.consultantName}">${row.receivedCount.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${row.signedCount.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${row.signRate.toFixed(1)}%</td>
         <td style="text-align:center;">${row.postponedCount.toLocaleString("vi-VN")}</td>
@@ -12599,6 +12666,12 @@ if (els.reportsSection) {
       return;
     }
 
+    const consultantDetailCell = target.closest("[data-consultant-detail-key]");
+    if (consultantDetailCell instanceof HTMLElement && activeReportDepartment === "consultant") {
+      const key = consultantDetailCell.dataset.consultantDetailKey || "";
+      if (key) showConsultantDetailModal(key);
+      return;
+    }
     const consultantSortHeader = target.closest("[data-consultant-sort]");
     if (consultantSortHeader instanceof HTMLElement && activeReportDepartment === "consultant") {
       const sortKey = consultantSortHeader.dataset.consultantSort;
