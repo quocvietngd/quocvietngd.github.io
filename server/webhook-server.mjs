@@ -1489,6 +1489,54 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (method === "POST" && url.pathname === "/api/telegram/admin/fix-small-amounts") {
+    // One-time migration: multiply amount fields < threshold by 1000 for a given route
+    try {
+      const payload = await parseJsonBody(req);
+      const route = String(payload.route || "consultant");
+      const threshold = Number(payload.threshold ?? 10000);
+      const amountFields = Array.isArray(payload.fields)
+        ? payload.fields
+        : ["sotien", "contractAmount", "thanhtoan", "congno"];
+      const state = await readState();
+      const reports = Array.isArray(state.reports) ? state.reports : [];
+      let patchedCount = 0;
+      const log = [];
+      const nextReports = reports.map((item) => {
+        const raw = item?.raw || {};
+        if (raw.telegramRoute !== route) return item;
+        const needsPatch = amountFields.some((f) => {
+          const v = Number(raw[f] ?? item[f]);
+          return Number.isFinite(v) && v > 0 && v < threshold;
+        });
+        if (!needsPatch) return item;
+        const newRaw = { ...raw };
+        const newItem = { ...item };
+        const entry = { id: item.id, date: raw.registrationDate, name: raw.consultant, before: {}, after: {} };
+        for (const f of amountFields) {
+          const v = Number(raw[f] ?? item[f]);
+          if (Number.isFinite(v) && v > 0 && v < threshold) {
+            newRaw[f] = v * 1000;
+            newItem[f] = v * 1000;
+            entry.before[f] = v;
+            entry.after[f] = v * 1000;
+          }
+        }
+        newItem.raw = newRaw;
+        log.push(entry);
+        patchedCount++;
+        return newItem;
+      });
+      state.reports = nextReports;
+      state.updatedAt = Date.now();
+      await writeState(state);
+      sendJson(res, 200, { ok: true, route, threshold, patchedCount, log });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
   if (method === "POST" && url.pathname === "/api/telegram/test-parse") {
     try {
       const payload = await parseJsonBody(req);
