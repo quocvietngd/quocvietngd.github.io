@@ -1927,7 +1927,37 @@ const server = createServer(async (req, res) => {
     try {
       const payload = await parseJsonBody(req);
       const state = await readState();
-      state.appState = normalizeAppState(payload);
+      const incomingAppState = normalizeAppState(payload);
+      const existingAppState = normalizeAppState(state.appState || {});
+
+      // Defensive merge: avoid losing schedules when a stale browser overwrites app-state.
+      const mergeSchedules = (existingList = [], incomingList = []) => {
+        const byId = new Map();
+        const extras = [];
+
+        existingList.forEach((item) => {
+          const id = String(item?.id || "").trim();
+          if (!id) {
+            extras.push(item);
+            return;
+          }
+          byId.set(id, item);
+        });
+
+        incomingList.forEach((item) => {
+          const id = String(item?.id || "").trim();
+          if (!id) {
+            extras.push(item);
+            return;
+          }
+          byId.set(id, { ...(byId.get(id) || {}), ...item, id });
+        });
+
+        return [...byId.values(), ...extras];
+      };
+
+      incomingAppState.schedules = mergeSchedules(existingAppState.schedules, incomingAppState.schedules);
+      state.appState = incomingAppState;
       state.appState.updatedAt = Date.now();
       state.updatedAt = Date.now();
       const saved = await writeState(state);
