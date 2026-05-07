@@ -1591,8 +1591,11 @@ const server = createServer(async (req, res) => {
 
       const nextReports = reports.map((item) => {
         const raw = item?.raw || {};
-        const updateId = String(raw.telegramUpdateId || item.id || "");
-        const values = patchMap.get(updateId);
+        const messageKey = String(item?.id || "").trim();
+        const rawUpdateId = String(raw.telegramUpdateId || "").trim();
+        const legacyMessageKey = [String(raw.telegramChatId || "").trim(), String(raw.telegramMessageId || "").trim()].filter(Boolean).join(":");
+        const matchedKey = [messageKey, rawUpdateId, legacyMessageKey].find((key) => key && patchMap.has(key)) || "";
+        const values = matchedKey ? patchMap.get(matchedKey) : null;
         if (!values) return item;
 
         const newRaw = { ...raw };
@@ -1612,7 +1615,7 @@ const server = createServer(async (req, res) => {
         newItem.raw = newRaw;
         patchedCount += 1;
         log.push({
-          updateId,
+          updateId: matchedKey,
           date: raw.registrationDate,
           name: raw.consultant || raw.marketingName || raw.saleStaff || raw.nurse || "",
           before,
