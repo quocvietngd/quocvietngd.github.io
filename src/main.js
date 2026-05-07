@@ -10229,7 +10229,7 @@ function getRowsByReportDepartment(departmentKey, start, end) {
     });
   }
   if (departmentKey === "telesale") return inRange.filter((item) => String(item.saleStaff || "").trim());
-  if (departmentKey === "consultant") return inRange.filter((item) => String(item.consultant || "").trim());
+  if (departmentKey === "consultant") return inRange.filter((item) => String(item.consultant || "").trim() && String(item.telegramRoute || item.source || "") !== "congno" && !String(item.source || "").toLowerCase().includes("cong no"));
   if (departmentKey === "nurse") return inRange.filter((item) => getEffectiveNurseName(item));
   return inRange;
 }

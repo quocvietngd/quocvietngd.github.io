@@ -539,6 +539,7 @@ function detectTelegramRoute(values, hashtags) {
   const all = new Set([...(hashtags || []), ...Object.keys(values || {}).map((key) => normalizeVietnamese(key))]);
 
   const hasAny = (keys) => keys.some((key) => all.has(normalizeVietnamese(key)));
+  if (hasAny(["congno", "cong_no", "conno"])) return "congno";
   if (hasAny(["mkt", "marketing", "mk"])) return "marketing";
   if (hasAny(["tuvan", "tuvan", "tv", "consultant"])) return "consultant";
   if (hasAny(["telesale", "sale", "ts"])) return "telesale";
@@ -771,6 +772,27 @@ function parseTelegramReportMessage(text) {
     };
   }
 
+  if (route === "congno") {
+    const consultant = String(firstTelegramValue(values, ["tentv", "ten", "tuvan", "consultant", "tv", "nhanvien"]) || "").trim();
+    const tenkh = String(firstTelegramValue(values, ["tenkhach", "tenkh", "khach", "khachhang", "customer"]) || "").trim();
+    const mahd = String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim();
+    const thucthu = parseFlexibleNumber(firstTelegramValue(values, ["thucthu", "thuc thu"]));
+    const conno = parseFlexibleNumber(firstTelegramValue(values, ["conno", "con no", "conn", "noco", "congno", "cong no"]));
+    const pttt = String(firstTelegramValue(values, ["pttt", "phuongthuc", "method"]) || "").trim();
+    const ghichu = String(firstTelegramValue(values, ["ghichu", "note", "ghi"]) || "").trim();
+    return {
+      ...base,
+      consultant: consultant || customerName,
+      customerName: tenkh || customerName,
+      mahd,
+      thucthu,
+      receivableAmount: conno,
+      pttt,
+      note: ghichu || note,
+      source: `Telegram Cong No #congno`
+    };
+  }
+
   if (route === "consultant") {
     const consultant = String(firstTelegramValue(values, ["tentv", "ten", "tuvan", "consultant", "tv", "nhanvien"]) || "").trim();
     const tenkh = String(firstTelegramValue(values, ["tenkhach", "tenkh", "khach", "khachhang", "customer"]) || "").trim();
@@ -982,6 +1004,21 @@ function appendTelegramReport(state, update) {
     debug.acceptedCount += 1;
     debug.lastAcceptedAt = Date.now();
     state.telegramDebug = debug;
+
+    // If this is a congno (debt payment) report, patch matching consultant records by mahd
+    if (raw.telegramRoute === "congno" && raw.mahd) {
+      const targetMahd = String(raw.mahd).trim().toLowerCase();
+      const newReceivable = Number(raw.receivableAmount) || 0;
+      let patched = 0;
+      state.reports = state.reports.map((item) => {
+        if (String(item?.raw?.telegramRoute || "") !== "consultant") return item;
+        if (String(item?.raw?.mahd || "").trim().toLowerCase() !== targetMahd) return item;
+        patched++;
+        return { ...item, raw: { ...item.raw, receivableAmount: newReceivable } };
+      });
+      console.log(`[congno] Patched ${patched} consultant records for mahd=${raw.mahd}, receivable=${newReceivable}`);
+    }
+
     return { saved: true, ignored: false };
 }
 
