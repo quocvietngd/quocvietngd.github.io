@@ -1787,9 +1787,13 @@ const server = createServer(async (req, res) => {
 
   if (method === "POST" && url.pathname === "/api/telegram/admin/fix-date-swap") {
     // Migration: fix records where DD/MM/YYYY with extra whitespace was parsed by JS Date as MM/DD/YYYY,
-    // resulting in month and day being swapped. Detects nurse records with registrationDate where
-    // the stored month > max plausible month (current month = 5, so month > 5 is suspicious).
+    // resulting in month and day being swapped.
     try {
+      const payload = await parseJsonBody(req).catch(() => ({}));
+      const inferredMonth = Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh", month: "numeric" }));
+      const targetMonthInput = Number(payload?.targetMonth || inferredMonth || 5);
+      const targetMonth = Math.max(1, Math.min(12, Number.isFinite(targetMonthInput) ? targetMonthInput : 5));
+
       const state = await readState();
       const reports = Array.isArray(state.reports) ? state.reports : [];
       const fixed = [];
@@ -1806,9 +1810,10 @@ const server = createServer(async (req, res) => {
         const [, yyyy, mm, dd] = m;
         const month = Number(mm);
         const day = Number(dd);
-        // If stored month > 5 (current month) AND stored day <= 12 (feasible to be a real month),
-        // it likely has swapped month/day.
-        if (month > 5 && day <= 12) {
+        // Swapped pattern for DD/MM/YYYY interpreted as MM/DD/YYYY:
+        // month = original day, day = original month. For current-month reports, day tends to be targetMonth.
+        const likelySwapped = month !== targetMonth && day === targetMonth && month >= 1 && month <= 12;
+        if (likelySwapped) {
           const corrected = `${yyyy}-${dd}-${mm}`;
           fixed.push({ old: d, new: corrected, nurse: raw.nurse, customer: raw.customerName });
           raw.registrationDate = corrected;
@@ -1823,7 +1828,13 @@ const server = createServer(async (req, res) => {
         await writeState(state);
       }
 
-      sendJson(res, 200, { ok: true, fixed: fixed.length, skippedCount: skipped.length, details: fixed });
+      sendJson(res, 200, {
+        ok: true,
+        targetMonth,
+        fixed: fixed.length,
+        skippedCount: skipped.length,
+        details: fixed
+      });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "fix-date-swap failed" });
     }
