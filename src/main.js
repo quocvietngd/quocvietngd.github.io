@@ -1017,6 +1017,12 @@ app.innerHTML = `
                   <option value="">Tất cả telesale</option>
                 </select>
               </div>
+              <div id="reportsNurseFilterWrap" class="hidden">
+                <label>Tên điều dưỡng</label>
+                <select id="reportsNurseFilter">
+                  <option value="">Tất cả điều dưỡng</option>
+                </select>
+              </div>
               <button class="btn secondary" id="applyReportsFilterBtn" type="button">Áp dụng</button>
               <button class="btn secondary" id="resetReportsFilterBtn" type="button">Đặt lại tháng này</button>
               <div class="muted" id="reportsSummary" style="display:flex;align-items:center;font-size:0.83rem;">--</div>
@@ -2587,6 +2593,8 @@ const els = {
   reportsConsultantFilter: document.querySelector("#reportsConsultantFilter"),
   reportsTelesaleFilterWrap: document.querySelector("#reportsTelesaleFilterWrap"),
   reportsTelesaleFilter: document.querySelector("#reportsTelesaleFilter"),
+  reportsNurseFilterWrap: document.querySelector("#reportsNurseFilterWrap"),
+  reportsNurseFilter: document.querySelector("#reportsNurseFilter"),
   applyReportsFilterBtn: document.querySelector("#applyReportsFilterBtn"),
   resetReportsFilterBtn: document.querySelector("#resetReportsFilterBtn"),
   reportsSummary: document.querySelector("#reportsSummary"),
@@ -2857,6 +2865,7 @@ let activeReportDepartment = null;
 let activeAccountingFolder = null;
 let reportFilterState = { start: `${today.slice(0, 7)}-01`, end: today };
 let nurseReportSortState = { key: "total", direction: "desc" };
+let nurseReportState = { nurse: "" };
 let marketingReportState = { marketing: "" };
 let consultantReportState = { consultant: "", sortKey: "date", direction: "desc" };
 let telesaleReportState = { sale: "", sortKey: "date", direction: "desc" };
@@ -9393,7 +9402,11 @@ function getNurseServiceBucket(item) {
 
 function getNurseDetailedReportMatrix(start, end) {
   const rows = getRowsByReportDepartment("nurse", start, end)
-    .filter((item) => item.status === "completed");
+    .filter((item) => item.status === "completed")
+    .filter((item) => {
+      if (!nurseReportState.nurse) return true;
+      return getEffectiveNurseName(item) === nurseReportState.nurse;
+    });
   const bucketByNurse = new Map();
 
   rows.forEach((item) => {
@@ -9630,7 +9643,11 @@ function renderNurseReportMatrix() {
   `;
 
   const nurseRowsInRange = getRowsByReportDepartment("nurse", reportFilterState.start, reportFilterState.end)
-    .filter((item) => item.status === "completed");
+    .filter((item) => item.status === "completed")
+    .filter((item) => {
+      if (!nurseReportState.nurse) return true;
+      return getEffectiveNurseName(item) === nurseReportState.nurse;
+    });
   const telegramRowsInRange = nurseRowsInRange.filter((item) => {
     const source = String(item.source || "").toLowerCase();
     const id = String(item.id || "");
@@ -9640,7 +9657,8 @@ function renderNurseReportMatrix() {
   const rowsWithDistance = nurseRowsInRange.filter((item) => getDistanceKm(item) > 0).length;
   const rowsWithTravelAllowance = nurseRowsInRange.filter((item) => getDistanceKm(item) > 10).length;
 
-  els.reportsSummary.textContent = `Bộ lọc: ${reportFilterState.start} → ${reportFilterState.end} | Điều dưỡng | ${matrix.rows.length} điều dưỡng | ${matrix.overallTotal.toLocaleString("vi-VN")} ca hoàn tất | PP di chuyển: ${matrix.totalTravelAllowance.toLocaleString("vi-VN")} đ | Ca có km: ${rowsWithDistance} | Ca >10km: ${rowsWithTravelAllowance} | Telegram: ${telegramRowsInRange.length} ca | Yến: ${yenRowsInRange.length} ca`;
+  const nurseLabel = nurseReportState.nurse || "Tất cả điều dưỡng";
+  els.reportsSummary.textContent = `Bộ lọc: ${reportFilterState.start} → ${reportFilterState.end} | Điều dưỡng: ${nurseLabel} | ${matrix.rows.length} điều dưỡng | ${matrix.overallTotal.toLocaleString("vi-VN")} ca hoàn tất | PP di chuyển: ${matrix.totalTravelAllowance.toLocaleString("vi-VN")} đ | Ca có km: ${rowsWithDistance} | Ca >10km: ${rowsWithTravelAllowance} | Telegram: ${telegramRowsInRange.length} ca | Yến: ${yenRowsInRange.length} ca`;
 }
 
 function getMarketingOwnerName(item) {
@@ -10753,6 +10771,9 @@ function renderReportsPage() {
   if (els.reportsTelesaleFilterWrap) {
     els.reportsTelesaleFilterWrap.classList.toggle("hidden", activeReportDepartment !== "telesale");
   }
+  if (els.reportsNurseFilterWrap) {
+    els.reportsNurseFilterWrap.classList.toggle("hidden", activeReportDepartment !== "nurse");
+  }
 
   if (activeReportDepartment === "marketing" && els.reportsMarketingFilter) {
     const allMarketingRows = getRowsByReportDepartment("marketing", reportFilterState.start, reportFilterState.end);
@@ -10800,6 +10821,23 @@ function renderReportsPage() {
       .map((name) => `<option value="${name.replace(/"/g, "&quot;")}">${name}</option>`)
       .join("")}`;
     els.reportsConsultantFilter.value = consultantReportState.consultant;
+  }
+
+  if (activeReportDepartment === "nurse" && els.reportsNurseFilter) {
+    const allNurseRows = getRowsByReportDepartment("nurse", reportFilterState.start, reportFilterState.end)
+      .filter((item) => String(getEffectiveNurseName(item)).trim());
+    const nurseNames = Array.from(new Set(
+      allNurseRows.map((item) => getEffectiveNurseName(item)).filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b));
+
+    if (nurseReportState.nurse && !nurseNames.includes(nurseReportState.nurse)) {
+      nurseReportState.nurse = "";
+    }
+
+    els.reportsNurseFilter.innerHTML = `<option value="">Tất cả điều dưỡng</option>${nurseNames
+      .map((name) => `<option value="${name.replace(/"/g, "&quot;")}">${name}</option>`)
+      .join("")}`;
+    els.reportsNurseFilter.value = nurseReportState.nurse;
   }
 
   if (activeReportDepartment === "nurse") {
@@ -13289,6 +13327,7 @@ if (els.resetReportsFilterBtn) {
     telesaleReportState.sale = "";
     telesaleReportState.sortKey = "date";
     telesaleReportState.direction = "desc";
+    nurseReportState.nurse = "";
     if (["marketing", "telesale", "consultant", "nurse"].includes(activeReportDepartment)) {
       await syncTelegramBeforeReportRender();
     }
@@ -13313,6 +13352,13 @@ if (els.reportsMarketingFilter) {
 if (els.reportsTelesaleFilter) {
   els.reportsTelesaleFilter.addEventListener("change", () => {
     telesaleReportState.sale = els.reportsTelesaleFilter.value || "";
+    renderReportsPage();
+  });
+}
+
+if (els.reportsNurseFilter) {
+  els.reportsNurseFilter.addEventListener("change", () => {
+    nurseReportState.nurse = els.reportsNurseFilter.value || "";
     renderReportsPage();
   });
 }
