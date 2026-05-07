@@ -8626,7 +8626,7 @@ async function configureTelegramRealtimeWebhook() {
 async function pullTelegramWebhookReports(options = {}) {
   const { fullSync = false } = options;
   const since = fullSync ? 0 : Number(telegramSourceConfig.lastSyncedAt || 0);
-  const data = await callTelegramBridge(`/api/telegram/pending?since=${since}${fullSync ? "&all=1" : ""}`);
+  const data = await callTelegramBridge(`/api/telegram/pending?since=${since}${fullSync ? "&all=1&forceSync=1" : ""}`);
   const rows = Array.isArray(data.rows) ? data.rows : [];
   const importedRows = fullSync ? replaceTelegramSchedules(rows) : mergeImportedSchedules(rows);
   if (data.lastReceivedAt) {
@@ -8644,11 +8644,14 @@ async function pullTelegramWebhookReports(options = {}) {
 async function runTelegramRealtimeSync(silent = false, options = {}) {
   try {
     const bridgeResult = await pullTelegramWebhookReports(options);
+    const allowDirect = Boolean(options.allowDirect);
     let directResult = { totalUpdates: 0, importedRows: 0, parsedMessages: 0 };
-    try {
-      directResult = await fetchAndParseTelegramMessagesDirect(options);
-    } catch (directErr) {
-      directResult = { totalUpdates: 0, importedRows: 0, parsedMessages: 0, error: directErr.message };
+    if (allowDirect) {
+      try {
+        directResult = await fetchAndParseTelegramMessagesDirect(options);
+      } catch (directErr) {
+        directResult = { totalUpdates: 0, importedRows: 0, parsedMessages: 0, error: directErr.message };
+      }
     }
     const result = {
       ...bridgeResult,
@@ -10548,29 +10551,12 @@ function renderReportsPage() {
 
 async function syncTelegramBeforeReportRender() {
   if (!authState.loggedIn) return;
-  const hasDirectConfig = Boolean(String(telegramSourceConfig.token || "").trim() && String(telegramSourceConfig.chatId || "").trim());
 
   let result = null;
   try {
     result = await runTelegramRealtimeSync(true, { fullSync: true });
   } catch (err) {
     result = { importedRows: 0, error: err.message || String(err) };
-  }
-
-  // Fallback: if bridge queue has no new rows or bridge fails, pull directly from Telegram API.
-  if (hasDirectConfig && ((result?.importedRows || 0) === 0 || result?.error)) {
-    try {
-      const direct = await fetchAndParseTelegramMessagesDirect();
-      if (direct.importedRows > 0) {
-        showToast(`Đã đọc trực tiếp ${direct.importedRows} báo cáo mới từ Telegram.`, "success");
-      }
-      return;
-    } catch (directErr) {
-      if (result?.error) {
-        showToast(`Không thể đồng bộ Telegram: ${directErr.message || result.error}`, "warning");
-      }
-      return;
-    }
   }
 
   if (result?.error) {

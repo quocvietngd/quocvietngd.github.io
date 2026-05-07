@@ -40,9 +40,18 @@ const IS_RENDER_DISK_ATTACHED = existsSync(RENDER_DISK_ROOT);
 const IS_STATE_FILE_ON_RENDER_DISK = STATE_FILE === RENDER_DISK_PATH || STATE_FILE.startsWith(`${RENDER_DISK_PATH}/`);
 const IS_DURABLE_FILE_MODE = !USE_POSTGRES && IS_RENDER_DISK_ATTACHED && IS_STATE_FILE_ON_RENDER_DISK;
 const IS_DURABLE_STORAGE = USE_POSTGRES || IS_DURABLE_FILE_MODE;
+const TELEGRAM_SYNC_MIN_INTERVAL_MS = Math.max(3000, Number(process.env.TELEGRAM_SYNC_MIN_INTERVAL_MS || 8000));
 
 let dbPool = null;
 let dbReadyPromise = null;
+let telegramSyncPromise = null;
+let telegramSyncRuntime = {
+  lastAttemptAt: 0,
+  lastSuccessAt: 0,
+  lastDurationMs: 0,
+  lastError: "",
+  lastResult: null
+};
 
 function assertPersistenceConfig() {
   if (!["auto", "durable-only", "postgres-only", "disk-only"].includes(PERSISTENCE_MODE)) {
@@ -386,6 +395,18 @@ function sendJson(res, status, payload) {
     "Access-Control-Allow-Headers": "Content-Type"
   });
   res.end(JSON.stringify(payload));
+}
+
+function getTelegramSyncRuntimeSnapshot() {
+  return {
+    inFlight: Boolean(telegramSyncPromise),
+    cooldownMs: TELEGRAM_SYNC_MIN_INTERVAL_MS,
+    lastAttemptAt: Number(telegramSyncRuntime.lastAttemptAt || 0),
+    lastSuccessAt: Number(telegramSyncRuntime.lastSuccessAt || 0),
+    lastDurationMs: Number(telegramSyncRuntime.lastDurationMs || 0),
+    lastError: String(telegramSyncRuntime.lastError || ""),
+    lastResult: telegramSyncRuntime.lastResult || null
+  };
 }
 
 function pickUsersPayload(payload) {
@@ -999,17 +1020,50 @@ async function fetchTelegramUpdates(state) {
 
 async function pollTelegramUpdatesOnce() {
   const state = await readState();
-  if (!state.token || !parseTelegramAllowedChatIds(state.chatId).length) return;
+  if (!state.token || !parseTelegramAllowedChatIds(state.chatId).length) {
+    return {
+      configured: false,
+      fetchedUpdates: 0,
+      savedReports: 0,
+      updatedReports: 0,
+      ignoredUpdates: 0,
+      lastUpdateId: Number(state.lastUpdateId || 0)
+    };
+  }
 
   try {
     const updates = await fetchTelegramUpdates(state);
-    if (!updates.length) return;
+    if (!updates.length) {
+      return {
+        configured: true,
+        fetchedUpdates: 0,
+        savedReports: 0,
+        updatedReports: 0,
+        ignoredUpdates: 0,
+        lastUpdateId: Number(state.lastUpdateId || 0)
+      };
+    }
+
+    let savedReports = 0;
+    let updatedReports = 0;
+    let ignoredUpdates = 0;
 
     updates.forEach((update) => {
       state.lastUpdateId = Math.max(Number(state.lastUpdateId || 0), Number(update.update_id || 0));
-      appendTelegramReport(state, update);
+      const result = appendTelegramReport(state, update);
+      if (result?.saved) savedReports += 1;
+      if (result?.updated) updatedReports += 1;
+      if (result?.ignored) ignoredUpdates += 1;
     });
     await writeState(state);
+    return {
+      configured: true,
+      fetchedUpdates: updates.length,
+      savedReports,
+      updatedReports,
+      ignoredUpdates,
+      lastUpdateId: Number(state.lastUpdateId || 0)
+    };
   } catch (error) {
     if (error.code === 409) {
       try {
@@ -1023,10 +1077,68 @@ async function pollTelegramUpdatesOnce() {
       } catch (cleanupError) {
         console.error("[telegram-webhook-bridge] failed to recover from webhook conflict:", cleanupError.message);
       }
-      return;
+      return {
+        configured: true,
+        fetchedUpdates: 0,
+        savedReports: 0,
+        updatedReports: 0,
+        ignoredUpdates: 0,
+        lastUpdateId: Number(state.lastUpdateId || 0),
+        recoveredWebhookConflict: true,
+        error: error.message
+      };
     }
     console.error("[telegram-webhook-bridge] polling error:", error.message);
+    return {
+      configured: true,
+      fetchedUpdates: 0,
+      savedReports: 0,
+      updatedReports: 0,
+      ignoredUpdates: 0,
+      lastUpdateId: Number(state.lastUpdateId || 0),
+      error: error.message
+    };
   }
+}
+
+async function syncTelegramUpdatesOnDemand(options = {}) {
+  const force = Boolean(options.force);
+  const now = Date.now();
+
+  if (telegramSyncPromise) return telegramSyncPromise;
+
+  if (!force && telegramSyncRuntime.lastAttemptAt && now - telegramSyncRuntime.lastAttemptAt < TELEGRAM_SYNC_MIN_INTERVAL_MS) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "cooldown",
+      ...getTelegramSyncRuntimeSnapshot()
+    };
+  }
+
+  telegramSyncRuntime.lastAttemptAt = now;
+  telegramSyncRuntime.lastError = "";
+  const startedAt = Date.now();
+
+  telegramSyncPromise = (async () => {
+    try {
+      const result = await pollTelegramUpdatesOnce();
+      const durationMs = Date.now() - startedAt;
+      telegramSyncRuntime.lastDurationMs = durationMs;
+      telegramSyncRuntime.lastResult = result;
+      telegramSyncRuntime.lastError = String(result?.error || "");
+      if (!result?.error) telegramSyncRuntime.lastSuccessAt = Date.now();
+      return {
+        ok: !Boolean(result?.error),
+        durationMs,
+        ...result
+      };
+    } finally {
+      telegramSyncPromise = null;
+    }
+  })();
+
+  return telegramSyncPromise;
 }
 
 async function writeBackupSnapshot() {
@@ -1072,7 +1184,8 @@ const server = createServer(async (req, res) => {
         lastAcceptedAt: debug.lastAcceptedAt,
         lastIgnoredAt: debug.lastIgnoredAt,
         lastReason: debug.lastReason
-      }
+      },
+      sync: getTelegramSyncRuntimeSnapshot()
     });
     return;
   }
@@ -1087,6 +1200,7 @@ const server = createServer(async (req, res) => {
         chatId: state.chatId,
         reportsCount: Array.isArray(state.reports) ? state.reports.length : 0,
         debug,
+        sync: getTelegramSyncRuntimeSnapshot(),
         latestReports: (state.reports || []).slice(-5).map((item) => ({
           id: String(item.id || ""),
           receivedAt: Number(item.receivedAt || 0),
@@ -1233,6 +1347,12 @@ const server = createServer(async (req, res) => {
 
   if (method === "GET" && url.pathname === "/api/telegram/pending") {
     try {
+      const shouldSync = url.searchParams.get("sync") !== "0";
+      const forceSync = url.searchParams.get("forceSync") === "1";
+      let sync = null;
+      if (shouldSync) {
+        sync = await syncTelegramUpdatesOnDemand({ force: forceSync });
+      }
       const state = await readState();
       const since = Number(url.searchParams.get("since") || 0);
       const includeAll = url.searchParams.get("all") === "1";
@@ -1246,6 +1366,7 @@ const server = createServer(async (req, res) => {
         ok: true,
         configured: Boolean(state.token && state.chatId),
         pendingCount: filtered.length,
+        sync: sync || getTelegramSyncRuntimeSnapshot(),
         rows: filtered.map((item) => ({
           ...item.raw,
           telegramUpdateId: String(item.id || "")
