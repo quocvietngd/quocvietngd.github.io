@@ -1,0 +1,33 @@
+name: Keep Render Server Alive
+
+on:
+  schedule:
+    # Chạy mỗi 10 phút (UTC) → ngăn Render free tier ngủ
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Cho phép chạy thủ công
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping backend health endpoint
+        run: |
+          RESPONSE=$(curl -sS --max-time 30 \
+            "https://nora-sync-quocvietngd-2026-2.onrender.com/api/telegram/health")
+          echo "Response: $RESPONSE"
+          
+          # Kiểm tra server có ok không
+          OK=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ok','false'))" 2>/dev/null || echo "false")
+          if [ "$OK" != "True" ] && [ "$OK" != "true" ]; then
+            echo "::warning::Backend health check returned non-ok response"
+          else
+            echo "✅ Backend alive and healthy"
+          fi
+
+      - name: Trigger Telegram sync
+        run: |
+          curl -sS --max-time 30 \
+            "https://nora-sync-quocvietngd-2026-2.onrender.com/api/telegram/pending?sync=1&forceSync=0" \
+            -o /dev/null -w "HTTP %{http_code}\n"
+          echo "✅ Telegram sync triggered"
