@@ -445,22 +445,24 @@ function normalizeTelegramFieldKey(input) {
 function normalizeDate(dateText) {
   const value = String(dateText || "").trim();
   if (!value) return new Date().toISOString().slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  const ddmmyyyy = value.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  const compact = value.replace(/\s+/g, " ").trim();
+  const normalizedSeparator = compact.replace(/\s*([\/-])\s*/g, "$1");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedSeparator)) return normalizedSeparator;
+  const ddmmyyyy = normalizedSeparator.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
   if (ddmmyyyy) {
     const dd = ddmmyyyy[1].padStart(2, "0");
     const mm = ddmmyyyy[2].padStart(2, "0");
     const yyyy = ddmmyyyy[3];
     return `${yyyy}-${mm}-${dd}`;
   }
-  const ddmm = value.match(/^(\d{1,2})[\/-](\d{1,2})$/);
+  const ddmm = normalizedSeparator.match(/^(\d{1,2})[\/-](\d{1,2})$/);
   if (ddmm) {
     const dd = ddmm[1].padStart(2, "0");
     const mm = ddmm[2].padStart(2, "0");
     const yyyy = String(new Date().getFullYear());
     return `${yyyy}-${mm}-${dd}`;
   }
-  const parsed = new Date(value);
+  const parsed = new Date(normalizedSeparator);
   if (Number.isNaN(parsed.getTime())) return new Date().toISOString().slice(0, 10);
   return parsed.toISOString().slice(0, 10);
 }
@@ -622,17 +624,28 @@ function canonicalizeTelegramFieldKey(key) {
     tennv: "ten",
     kc: "khoangcach"
   };
-  return aliases[normalized] || normalized;
+  const exact = aliases[normalized] || normalized;
+  if (exact !== normalized) return exact;
+
+  // Flexible matching for misspelling/no-accent variants.
+  if (/^ngay+/.test(normalized) || normalized.includes("ngay")) return "ngay";
+  if (/^gio+/.test(normalized) || normalized.includes("gio")) return "gio";
+  if (normalized.includes("tenkh") || normalized.includes("khach")) return "tenkhach";
+  if (normalized.includes("dichvu") || normalized.includes("dv")) return "dichvu";
+  if (normalized.includes("ghichu") || normalized.includes("note") || normalized.includes("noidung")) return "ghichu";
+  if (normalized.includes("mahd") || normalized.includes("hopdong") || normalized === "hd") return "mahd";
+  if (normalized.includes("khoangcach") || normalized === "km") return "khoangcach";
+  return normalized;
 }
 
 function parseTelegramLineToField(line) {
   const raw = String(line || "").trim();
   if (!raw) return null;
 
-  const separatorIndex = raw.indexOf(":");
-  if (separatorIndex >= 0) {
-    const key = canonicalizeTelegramFieldKey(raw.slice(0, separatorIndex));
-    const value = raw.slice(separatorIndex + 1).trim();
+  const kvMatch = raw.match(/^(.{1,60}?)\s*[:=\-]\s*(.+)$/);
+  if (kvMatch) {
+    const key = canonicalizeTelegramFieldKey(kvMatch[1]);
+    const value = kvMatch[2].trim();
     if (!key || !value) return null;
     return { key, value };
   }
