@@ -3917,7 +3917,9 @@ function parseVietnameseAmount(value) {
     if (!sample) return 0;
     const tokenMatch = sample.match(/-?\d[\d.,]*\s*k?/i);
     const token = tokenMatch ? tokenMatch[0].trim() : sample;
-    const hasKSuffix = /k\s*$/i.test(token);
+    const tokenEnd = tokenMatch ? (tokenMatch.index || 0) + tokenMatch[0].length : sample.length;
+    const charAfterToken = sample[tokenEnd] || "";
+    const hasKSuffix = /k\s*$/i.test(token) && !/[a-z]/i.test(charAfterToken);
     const cleaned = token.replace(/k\s*$/i, "").replace(/[^\d,.-]/g, "");
     if (!cleaned) return 0;
 
@@ -9175,7 +9177,9 @@ function parseFlexibleNumber(value) {
     if (!sample) return 0;
     const tokenMatch = sample.match(/-?\d[\d.,]*\s*k?/i);
     const token = tokenMatch ? tokenMatch[0].trim() : sample;
-    const hasKSuffix = /k\s*$/i.test(token);
+    const tokenEnd = tokenMatch ? (tokenMatch.index || 0) + tokenMatch[0].length : sample.length;
+    const charAfterToken = sample[tokenEnd] || "";
+    const hasKSuffix = /k\s*$/i.test(token) && !/[a-z]/i.test(charAfterToken);
     const raw = token.replace(/k\s*$/i, "").trim();
     if (!raw) return 0;
 

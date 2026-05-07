@@ -477,7 +477,9 @@ function parseFlexibleNumber(value) {
     if (!sample) return 0;
     const tokenMatch = sample.match(/-?\d[\d.,]*\s*k?/i);
     const token = tokenMatch ? tokenMatch[0].trim() : sample;
-    const hasKSuffix = /k\s*$/i.test(token);
+    const tokenEnd = tokenMatch ? (tokenMatch.index || 0) + tokenMatch[0].length : sample.length;
+    const charAfterToken = sample[tokenEnd] || "";
+    const hasKSuffix = /k\s*$/i.test(token) && !/[a-z]/i.test(charAfterToken);
     const raw = token.replace(/k\s*$/i, "").trim();
     if (!raw) return 0;
 
@@ -1779,6 +1781,51 @@ const server = createServer(async (req, res) => {
       });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Reparse dropped previews failed" });
+    }
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/telegram/admin/fix-date-swap") {
+    // Migration: fix records where DD/MM/YYYY with extra whitespace was parsed by JS Date as MM/DD/YYYY,
+    // resulting in month and day being swapped. Detects nurse records with registrationDate where
+    // the stored month > max plausible month (current month = 5, so month > 5 is suspicious).
+    try {
+      const state = await readState();
+      const reports = Array.isArray(state.reports) ? state.reports : [];
+      const fixed = [];
+      const skipped = [];
+
+      for (const item of reports) {
+        const raw = item?.raw;
+        if (!raw || raw.telegramRoute !== "nurse") continue;
+        const d = raw.registrationDate;
+        if (!d) continue;
+        // Expect YYYY-MM-DD
+        const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) continue;
+        const [, yyyy, mm, dd] = m;
+        const month = Number(mm);
+        const day = Number(dd);
+        // If stored month > 5 (current month) AND stored day <= 12 (feasible to be a real month),
+        // it likely has swapped month/day.
+        if (month > 5 && day <= 12) {
+          const corrected = `${yyyy}-${dd}-${mm}`;
+          fixed.push({ old: d, new: corrected, nurse: raw.nurse, customer: raw.customerName });
+          raw.registrationDate = corrected;
+        } else {
+          skipped.push(d);
+        }
+      }
+
+      if (fixed.length > 0) {
+        state.reports = reports;
+        state.updatedAt = Date.now();
+        await writeState(state);
+      }
+
+      sendJson(res, 200, { ok: true, fixed: fixed.length, skippedCount: skipped.length, details: fixed });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "fix-date-swap failed" });
     }
     return;
   }
