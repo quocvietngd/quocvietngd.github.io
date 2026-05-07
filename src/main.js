@@ -8453,7 +8453,7 @@ function parseTelegramNurseMessage(text) {
     const tenkh = obj["tenkhach"] || obj["tenkh"] || obj["khach"] || obj["customer"] || "";
     const kq = obj["ketqua"] || obj["kq"] || obj["result"] || "";
     const mahd = obj["mahd"] || obj["mahopdong"] || "";
-    const sotien = parseFloat(String(obj["sotien"] || obj["so"] || obj["amount"] || obj["tien"] || 0).replace(/[^\d.-]/g, "")) || 0;
+    const sotien = parseFlexibleNumber(obj["sotien"] || obj["so"] || obj["amount"] || obj["tien"] || 0);
     const pttt = obj["pttt"] || obj["phuongthuc"] || obj["method"] || "";
     const ghichu = obj["ghichu"] || obj["note"] || obj["ghi"] || "";
     
@@ -8757,7 +8757,7 @@ function normalizeImportedScheduleRow(raw) {
     || extractMinutesFromText(serviceText)
     || extractMinutesFromText(noteText)
     || 0;
-  const contractAmount = Number(firstValue(sourceObj, ["contractamount", "giá trị hợp đồng", "gia tri hop dong"]) || 0);
+  const contractAmount = parseFlexibleNumber(firstValue(sourceObj, ["contractamount", "giá trị hợp đồng", "gia tri hop dong"]) || 0);
   const explicitReceivableAmount = parseVietnameseAmount(firstValue(sourceObj, ["receivableamount", "congno", "công nợ", "cong no", "debt"]));
   const receivableAmount = explicitReceivableAmount > 0 ? explicitReceivableAmount : extractReceivableAmountFromNote(noteText);
 
@@ -9782,6 +9782,28 @@ function getConsultantSortIndicator(sortKey) {
   return consultantReportState.direction === "desc" ? " ↓" : " ↑";
 }
 
+function normalizeLegacyConsultantAmount(amount, item) {
+  const value = Number(amount) || 0;
+  if (value <= 0) return 0;
+  if (value % 1000 === 0) return value;
+  if (value < 100000 || value > 999999) return value;
+
+  const sourceText = normalizeTextForMatching(item?.source || "");
+  const routeText = normalizeTextForMatching(item?.telegramRoute || "");
+  const isConsultantRow = Boolean(String(item?.consultant || "").trim())
+    || sourceText.includes("tu van")
+    || sourceText.includes("consultant")
+    || routeText.includes("consultant");
+  if (!isConsultantRow) return value;
+
+  const major = Math.floor(value / 1000);
+  const minor = value % 1000;
+  if (major <= 0 || minor <= 0 || minor > 500) return value;
+
+  // Legacy malformed pattern: "249k + 150k" was stored as 249150.
+  return (major + minor) * 1000;
+}
+
 function getConsultantReportRows(start, end) {
   const rows = getRowsByReportDepartment("consultant", start, end);
   const bucket = new Map();
@@ -9803,7 +9825,7 @@ function getConsultantReportRows(start, end) {
       avgInvoice: 0
     };
 
-    const contractAmount = Number(item.contractAmount || 0);
+    const contractAmount = normalizeLegacyConsultantAmount(parseVietnameseAmount(item.contractAmount), item);
     const receivableAmount = Math.max(0, parseVietnameseAmount(item.receivableAmount));
     const status = String(item.status || "").toLowerCase();
     const noteText = normalizeTextForMatching(item.note || item.motherCondition || "");
