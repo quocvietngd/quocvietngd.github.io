@@ -9969,6 +9969,7 @@ function getConsultantReportRows(start, end) {
       postponedCount: 0,
       contractValue: 0,
       revenue: 0,
+      revenueForAvg: 0,
       receivable: 0,
       avgInvoice: 0,
       items: []
@@ -9988,10 +9989,13 @@ function getConsultantReportRows(start, end) {
     const isFail = kqText.includes("fail");
 
     prev.receivedCount += 1;
-    if (contractAmount > 0 && !isFail) {
-      prev.signedCount += 1;
+    if (contractAmount > 0) {
       prev.contractValue += contractAmount;
       prev.revenue += revenue;
+    }
+    if (contractAmount > 0 && !isFail) {
+      prev.signedCount += 1;
+      prev.revenueForAvg += revenue;
     }
     prev.receivable += receivableAmount;
 
@@ -10006,7 +10010,7 @@ function getConsultantReportRows(start, end) {
 
   const baseRows = Array.from(bucket.values()).map((row) => {
     const signRate = row.receivedCount ? (row.signedCount / row.receivedCount) * 100 : 0;
-    const avgInvoice = row.signedCount ? row.revenue / row.signedCount : 0;
+    const avgInvoice = row.signedCount ? row.revenueForAvg / row.signedCount : 0;
     return {
       ...row,
       signRate,
