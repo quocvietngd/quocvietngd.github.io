@@ -14623,6 +14623,11 @@ loadRuntimeUsersSyncConfig().then(() => {
   }).catch(() => {
     // Keep local users as fallback when runtime endpoint is unavailable.
   });
+  syncCriticalStateFromRemote(false).then((updated) => {
+    if (updated) renderAll();
+  }).catch(() => {
+    // Keep local critical state as fallback when runtime endpoint is unavailable.
+  });
 });
 
 els.reportDate.value = today;
