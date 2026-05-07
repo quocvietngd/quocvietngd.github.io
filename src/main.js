@@ -3200,11 +3200,40 @@ function normalizeRemoteCriticalState(raw = {}) {
   };
 }
 
-function preferRemoteList(remoteList, localList) {
+/**
+ * Merge two lists by `id` field. Items from both local and remote are kept.
+ * When the same `id` exists in both, the item with the higher `updatedAt` wins
+ * (tie-breaks to remote). Items without `id` from both sides are appended.
+ */
+function mergeListsById(remoteList, localList) {
   const safeRemote = Array.isArray(remoteList) ? remoteList : [];
   const safeLocal = Array.isArray(localList) ? localList : [];
-  if (safeRemote.length === 0 && safeLocal.length > 0) return safeLocal;
-  return safeRemote;
+  const byId = new Map();
+  const extras = [];
+
+  // Seed with local first so remote can overwrite where newer
+  for (const item of safeLocal) {
+    const id = String(item?.id || "").trim();
+    if (!id) { extras.push(item); continue; }
+    byId.set(id, item);
+  }
+
+  // Remote: keep if newer (by updatedAt) or if item doesn't exist locally
+  for (const item of safeRemote) {
+    const id = String(item?.id || "").trim();
+    if (!id) { extras.push(item); continue; }
+    const existing = byId.get(id);
+    if (!existing || Number(item.updatedAt || 0) >= Number(existing.updatedAt || 0)) {
+      byId.set(id, item);
+    }
+  }
+
+  return [...byId.values(), ...extras];
+}
+
+// Keep backward compatibility alias
+function preferRemoteList(remoteList, localList) {
+  return mergeListsById(remoteList, localList);
 }
 
 function preferRemoteObject(remoteObj, localObj) {
@@ -3361,32 +3390,37 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   const storageReady = await ensureDurableCloudStorage(showToastOnSuccess);
   if (!storageReady) return false;
 
-  const hasPendingSync = Boolean(loadJSON(STORAGE.criticalStatePendingSync, false));
-  if (hasPendingSync) {
-    await syncCriticalStateToRemote(showToastOnSuccess);
-  }
-
-  const remoteState = await fetchRemoteCriticalState(endpointUrl);
-  const localUpdatedAt = getLocalCriticalStateUpdatedAt();
-  const remoteUpdatedAt = Number(remoteState.updatedAt || 0);
-  const remoteRows = getRemoteCriticalStateRowCount(remoteState);
-  const localRows = getRemoteCriticalStateRowCount(buildCriticalStatePayload(localUpdatedAt || Date.now()));
-  const remoteScheduleCount = Array.isArray(remoteState.schedules) ? remoteState.schedules.length : 0;
-  const localScheduleCount = Array.isArray(schedules) ? schedules.length : 0;
-  const shouldPreferRemote = remoteRows > localRows + 10 || remoteScheduleCount > localScheduleCount + 5;
-
-  if (localUpdatedAt > remoteUpdatedAt && !shouldPreferRemote) {
-    const pushed = await syncCriticalStateToRemote(showToastOnSuccess);
-    if (pushed) return true;
+  // Always fetch remote first — we will merge, so we need both sides regardless.
+  let remoteState;
+  try {
+    remoteState = await fetchRemoteCriticalState(endpointUrl);
+  } catch {
+    // Cannot reach server; fall through to local-only mode silently.
     return false;
   }
 
-  if (remoteRows === 0 && hasLocalCriticalData()) {
-    const pushed = await syncCriticalStateToRemote(showToastOnSuccess);
-    if (!pushed) return false;
-    return true;
+  const hasPendingSync = Boolean(loadJSON(STORAGE.criticalStatePendingSync, false));
+  const remoteUpdatedAt = Number(remoteState.updatedAt || 0);
+  const localUpdatedAt = getLocalCriticalStateUpdatedAt();
+
+  // Determine whether there is anything new on the remote not already in local.
+  const remoteScheduleCount = Array.isArray(remoteState.schedules) ? remoteState.schedules.length : 0;
+  const localScheduleCount = Array.isArray(schedules) ? schedules.length : 0;
+  const remoteRows = getRemoteCriticalStateRowCount(remoteState);
+  const localRows = getRemoteCriticalStateRowCount(buildCriticalStatePayload(localUpdatedAt || Date.now()));
+  const remoteHasNewData = remoteScheduleCount > localScheduleCount || remoteRows > localRows || remoteUpdatedAt > localUpdatedAt;
+
+  // If local has unsaved changes AND remote has nothing new, just push local to remote.
+  if (hasPendingSync && !remoteHasNewData) {
+    return syncCriticalStateToRemote(showToastOnSuccess);
   }
 
+  // If remote is empty and we have local data, push to bootstrap the server.
+  if (remoteRows === 0 && hasLocalCriticalData()) {
+    return syncCriticalStateToRemote(showToastOnSuccess);
+  }
+
+  // MERGE: apply remote into local memory (union by ID, newer item wins).
   isApplyingRemoteCriticalState = true;
   try {
     const mergedCustomers = preferRemoteList(remoteState.customers, customers);
@@ -3487,6 +3521,15 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     saveJSON(STORAGE.reports, reports);
     setLocalCriticalStateUpdatedAt(remoteState.updatedAt || Date.now());
     localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
+
+    // If local had pending changes that weren't in remote, push merged state back
+    // so the server also gets the union (local additions stay on server).
+    if (hasPendingSync) {
+      syncCriticalStateToRemote(false).catch(() => {
+        // Best-effort: keep pending flag for next cycle if push fails.
+        localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
+      });
+    }
   } finally {
     isApplyingRemoteCriticalState = false;
   }

@@ -1930,33 +1930,55 @@ const server = createServer(async (req, res) => {
       const incomingAppState = normalizeAppState(payload);
       const existingAppState = normalizeAppState(state.appState || {});
 
-      // Defensive merge: avoid losing schedules when a stale browser overwrites app-state.
-      const mergeSchedules = (existingList = [], incomingList = []) => {
+      /**
+       * Merge two arrays by `id` field (union, newer updatedAt wins per item).
+       * Items without id are de-duplicated by JSON content to avoid accumulation.
+       */
+      const mergeLists = (existingList = [], incomingList = []) => {
         const byId = new Map();
+        const noIdSeen = new Set();
         const extras = [];
 
-        existingList.forEach((item) => {
+        for (const item of existingList) {
           const id = String(item?.id || "").trim();
           if (!id) {
-            extras.push(item);
-            return;
+            const sig = JSON.stringify(item);
+            if (!noIdSeen.has(sig)) { noIdSeen.add(sig); extras.push(item); }
+            continue;
           }
           byId.set(id, item);
-        });
+        }
 
-        incomingList.forEach((item) => {
+        for (const item of incomingList) {
           const id = String(item?.id || "").trim();
           if (!id) {
-            extras.push(item);
-            return;
+            const sig = JSON.stringify(item);
+            if (!noIdSeen.has(sig)) { noIdSeen.add(sig); extras.push(item); }
+            continue;
           }
-          byId.set(id, { ...(byId.get(id) || {}), ...item, id });
-        });
+          const existing = byId.get(id);
+          if (!existing || Number(item.updatedAt || 0) >= Number(existing.updatedAt || 0)) {
+            byId.set(id, { ...(existing || {}), ...item, id });
+          }
+        }
 
         return [...byId.values(), ...extras];
       };
 
-      incomingAppState.schedules = mergeSchedules(existingAppState.schedules, incomingAppState.schedules);
+      // Merge all list fields — never replace anything blindly.
+      incomingAppState.schedules = mergeLists(existingAppState.schedules, incomingAppState.schedules);
+      incomingAppState.customers = mergeLists(existingAppState.customers, incomingAppState.customers);
+      incomingAppState.inventoryItems = mergeLists(existingAppState.inventoryItems, incomingAppState.inventoryItems);
+      incomingAppState.inventoryTransactions = mergeLists(existingAppState.inventoryTransactions, incomingAppState.inventoryTransactions);
+      incomingAppState.customerCareManualRows = mergeLists(existingAppState.customerCareManualRows, incomingAppState.customerCareManualRows);
+      incomingAppState.newsPosts = mergeLists(existingAppState.newsPosts, incomingAppState.newsPosts);
+      incomingAppState.newsPinned = mergeLists(existingAppState.newsPinned, incomingAppState.newsPinned);
+      incomingAppState.newsEvents = mergeLists(existingAppState.newsEvents, incomingAppState.newsEvents);
+      incomingAppState.accountingCashflow = mergeLists(existingAppState.accountingCashflow, incomingAppState.accountingCashflow);
+      incomingAppState.accountingAttendance = mergeLists(existingAppState.accountingAttendance, incomingAppState.accountingAttendance);
+      incomingAppState.recycleBin = mergeLists(existingAppState.recycleBin, incomingAppState.recycleBin);
+      incomingAppState.activities = mergeLists(existingAppState.activities, incomingAppState.activities);
+      incomingAppState.reports = mergeLists(existingAppState.reports, incomingAppState.reports);
       state.appState = incomingAppState;
       state.appState.updatedAt = Date.now();
       state.updatedAt = Date.now();
