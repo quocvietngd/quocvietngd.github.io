@@ -1696,6 +1696,93 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (method === "POST" && url.pathname === "/api/telegram/admin/reparse-dropped-previews") {
+    // Recovery helper: try parsing stored dropped message previews again with latest parser rules.
+    try {
+      const payload = await parseJsonBody(req);
+      const onlyParseFailed = payload?.onlyParseFailed !== false;
+      const limit = Math.max(1, Math.min(500, Number(payload?.limit || 200)));
+
+      const state = await readState();
+      const debug = normalizeTelegramDebug(state.telegramDebug);
+      const dropped = Array.isArray(debug.droppedMessages) ? debug.droppedMessages : [];
+      const existingUpdateIds = new Set(
+        (Array.isArray(state.reports) ? state.reports : [])
+          .map((item) => String(item?.raw?.telegramUpdateId || "").trim())
+          .filter(Boolean)
+      );
+
+      let scanned = 0;
+      let recovered = 0;
+      let skippedDuplicate = 0;
+      let skippedUnparsed = 0;
+
+      const nextReports = Array.isArray(state.reports) ? state.reports.slice() : [];
+
+      for (const event of dropped) {
+        if (scanned >= limit) break;
+        scanned += 1;
+        const reason = String(event?.reason || "");
+        if (onlyParseFailed && reason !== "parse_failed") continue;
+
+        const updateId = String(event?.updateId || "").trim();
+        if (updateId && existingUpdateIds.has(updateId)) {
+          skippedDuplicate += 1;
+          continue;
+        }
+
+        const text = String(event?.textPreview || "").trim();
+        if (!text) {
+          skippedUnparsed += 1;
+          continue;
+        }
+
+        const raw = parseTelegramReportMessage(text);
+        if (!raw) {
+          skippedUnparsed += 1;
+          continue;
+        }
+
+        raw.telegramUpdateId = updateId || `reparse-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+        raw.telegramMessageId = "";
+        raw.telegramChatId = String(event?.chatId || "").trim();
+        raw.telegramChatTitle = String(event?.chatTitle || "").trim();
+        raw.telegramUpdateType = String(event?.updateType || "message");
+        raw.source = `${String(raw.source || "Telegram Webhook")} (reparsed)`;
+
+        const id = raw.telegramChatId && raw.telegramMessageId
+          ? `${raw.telegramChatId}:${raw.telegramMessageId}`
+          : `reparse:${raw.telegramUpdateId}`;
+
+        nextReports.push({
+          id,
+          messageKey: "",
+          receivedAt: Date.now(),
+          raw
+        });
+
+        existingUpdateIds.add(raw.telegramUpdateId);
+        recovered += 1;
+      }
+
+      state.reports = nextReports.slice(-MAX_REPORTS);
+      state.updatedAt = Date.now();
+      await writeState(state);
+
+      sendJson(res, 200, {
+        ok: true,
+        scanned,
+        recovered,
+        skippedDuplicate,
+        skippedUnparsed,
+        totalReports: state.reports.length
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Reparse dropped previews failed" });
+    }
+    return;
+  }
+
   if (method === "POST" && url.pathname === "/api/telegram/test-parse") {
     try {
       const payload = await parseJsonBody(req);
