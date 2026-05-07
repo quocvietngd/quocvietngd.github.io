@@ -776,8 +776,10 @@ function parseTelegramReportMessage(text) {
     const tenkh = String(firstTelegramValue(values, ["tenkhach", "tenkh", "khach", "khachhang", "customer"]) || "").trim();
     const kq = String(firstTelegramValue(values, ["ketqua", "kq", "result"]) || "").trim();
     const mahd = String(firstTelegramValue(values, ["mahd", "mahopdong", "contract"]) || "").trim();
-    const sotien = parseFlexibleNumber(firstTelegramValue(values, ["sotien", "so", "amount", "tien"]));
+    const giaTriHD = parseFlexibleNumber(firstTelegramValue(values, ["giatrihd", "giatri", "sotien", "so", "amount", "tien"]));
+    const thucthu = parseFlexibleNumber(firstTelegramValue(values, ["thucthu", "thuc thu", "thực thu"]));
     const receivableAmount = parseFlexibleNumber(firstTelegramValue(values, ["congno", "cong no", "receivable", "debt"]));
+    const sotien = giaTriHD || thucthu;
     const pttt = String(firstTelegramValue(values, ["pttt", "phuongthuc", "method"]) || "").trim();
     const ghichu = String(firstTelegramValue(values, ["ghichu", "note", "ghi"]) || "").trim();
     
@@ -791,7 +793,8 @@ function parseTelegramReportMessage(text) {
       sotien,
       pttt,
       note: ghichu || note,
-      contractAmount: sotien,
+      contractAmount: giaTriHD || sotien,
+      thucthu: thucthu || (giaTriHD && receivableAmount ? giaTriHD - receivableAmount : 0),
       receivableAmount,
       source: route ? `Telegram Tu Van #${route}` : "Telegram Webhook"
     };

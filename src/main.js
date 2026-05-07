@@ -9828,6 +9828,10 @@ function getConsultantReportRows(start, end) {
 
     const contractAmount = normalizeLegacyConsultantAmount(parseVietnameseAmount(item.contractAmount), item);
     const receivableAmount = Math.max(0, parseVietnameseAmount(item.receivableAmount));
+    const explicitThucthu = item.thucthu != null ? parseVietnameseAmount(item.thucthu) : null;
+    const revenue = explicitThucthu != null && explicitThucthu >= 0
+      ? explicitThucthu
+      : Math.max(0, contractAmount - receivableAmount);
     const status = String(item.status || "").toLowerCase();
     const noteText = normalizeTextForMatching(item.note || item.motherCondition || "");
 
@@ -9835,7 +9839,7 @@ function getConsultantReportRows(start, end) {
     if (contractAmount > 0) {
       prev.signedCount += 1;
       prev.contractValue += contractAmount;
-      prev.revenue += Math.max(0, contractAmount - receivableAmount);
+      prev.revenue += revenue;
     }
     prev.receivable += receivableAmount;
 
