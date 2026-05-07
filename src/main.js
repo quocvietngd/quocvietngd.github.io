@@ -8083,7 +8083,11 @@ function buildMetricsFromRows(rows) {
   const telesaleCancelRate = telesaleAssigned.length ? (telesaleCanceled.length / telesaleAssigned.length) * 100 : 0;
 
   const consultantAssigned = rows.filter((item) => String(item.consultant || "").trim());
-  const consultantSigned = consultantAssigned.filter((item) => Number(item.contractAmount || 0) > 0);
+  const consultantSigned = consultantAssigned.filter((item) => {
+    const kqText = normalizeTextForMatching(item.kq || "");
+    const isFail = kqText.includes("fail");
+    return Number(item.contractAmount || 0) > 0 && !isFail;
+  });
   const consultantRevenue = consultantSigned.reduce((sum, item) => sum + Number(item.contractAmount || 0), 0);
   const consultantSignRate = consultantAssigned.length ? (consultantSigned.length / consultantAssigned.length) * 100 : 0;
   const consultantAvgContract = consultantSigned.length ? consultantRevenue / consultantSigned.length : 0;
