@@ -448,11 +448,12 @@ function normalizeDate(dateText) {
   const compact = value.replace(/\s+/g, " ").trim();
   const normalizedSeparator = compact.replace(/\s*([\/-])\s*/g, "$1");
   if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedSeparator)) return normalizedSeparator;
-  const ddmmyyyy = normalizedSeparator.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  const ddmmyyyy = normalizedSeparator.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/);
   if (ddmmyyyy) {
     const dd = ddmmyyyy[1].padStart(2, "0");
     const mm = ddmmyyyy[2].padStart(2, "0");
-    const yyyy = ddmmyyyy[3];
+    const yearToken = ddmmyyyy[3];
+    const yyyy = yearToken.length === 2 ? `20${yearToken}` : yearToken;
     return `${yyyy}-${mm}-${dd}`;
   }
   const ddmm = normalizedSeparator.match(/^(\d{1,2})[\/-](\d{1,2})$/);
