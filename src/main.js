@@ -8272,17 +8272,33 @@ function parseTelegramLineToField(line) {
 async function callTelegramBridge(path, options = {}) {
   const base = getTelegramBridgeApiBase();
   if (!base) throw new Error("Chưa cấu hình Telegram Bridge API URL.");
-  const response = await fetch(`${base}${path}`, {
-    method: options.method || "GET",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    body: options.body
-  });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error || data.message || `HTTP ${response.status}`);
+  
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs || 30000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(`${base}${path}`, {
+      method: options.method || "GET",
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      body: options.body,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : {};
+    if (!response.ok || data.ok === false) {
+      throw new Error(data.error || data.message || `HTTP ${response.status}`);
+    }
+    return data;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error(`Timeout kết nối tới Telegram Bridge sau ${timeoutMs}ms`);
+    }
+    throw err;
   }
-  return data;
 }
 
 function parseTelegramNurseMessage(text) {
