@@ -41,6 +41,7 @@ const IS_STATE_FILE_ON_RENDER_DISK = STATE_FILE === RENDER_DISK_PATH || STATE_FI
 const IS_DURABLE_FILE_MODE = !USE_POSTGRES && IS_RENDER_DISK_ATTACHED && IS_STATE_FILE_ON_RENDER_DISK;
 const IS_DURABLE_STORAGE = USE_POSTGRES || IS_DURABLE_FILE_MODE;
 const TELEGRAM_SYNC_MIN_INTERVAL_MS = Math.max(3000, Number(process.env.TELEGRAM_SYNC_MIN_INTERVAL_MS || 8000));
+const TELEGRAM_SUSPICIOUS_UPDATE_ID = 100000000;
 
 let dbPool = null;
 let dbReadyPromise = null;
@@ -1024,22 +1025,37 @@ async function fetchTelegramUpdatesBatch(token, offset) {
 async function fetchTelegramUpdates(state) {
   if (!state.token) return { updates: [], offsetUsed: 0, recoveredOffsetSkew: false };
 
-  const currentOffset = Number(state.lastUpdateId || 0) > 0 ? Number(state.lastUpdateId) + 1 : undefined;
-  const primary = await fetchTelegramUpdatesBatch(state.token, currentOffset);
-  if (primary.updates.length > 0) return primary;
-
-  if (!currentOffset) return primary;
-
   try {
     const webhookInfo = await getWebhookInfo(state.token);
     const pendingUpdateCount = Number(webhookInfo?.pending_update_count || 0);
-    if (pendingUpdateCount <= 0) return primary;
+    const currentLastUpdateId = Number(state.lastUpdateId || 0);
+
+    if (pendingUpdateCount > 0 && currentLastUpdateId > TELEGRAM_SUSPICIOUS_UPDATE_ID) {
+      const preview = await fetchTelegramUpdatesBatch(state.token);
+      const firstUpdateId = Number(preview.updates[0]?.update_id || 0);
+      if (firstUpdateId > 0 && firstUpdateId < currentLastUpdateId) {
+        return {
+          updates: preview.updates,
+          offsetUsed: 0,
+          recoveredOffsetSkew: true,
+          resetLastUpdateIdTo: Math.max(0, firstUpdateId - 1),
+          pendingUpdateCount
+        };
+      }
+      return { ...preview, pendingUpdateCount };
+    }
+
+    const currentOffset = currentLastUpdateId > 0 ? currentLastUpdateId + 1 : undefined;
+    const primary = await fetchTelegramUpdatesBatch(state.token, currentOffset);
+    if (primary.updates.length > 0 || !currentOffset || pendingUpdateCount <= 0) {
+      return { ...primary, pendingUpdateCount };
+    }
 
     const fallback = await fetchTelegramUpdatesBatch(state.token);
-    if (!fallback.updates.length) return primary;
+    if (!fallback.updates.length) return { ...primary, pendingUpdateCount };
 
     const firstUpdateId = Number(fallback.updates[0]?.update_id || 0);
-    if (!firstUpdateId || firstUpdateId > Number(state.lastUpdateId || 0)) return primary;
+    if (!firstUpdateId || firstUpdateId > currentLastUpdateId) return { ...primary, pendingUpdateCount };
 
     return {
       updates: fallback.updates,
@@ -1050,6 +1066,8 @@ async function fetchTelegramUpdates(state) {
     };
   } catch (error) {
     console.error("[telegram-webhook-bridge] offset recovery probe failed:", error.message);
+    const currentOffset = Number(state.lastUpdateId || 0) > 0 ? Number(state.lastUpdateId) + 1 : undefined;
+    const primary = await fetchTelegramUpdatesBatch(state.token, currentOffset);
     return primary;
   }
 }
