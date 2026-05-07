@@ -9995,6 +9995,7 @@ function getTelesaleReportRows(start, end) {
     const phones = new Set();
     let bookedCount = 0;
     let cancelledCount = 0;
+    let contractValue = 0;
     let revenue = 0;
 
     g.items.forEach((item) => {
@@ -10016,6 +10017,7 @@ function getTelesaleReportRows(start, end) {
       const isCancelledOrDeferred = item.status === "cancelled" || item.status === "pending";
       cancelledCount += explicitCancelled > 0 ? explicitCancelled : (isCancelledOrDeferred ? 1 : 0);
 
+      contractValue += contractAmount;
       if (explicitRevenue > 0 || contractAmount > 0) {
         revenue += explicitRevenue > 0 ? explicitRevenue : contractAmount;
       }
@@ -10031,6 +10033,7 @@ function getTelesaleReportRows(start, end) {
       bookedCount,
       cancelledCount,
       bookingRate,
+      contractValue,
       revenue
     };
   });
@@ -10059,6 +10062,7 @@ function renderTelesaleReportTable(rows) {
   const totalPhones = rows.reduce((sum, row) => sum + row.phoneCount, 0);
   const totalBooked = rows.reduce((sum, row) => sum + row.bookedCount, 0);
   const totalCancelled = rows.reduce((sum, row) => sum + row.cancelledCount, 0);
+  const totalContractValue = rows.reduce((sum, row) => sum + row.contractValue, 0);
   const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
   const totalBookingRate = totalMess ? (totalBooked / totalMess) * 100 : 0;
 
@@ -10072,6 +10076,7 @@ function renderTelesaleReportTable(rows) {
         <td style="text-align:center;">${row.bookedCount.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${row.cancelledCount.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${row.bookingRate.toFixed(1)}%</td>
+        <td style="text-align:right;">${row.contractValue.toLocaleString("vi-VN")} đ</td>
         <td style="text-align:right;">${row.revenue.toLocaleString("vi-VN")} đ</td>
         <td style="position:relative;text-align:center;">
           <button
@@ -10093,7 +10098,7 @@ function renderTelesaleReportTable(rows) {
         </td>
       </tr>
     `).join("")
-    : '<tr><td colspan="9" style="text-align:center;">Không có dữ liệu telesale trong khoảng ngày đã chọn.</td></tr>';
+    : '<tr><td colspan="10" style="text-align:center;">Không có dữ liệu telesale trong khoảng ngày đã chọn.</td></tr>';
 
   els.reportsTable.innerHTML = `
     <thead>
@@ -10105,7 +10110,8 @@ function renderTelesaleReportTable(rows) {
         <th style="cursor:pointer;user-select:none;text-align:center;" data-telesale-sort="bookedCount">Lịch trải nghiệm${getTelesaleSortIndicator("bookedCount")}</th>
         <th style="cursor:pointer;user-select:none;text-align:center;" data-telesale-sort="cancelledCount">Ca hoãn huỷ${getTelesaleSortIndicator("cancelledCount")}</th>
         <th style="cursor:pointer;user-select:none;text-align:center;" data-telesale-sort="bookingRate">Tỉ lệ đặt lịch/mess${getTelesaleSortIndicator("bookingRate")}</th>
-        <th style="cursor:pointer;user-select:none;text-align:right;" data-telesale-sort="revenue">Doanh số${getTelesaleSortIndicator("revenue")}</th>
+        <th style="cursor:pointer;user-select:none;text-align:right;" data-telesale-sort="contractValue">Giá trị HĐ${getTelesaleSortIndicator("contractValue")}</th>
+        <th style="cursor:pointer;user-select:none;text-align:right;" data-telesale-sort="revenue">Thực thu${getTelesaleSortIndicator("revenue")}</th>
         <th style="text-align:center;">Thao tác</th>
       </tr>
       <tr style="background:#eef6ff;font-weight:700;">
@@ -10116,6 +10122,7 @@ function renderTelesaleReportTable(rows) {
         <td style="text-align:center;">${totalBooked.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${totalCancelled.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${totalBookingRate.toFixed(1)}%</td>
+        <td style="text-align:right;">${totalContractValue.toLocaleString("vi-VN")} đ</td>
         <td style="text-align:right;">${totalRevenue.toLocaleString("vi-VN")} đ</td>
         <td style="text-align:center;">--</td>
       </tr>
@@ -10426,7 +10433,7 @@ function exportReportDetailExcel() {
       showToast("Không có dữ liệu để xuất Excel theo bộ lọc hiện tại.", "warning");
       return;
     }
-    const header = ["Ngày", "Tên telesale", "Lượng mess", "Số điện thoại", "Lịch trải nghiệm", "Ca hoãn huỷ", "Tỉ lệ đặt lịch/mess", "Doanh số"];
+    const header = ["Ngày", "Tên telesale", "Lượng mess", "Số điện thoại", "Lịch trải nghiệm", "Ca hoãn huỷ", "Tỉ lệ đặt lịch/mess", "Giá trị HĐ", "Thực thu"];
     const records = telesaleRows.map((row) => [
       row.date,
       row.saleName,
@@ -10435,6 +10442,7 @@ function exportReportDetailExcel() {
       row.bookedCount,
       row.cancelledCount,
       `${row.bookingRate.toFixed(1)}%`,
+      `${row.contractValue.toLocaleString("vi-VN")} đ`,
       `${row.revenue.toLocaleString("vi-VN")} đ`
     ]);
     const csv = [header, ...records].map((line) => line.map((cell) => toCsvValue(cell)).join(",")).join("\n");
@@ -10607,9 +10615,10 @@ function renderReportsPage() {
     const totalMess = telesaleRows.reduce((sum, row) => sum + row.messCount, 0);
     const totalBooked = telesaleRows.reduce((sum, row) => sum + row.bookedCount, 0);
     const totalCancelled = telesaleRows.reduce((sum, row) => sum + row.cancelledCount, 0);
+    const totalContractValue = telesaleRows.reduce((sum, row) => sum + row.contractValue, 0);
     const totalRevenue = telesaleRows.reduce((sum, row) => sum + row.revenue, 0);
     const overallRate = totalMess ? (totalBooked / totalMess) * 100 : 0;
-    els.reportsSummary.textContent = `Bộ lọc: ${reportFilterState.start} → ${reportFilterState.end} | Telesale | ${telesaleRows.length} dòng | Mess: ${totalMess.toLocaleString("vi-VN")} | Lịch trải nghiệm: ${totalBooked.toLocaleString("vi-VN")} (${overallRate.toFixed(1)}%) | Ca hoãn huỷ: ${totalCancelled.toLocaleString("vi-VN")} | Doanh số: ${totalRevenue.toLocaleString("vi-VN")} đ`;
+    els.reportsSummary.textContent = `Bộ lọc: ${reportFilterState.start} → ${reportFilterState.end} | Telesale | ${telesaleRows.length} dòng | Mess: ${totalMess.toLocaleString("vi-VN")} | Lịch trải nghiệm: ${totalBooked.toLocaleString("vi-VN")} (${overallRate.toFixed(1)}%) | Ca hoãn huỷ: ${totalCancelled.toLocaleString("vi-VN")} | Giá trị HĐ: ${totalContractValue.toLocaleString("vi-VN")} đ | Thực thu: ${totalRevenue.toLocaleString("vi-VN")} đ`;
     return;
   }
 
