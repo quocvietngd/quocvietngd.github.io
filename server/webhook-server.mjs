@@ -471,12 +471,15 @@ function parseFlexibleNumber(value) {
   if (!text) return 0;
   const hasKSuffix = /k\s*$/i.test(text);
   const raw = text.replace(/k\s*$/i, "").trim();
-  // Vietnamese format: 20.000.000 (dots as thousands separators)
-  // Detect: multiple dots OR dot-groups-of-3 pattern
+  // Vietnamese format: 20.000.000 (dots as thousands) or 20,000,000 (commas as thousands)
   let normalized;
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw.replace(/[^\d.,]/g, ""))) {
-    // Vietnamese: dots=thousands, comma=decimal
+  const rawDigits = raw.replace(/[^\d.,]/g, "");
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(rawDigits)) {
+    // Vietnamese: dots=thousands, comma=decimal → strip dots
     normalized = raw.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(/,/g, ".");
+  } else if (/^\d{1,3}(,\d{3})+(\,\d+)?$/.test(rawDigits) || /^\d{1,3}(,\d{3})+$/.test(rawDigits)) {
+    // Comma as thousands separator: 1,399 → 1399
+    normalized = raw.replace(/[^\d.,-]/g, "").replace(/,/g, "");
   } else {
     normalized = raw.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
   }

@@ -3917,7 +3917,11 @@ function parseVietnameseAmount(value) {
 
   let parsed = 0;
   if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(cleaned)) {
+    // Vietnamese: dots=thousands, comma=decimal
     parsed = Number.parseFloat(cleaned.replace(/\./g, "").replace(/,/g, "."));
+  } else if (/^\d{1,3}(,\d{3})+$/.test(cleaned)) {
+    // Comma as thousands separator: 1,399 → 1399
+    parsed = Number.parseFloat(cleaned.replace(/,/g, ""));
   } else {
     const dotCount = (cleaned.match(/\./g) || []).length;
     if (dotCount > 1 && /^\d+(\.\d{3})+$/.test(cleaned)) {
@@ -9125,8 +9129,11 @@ function parseFlexibleNumber(value) {
   const hasKSuffix = /k\s*$/i.test(text);
   const raw = text.replace(/k\s*$/i, "").trim();
   let normalized;
-  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(raw.replace(/[^\d.,]/g, ""))) {
+  const rawDigits = raw.replace(/[^\d.,]/g, "");
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(rawDigits)) {
     normalized = raw.replace(/[^\d.,-]/g, "").replace(/\./g, "").replace(/,/g, ".");
+  } else if (/^\d{1,3}(,\d{3})+$/.test(rawDigits)) {
+    normalized = raw.replace(/[^\d.,-]/g, "").replace(/,/g, "");
   } else {
     normalized = raw.replace(/,/g, ".").replace(/[^\d.\-]/g, "");
   }
