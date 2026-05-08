@@ -3293,6 +3293,26 @@ function getRemoteCriticalStateRowCount(remoteState) {
   );
 }
 
+function hasRemoteListIdsMissingLocally(remoteList = [], localList = []) {
+  const remoteIds = new Set(
+    (Array.isArray(remoteList) ? remoteList : [])
+      .map((item) => String(item?.id || "").trim())
+      .filter(Boolean)
+  );
+  if (!remoteIds.size) return false;
+
+  const localIds = new Set(
+    (Array.isArray(localList) ? localList : [])
+      .map((item) => String(item?.id || "").trim())
+      .filter(Boolean)
+  );
+
+  for (const id of remoteIds) {
+    if (!localIds.has(id)) return true;
+  }
+  return false;
+}
+
 function flushCriticalStateToRemoteWithBeacon() {
   const endpointUrl = getAppStateSyncEndpoint();
   if (!endpointUrl || typeof navigator.sendBeacon !== "function") return false;
@@ -3417,7 +3437,22 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   const localScheduleCount = Array.isArray(schedules) ? schedules.length : 0;
   const remoteRows = getRemoteCriticalStateRowCount(remoteState);
   const localRows = getRemoteCriticalStateRowCount(buildCriticalStatePayload(localUpdatedAt || Date.now()));
-  const remoteHasNewData = remoteScheduleCount > localScheduleCount || remoteRows > localRows || remoteUpdatedAt > localUpdatedAt;
+  const remoteHasNewData = remoteScheduleCount > localScheduleCount
+    || remoteRows > localRows
+    || remoteUpdatedAt > localUpdatedAt
+    || hasRemoteListIdsMissingLocally(remoteState.schedules, schedules)
+    || hasRemoteListIdsMissingLocally(remoteState.customers, customers)
+    || hasRemoteListIdsMissingLocally(remoteState.inventoryItems, inventoryItems)
+    || hasRemoteListIdsMissingLocally(remoteState.inventoryTransactions, inventoryTransactions)
+    || hasRemoteListIdsMissingLocally(remoteState.customerCareManualRows, customerCareManualRows)
+    || hasRemoteListIdsMissingLocally(remoteState.activities, activityLogs)
+    || hasRemoteListIdsMissingLocally(remoteState.recycleBin, recycleBin)
+    || hasRemoteListIdsMissingLocally(remoteState.newsPosts, newsPosts)
+    || hasRemoteListIdsMissingLocally(remoteState.newsPinned, newsPinned)
+    || hasRemoteListIdsMissingLocally(remoteState.newsEvents, newsEvents)
+    || hasRemoteListIdsMissingLocally(remoteState.accountingCashflow, accountingCashflowEntries)
+    || hasRemoteListIdsMissingLocally(remoteState.accountingAttendance, accountingAttendanceEntries)
+    || hasRemoteListIdsMissingLocally(remoteState.reports, reports);
 
   // If local has unsaved changes AND remote has nothing new, just push local to remote.
   if (hasPendingSync && !remoteHasNewData) {
