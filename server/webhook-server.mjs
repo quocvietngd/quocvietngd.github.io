@@ -2123,8 +2123,92 @@ const server = createServer(async (req, res) => {
         return [...byId.values(), ...extras];
       };
 
+      const dedupeTelegramNurseSchedules = (rows = []) => {
+        const normalizeDupText = (value) => String(value || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[đ]/g, "d")
+          .replace(/["'’`.,;:!?()\[\]{}\\/\-_]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        const normalizeContractCodeSafe = (value) => {
+          const raw = String(value || "").trim();
+          if (!raw) return "";
+          const compact = raw.toUpperCase().replace(/\s+/g, "");
+          if (/^NR[0-9A-Z/-]+$/.test(compact)) return compact;
+          if (/^[0-9][0-9A-Z/-]*$/.test(compact)) return `NR${compact}`;
+          return compact;
+        };
+
+        const normalizeDateKey = (value) => {
+          const v = String(value || "").trim();
+          const iso = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+          const ddmmyyyy = v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/);
+          if (ddmmyyyy) {
+            const dd = ddmmyyyy[1].padStart(2, "0");
+            const mm = ddmmyyyy[2].padStart(2, "0");
+            const yy = ddmmyyyy[3].length === 2 ? `20${ddmmyyyy[3]}` : ddmmyyyy[3];
+            return `${yy}-${mm}-${dd}`;
+          }
+          return v;
+        };
+
+        const recency = (item) => {
+          const updatedAt = Number(item?.updatedAt || item?.createdAt || 0);
+          const updateId = String(item?.telegramUpdateId || "");
+          const messageId = String(item?.telegramMessageId || "");
+          const updateNum = Number((updateId.match(/(\d+)(?!.*\d)/) || [])[1] || 0);
+          const messageNum = Number((messageId.match(/(\d+)(?!.*\d)/) || [])[1] || 0);
+          return updatedAt * 1_000_000 + updateNum * 1000 + messageNum;
+        };
+
+        const dupKey = (item) => {
+          const route = String(item?.telegramRoute || "").toLowerCase();
+          const source = String(item?.source || "").toLowerCase();
+          const id = String(item?.id || "").toLowerCase();
+          const isTelegram = id.startsWith("tg-") || id.startsWith("tgm-") || source.includes("telegram");
+          if (!isTelegram || route !== "nurse") return "";
+
+          const date = normalizeDateKey(item?.registrationDate || "");
+          const service = normalizeDupText(item?.service || "");
+          const customer = normalizeDupText(item?.customerName || "");
+          const contract = normalizeContractCodeSafe(item?.mahd || "") || "-";
+          const time = normalizeDupText(item?.appointmentTime || "") || "-";
+          if (!date || !service || !customer) return "";
+          return `${date}__${service}__${customer}__${contract}__${time}`;
+        };
+
+        const list = Array.isArray(rows) ? rows : [];
+        const bestByKey = new Map();
+        const removedIndexes = new Set();
+
+        list.forEach((item, index) => {
+          const key = dupKey(item);
+          if (!key) return;
+          const prev = bestByKey.get(key);
+          if (!prev) {
+            bestByKey.set(key, { index, score: recency(item) });
+            return;
+          }
+          const score = recency(item);
+          if (score >= prev.score) {
+            removedIndexes.add(prev.index);
+            bestByKey.set(key, { index, score });
+          } else {
+            removedIndexes.add(index);
+          }
+        });
+
+        if (!removedIndexes.size) return list;
+        return list.filter((_, index) => !removedIndexes.has(index));
+      };
+
       // Merge all list fields — never replace anything blindly.
       incomingAppState.schedules = mergeLists(existingAppState.schedules, incomingAppState.schedules);
+      incomingAppState.schedules = dedupeTelegramNurseSchedules(incomingAppState.schedules);
       incomingAppState.customers = mergeLists(existingAppState.customers, incomingAppState.customers);
       incomingAppState.inventoryItems = mergeLists(existingAppState.inventoryItems, incomingAppState.inventoryItems);
       incomingAppState.inventoryTransactions = mergeLists(existingAppState.inventoryTransactions, incomingAppState.inventoryTransactions);
