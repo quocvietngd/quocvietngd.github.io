@@ -9261,7 +9261,8 @@ const NURSE_REPORT_BUCKETS = [
   { key: "mother60", label: "Mẹ 60P", group: "mother", minutes: 60 },
   { key: "mother75", label: "Ca mẹ 75P", group: "mother", minutes: 75 },
   { key: "mother90", label: "Mẹ 90P", group: "mother", minutes: 90 },
-  { key: "mother120", label: "Mẹ 120P", group: "mother", minutes: 120 }
+  { key: "mother120", label: "Mẹ 120P", group: "mother", minutes: 120 },
+  { key: "wash60", label: "Gội đầu 60P", group: "wash", minutes: 60 }
 ];
 
 function toggleNurseReportSort(sortKey) {
@@ -9394,7 +9395,11 @@ function getCanonicalNurseName(name) {
 function getNurseServiceBucket(item) {
   const serviceText = String(item.service || "").toLowerCase();
   const stageText = String(item.stage || "").toLowerCase();
-  const minutes = getShiftMinutes(item);
+  const miHairWash = serviceText.includes("gội") || serviceText.includes("goi") || serviceText.includes("wash") || serviceText.includes("head");
+  if (isHairWash) {
+    return getClosestBucketByMinutes("wash", minutes);
+  }
+  const isnutes = getShiftMinutes(item);
   const isBabyCare = serviceText.includes("bé") || serviceText.includes("tam be") || stageText.includes("em bé");
   const group = isBabyCare ? "baby" : "mother";
   return getClosestBucketByMinutes(group, minutes);
