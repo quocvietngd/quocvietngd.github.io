@@ -9464,27 +9464,79 @@ function normalizeTextForMatching(value) {
     .replace(/\s+/g, " ");
 }
 
+function parseNurseIdentity(rawName) {
+  const source = String(rawName || "").trim();
+  if (!source) {
+    return {
+      raw: "",
+      name: "",
+      code: "",
+      hasCode: false,
+      key: ""
+    };
+  }
+
+  const codeMatch = source.toUpperCase().match(/\b(?:NV|DD|TV|MKT|TS)[-_ ]?\d{1,6}\b|\b[A-Z]{1,4}\d{2,6}\b/);
+  const code = codeMatch ? String(codeMatch[0] || "").replace(/[\s_-]+/g, "") : "";
+
+  let namePart = source;
+  if (codeMatch && codeMatch[0]) {
+    const escapedCode = String(codeMatch[0]).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    namePart = namePart.replace(new RegExp(escapedCode, "ig"), " ");
+  }
+  namePart = namePart
+    .replace(/[()|_]+/g, " ")
+    .replace(/\s+-\s+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const normalizedName = normalizeTextForMatching(namePart || source);
+  const key = code
+    ? `code:${code}`
+    : (normalizedName ? `name:${normalizedName}` : "");
+
+  return {
+    raw: source,
+    name: namePart || source,
+    code,
+    hasCode: Boolean(code),
+    key
+  };
+}
+
 function getCanonicalNurseName(name) {
   const rawName = String(name || "").trim();
   if (!rawName) return "";
 
-  const normalizedName = normalizeTextForMatching(rawName);
-  const shortNameCandidates = Array.from(new Set(
-    (schedules || [])
-      .map((item) => String(item.nurse || "").trim())
-      .filter((candidate) => candidate && !candidate.includes(" "))
-  ));
+  const identity = parseNurseIdentity(rawName);
+  if (!identity.key) return rawName;
 
-  const exactCandidate = shortNameCandidates.find((candidate) => normalizeTextForMatching(candidate) === normalizedName);
-  if (exactCandidate) return exactCandidate;
-
-  const suffixCandidate = shortNameCandidates.find((candidate) => {
-    const normalizedCandidate = normalizeTextForMatching(candidate);
-    return normalizedCandidate.length >= 2 && normalizedName.endsWith(normalizedCandidate);
+  const candidates = [];
+  (schedules || []).forEach((item) => {
+    const nurseRaw = String(item?.nurse || "").trim();
+    if (!nurseRaw) return;
+    const parsed = parseNurseIdentity(nurseRaw);
+    if (parsed.key !== identity.key) return;
+    candidates.push({
+      raw: nurseRaw,
+      hasCode: parsed.hasCode,
+      updatedAt: Number(item?.updatedAt || item?.createdAt || 0)
+    });
   });
-  if (suffixCandidate) return suffixCandidate;
 
-  return rawName;
+  candidates.push({
+    raw: rawName,
+    hasCode: identity.hasCode,
+    updatedAt: 0
+  });
+
+  candidates.sort((a, b) => {
+    if (a.hasCode !== b.hasCode) return a.hasCode ? -1 : 1;
+    if (a.updatedAt !== b.updatedAt) return b.updatedAt - a.updatedAt;
+    return String(a.raw || "").localeCompare(String(b.raw || ""), "vi");
+  });
+
+  return String(candidates[0]?.raw || rawName).trim();
 }
 
 function getNurseServiceBucket(item) {
