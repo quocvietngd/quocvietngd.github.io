@@ -42,6 +42,9 @@ const IS_DURABLE_FILE_MODE = !USE_POSTGRES && IS_RENDER_DISK_ATTACHED && IS_STAT
 const IS_DURABLE_STORAGE = USE_POSTGRES || IS_DURABLE_FILE_MODE;
 const TELEGRAM_SYNC_MIN_INTERVAL_MS = Math.max(3000, Number(process.env.TELEGRAM_SYNC_MIN_INTERVAL_MS || 8000));
 const TELEGRAM_SUSPICIOUS_UPDATE_ID = 100000000;
+const TELEGRAM_AUTO_ALLOW_NEW_CHATS = !["0", "false", "no", "off"].includes(
+  String(process.env.TELEGRAM_AUTO_ALLOW_NEW_CHATS || "1").trim().toLowerCase()
+);
 
 let dbPool = null;
 let dbReadyPromise = null;
@@ -539,6 +542,36 @@ function isTelegramChatAllowed(state, chatId) {
   return allowed.includes(String(chatId || ""));
 }
 
+function appendTelegramAllowedChatId(state, chatId) {
+  const normalizedChatId = String(chatId || "").trim();
+  if (!normalizedChatId) return false;
+  const allowed = parseTelegramAllowedChatIds(state?.chatId || "");
+  if (allowed.includes(normalizedChatId)) return false;
+  state.chatId = [...allowed, normalizedChatId].join(",");
+  state.updatedAt = Date.now();
+  return true;
+}
+
+function shouldAutoAllowTelegramChat(update = {}, chatMeta = {}) {
+  if (!TELEGRAM_AUTO_ALLOW_NEW_CHATS) return false;
+  const chatId = String(chatMeta.chatId || "").trim();
+  if (!chatId) return false;
+
+  const message = update?.message || update?.edited_message || update?.channel_post || update?.edited_channel_post;
+  const memberUpdate = update?.my_chat_member || update?.chat_member;
+  const chatType = String(message?.chat?.type || memberUpdate?.chat?.type || "").trim().toLowerCase();
+  const isGroupLikeChat = ["group", "supergroup", "channel"].includes(chatType);
+  if (!isGroupLikeChat) return false;
+
+  if (message) return true;
+
+  const newStatus = String(memberUpdate?.new_chat_member?.status || "").trim().toLowerCase();
+  const oldStatus = String(memberUpdate?.old_chat_member?.status || "").trim().toLowerCase();
+  const botFlag = Boolean(memberUpdate?.new_chat_member?.user?.is_bot);
+  const activeStatuses = new Set(["member", "administrator"]);
+  return botFlag && activeStatuses.has(newStatus) && !activeStatuses.has(oldStatus);
+}
+
 function extractTelegramHashtags(text) {
   const matches = String(text || "").match(/#[^\s#]+/g) || [];
   const unique = new Set();
@@ -572,6 +605,21 @@ function inferTelegramRoute(values) {
 
   // Backward compatibility: format cu chi co ten/khach/ngay/gio thi mac dinh dieu duong
   if (hasAny(["ten", "nhanvien"]) && hasAny(["khach", "khachhang", "customer", "tenkhach"])) return "nurse";
+  return "";
+}
+
+function inferTelegramRouteFromStructuredFields(values = {}) {
+  const keys = new Set(Object.keys(values || {}).map((key) => normalizeVietnamese(key)));
+  const hasAny = (list) => list.some((item) => keys.has(normalizeVietnamese(item)));
+
+  if (hasAny(["congno", "thucthu", "pttt"]) && hasAny(["mahd", "tentv", "consultant"])) return "congno";
+  if (hasAny(["tennvmkt", "tennvmarketing", "tenmarketing", "mkt", "marketing", "chiphi"])) return "marketing";
+  if (hasAny(["tentv", "tuvan", "consultant", "giatrihd", "ketqua"])) return "consultant";
+  if (hasAny(["telesale", "sale", "ts", "cahoanhuy"])) return "telesale";
+  if (hasAny(["tendd", "tendieuduong", "sobuoi", "khoangcach", "dieuduong"])) return "nurse";
+
+  if (hasAny(["mess", "sdt", "lich", "hopdong", "doanso"]) && hasAny(["tennv", "nhanvien", "ten"])) return "telesale";
+  if (hasAny(["tenkhach", "dichvu", "khoangcach", "mahd"]) && hasAny(["tendd", "ten", "nhanvien"])) return "nurse";
   return "";
 }
 
@@ -743,16 +791,16 @@ function parseTelegramReportMessage(text) {
   const values = {};
   const hashtags = extractTelegramHashtags(text);
 
-  // Require at least one hashtag so only explicit report messages are recorded.
-  if (!hashtags.length) return null;
-
   for (const line of lines) {
     const parsedField = parseTelegramLineToField(line);
     if (!parsedField) continue;
     values[parsedField.key] = parsedField.value;
   }
 
-  const route = detectTelegramRoute(values, hashtags) || inferTelegramRoute(values);
+  const parsedFieldCount = Object.keys(values).length;
+  if (!hashtags.length && parsedFieldCount < 3) return null;
+
+  const route = detectTelegramRoute(values, hashtags) || inferTelegramRoute(values) || inferTelegramRouteFromStructuredFields(values);
   if (!route) return null;
 
   const registrationDateRaw = String(firstTelegramValue(values, ["ngay", "date"]) || "").trim();
@@ -1019,6 +1067,13 @@ function appendTelegramReport(state, update) {
     return { saved: false, ignored: true, reason: "empty_message" };
   }
 
+  if (!isTelegramChatAllowed(state, chatId) && shouldAutoAllowTelegramChat(update, chatMeta)) {
+    const added = appendTelegramAllowedChatId(state, chatId);
+    if (added) {
+      console.log(`[telegram-webhook-bridge] auto-allowed chat ${chatId} (${String(chatMeta.chatTitle || "").trim() || "unknown"})`);
+    }
+  }
+
   if (!isTelegramChatAllowed(state, chatId)) {
     markIgnored("chat_not_allowed", "disallowedChatCount");
     return { saved: false, ignored: true, reason: "chat_not_allowed" };
@@ -1230,7 +1285,7 @@ async function fetchTelegramUpdates(state) {
 
 async function pollTelegramUpdatesOnce() {
   const state = await readState();
-  if (!state.token || !parseTelegramAllowedChatIds(state.chatId).length) {
+  if (!state.token) {
     return {
       configured: false,
       fetchedUpdates: 0,
