@@ -1943,6 +1943,123 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (method === "POST" && url.pathname === "/api/admin/dedupe-schedules") {
+    try {
+      const state = await readState();
+      const appState = normalizeAppState(state.appState || {});
+      const schedules = Array.isArray(appState.schedules) ? appState.schedules : [];
+
+      const normalizeDupText = (value) => String(value || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[đ]/g, "d")
+        .replace(/["'’`.,;:!?()\[\]{}\\/\-_]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const normalizeContractCodeSafe = (value) => {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        const compact = raw.toUpperCase().replace(/\s+/g, "");
+        if (/^NR[0-9A-Z/-]+$/.test(compact)) return compact;
+        if (/^[0-9][0-9A-Z/-]*$/.test(compact)) return `NR${compact}`;
+        return compact;
+      };
+
+      const normalizeDateKey = (value) => {
+        const v = String(value || "").trim();
+        const iso = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+        const ddmmyyyy = v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/);
+        if (ddmmyyyy) {
+          const dd = ddmmyyyy[1].padStart(2, "0");
+          const mm = ddmmyyyy[2].padStart(2, "0");
+          const yy = ddmmyyyy[3].length === 2 ? `20${ddmmyyyy[3]}` : ddmmyyyy[3];
+          return `${yy}-${mm}-${dd}`;
+        }
+        return v;
+      };
+
+      const getRecencyScore = (item) => {
+        const updatedAt = Number(item?.updatedAt || item?.createdAt || 0);
+        const updateId = String(item?.telegramUpdateId || "");
+        const messageId = String(item?.telegramMessageId || "");
+        const updateNum = Number((updateId.match(/(\d+)(?!.*\d)/) || [])[1] || 0);
+        const messageNum = Number((messageId.match(/(\d+)(?!.*\d)/) || [])[1] || 0);
+        return updatedAt * 1_000_000 + updateNum * 1000 + messageNum;
+      };
+
+      const getDupKey = (item) => {
+        const route = String(item?.telegramRoute || "").toLowerCase();
+        const source = String(item?.source || "").toLowerCase();
+        const id = String(item?.id || "").toLowerCase();
+        const isTelegram = id.startsWith("tg-") || id.startsWith("tgm-") || source.includes("telegram");
+        if (!isTelegram || route !== "nurse") return "";
+
+        const dateKey = normalizeDateKey(item?.registrationDate || "");
+        const serviceKey = normalizeDupText(item?.service || "");
+        const customerKey = normalizeDupText(item?.customerName || "");
+        const contractKey = normalizeContractCodeSafe(item?.mahd || "") || "-";
+        const timeKey = normalizeDupText(item?.appointmentTime || "") || "-";
+        if (!dateKey || !serviceKey || !customerKey) return "";
+        return `${dateKey}__${serviceKey}__${customerKey}__${contractKey}__${timeKey}`;
+      };
+
+      const bestByKey = new Map();
+      const removedIndexes = new Set();
+      let duplicatePairs = 0;
+
+      schedules.forEach((item, index) => {
+        const key = getDupKey(item);
+        if (!key) return;
+        const prev = bestByKey.get(key);
+        if (!prev) {
+          bestByKey.set(key, { index, score: getRecencyScore(item) });
+          return;
+        }
+
+        duplicatePairs += 1;
+        const score = getRecencyScore(item);
+        if (score >= prev.score) {
+          removedIndexes.add(prev.index);
+          bestByKey.set(key, { index, score });
+        } else {
+          removedIndexes.add(index);
+        }
+      });
+
+      if (!removedIndexes.size) {
+        sendJson(res, 200, {
+          ok: true,
+          before: schedules.length,
+          after: schedules.length,
+          removed: 0,
+          duplicatePairs
+        });
+        return;
+      }
+
+      const cleaned = schedules.filter((_, index) => !removedIndexes.has(index));
+      appState.schedules = cleaned;
+      appState.updatedAt = Date.now();
+      state.appState = appState;
+      state.updatedAt = Date.now();
+      await writeState(state);
+
+      sendJson(res, 200, {
+        ok: true,
+        before: schedules.length,
+        after: cleaned.length,
+        removed: schedules.length - cleaned.length,
+        duplicatePairs
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Dedupe schedules failed" });
+    }
+    return;
+  }
+
   if (method === "GET" && url.pathname === "/api/app-state") {
     try {
       const state = await readState();
