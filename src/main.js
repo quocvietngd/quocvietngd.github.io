@@ -10328,6 +10328,8 @@ function getConsultantReportRows(start, end) {
     const revenue = explicitThucthu != null
       ? explicitThucthu
       : Math.max(0, contractAmount - receivableAmount);
+    const effectiveContractValue = contractAmount > 0 ? contractAmount : revenue;
+    const hasFinancialValue = effectiveContractValue > 0 || revenue > 0;
     const status = String(item.status || "").toLowerCase();
     const noteText = normalizeTextForMatching(item.note || item.motherCondition || "");
 
@@ -10335,11 +10337,11 @@ function getConsultantReportRows(start, end) {
     const isFail = kqText.includes("fail");
 
     prev.receivedCount += 1;
-    if (contractAmount > 0) {
-      prev.contractValue += contractAmount;
+    if (hasFinancialValue) {
+      prev.contractValue += effectiveContractValue;
       prev.revenue += revenue;
     }
-    if (contractAmount > 0 && !isFail) {
+    if (hasFinancialValue && !isFail) {
       prev.signedCount += 1;
       prev.revenueForAvg += revenue;
     }
