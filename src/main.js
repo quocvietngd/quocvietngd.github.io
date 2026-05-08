@@ -9095,14 +9095,24 @@ function buildTelegramNurseDuplicateKey(item) {
   const isTelegram = id.startsWith("tg-") || id.startsWith("tgm-") || source.includes("telegram");
   if (!isTelegram || route !== "nurse") return "";
 
-  const dateKey = normalizeScheduleDateKey(item.registrationDate || "") || "";
-  const serviceKey = normalizeTextForMatching(item.service || "");
-  const customerKey = normalizeTextForMatching(item.customerName || "");
-  const contractKey = normalizeContractCode(item.mahd || "");
-  const timeKey = normalizeTextForMatching(item.appointmentTime || "");
+  const normalizeDupText = (value) => String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đ]/g, "d")
+    .replace(/["'’`.,;:!?()\[\]{}\\/\-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  // Only dedupe when all 5 criteria are present to avoid accidental merges.
-  if (!dateKey || !serviceKey || !customerKey || !contractKey || !timeKey) return "";
+  const dateKey = normalizeScheduleDateKey(item.registrationDate || "") || "";
+  const serviceKey = normalizeDupText(item.service || "");
+  const customerKey = normalizeDupText(item.customerName || "");
+  const contractKey = normalizeContractCode(item.mahd || "") || "-";
+  const timeKey = normalizeDupText(item.appointmentTime || "") || "-";
+
+  // Core signature (date + service + customer) must exist;
+  // contract/time are optional and used when present.
+  if (!dateKey || !serviceKey || !customerKey) return "";
   return `${dateKey}__${serviceKey}__${customerKey}__${contractKey}__${timeKey}`;
 }
 
