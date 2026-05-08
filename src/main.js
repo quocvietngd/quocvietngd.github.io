@@ -10553,7 +10553,31 @@ function getRowsByReportDepartment(departmentKey, start, end) {
   }
   if (departmentKey === "telesale") return inRange.filter((item) => String(item.saleStaff || "").trim());
   if (departmentKey === "consultant") return inRange.filter((item) => String(item.consultant || "").trim());
-  if (departmentKey === "nurse") return inRange.filter((item) => getEffectiveNurseName(item));
+  if (departmentKey === "nurse") {
+    const nurseRows = inRange.filter((item) => getEffectiveNurseName(item));
+    const bestByKey = new Map();
+
+    nurseRows.forEach((item, index) => {
+      const dupKey = buildTelegramNurseDuplicateKey(item);
+      // Keep non-telegram / non-qualified rows as-is.
+      if (!dupKey) {
+        bestByKey.set(`row:${index}:${String(item.id || "")}`, item);
+        return;
+      }
+
+      const prev = bestByKey.get(dupKey);
+      if (!prev) {
+        bestByKey.set(dupKey, item);
+        return;
+      }
+
+      if (getTelegramRowRecencyScore(item) >= getTelegramRowRecencyScore(prev)) {
+        bestByKey.set(dupKey, item);
+      }
+    });
+
+    return Array.from(bestByKey.values());
+  }
   return inRange;
 }
 
