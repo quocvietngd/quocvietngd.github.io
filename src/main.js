@@ -9393,16 +9393,49 @@ function getCanonicalNurseName(name) {
 }
 
 function getNurseServiceBucket(item) {
-  const serviceText = String(item.service || "").toLowerCase();
+  const contributions = getNurseServiceBucketContributions(item);
+  return contributions.length ? contributions[0].bucket : null;
+}
+
+function getNurseServiceBucketContributions(item) {
+  const serviceRaw = String(item.service || "").trim();
   const stageText = String(item.stage || "").toLowerCase();
-  const minutes = getShiftMinutes(item);
-  const isHairWash = serviceText.includes("gội") || serviceText.includes("goi") || serviceText.includes("wash") || serviceText.includes("head");
-  if (isHairWash) {
-    return getClosestBucketByMinutes("wash", minutes);
+  const fallbackMinutes = getShiftMinutes(item);
+  const segments = serviceRaw
+    ? serviceRaw.split(/\s*(?:\+|&|\bvà\b)\s*/i).map((part) => String(part || "").trim()).filter(Boolean)
+    : [""];
+
+  const contributions = [];
+  segments.forEach((segment) => {
+    const segmentText = String(segment || "").toLowerCase();
+    const minutes = extractMinutesFromText(segmentText) || fallbackMinutes;
+    const isHairWash = segmentText.includes("gội") || segmentText.includes("goi") || segmentText.includes("wash") || segmentText.includes("head");
+
+    if (isHairWash) {
+      const washBucket = getClosestBucketByMinutes("wash", minutes || 60);
+      if (!washBucket) return;
+      const ratio = (minutes || washBucket.minutes) / washBucket.minutes;
+      contributions.push({ bucket: washBucket, count: Math.max(0.01, ratio) });
+      return;
+    }
+
+    const isBabyCare = segmentText.includes("bé") || segmentText.includes("tam be") || stageText.includes("em bé");
+    const group = isBabyCare ? "baby" : "mother";
+    const bucket = getClosestBucketByMinutes(group, minutes);
+    if (!bucket) return;
+    contributions.push({ bucket, count: 1 });
+  });
+
+  return contributions;
+}
+
+function formatNurseBucketCount(value) {
+  const numeric = Number(value) || 0;
+  if (!numeric) return "";
+  if (Math.abs(numeric - Math.round(numeric)) < 0.0001) {
+    return Math.round(numeric).toLocaleString("vi-VN");
   }
-  const isBabyCare = serviceText.includes("bé") || serviceText.includes("tam be") || stageText.includes("em bé");
-  const group = isBabyCare ? "baby" : "mother";
-  return getClosestBucketByMinutes(group, minutes);
+  return numeric.toLocaleString("vi-VN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 function getNurseDetailedReportMatrix(start, end) {
@@ -9417,8 +9450,8 @@ function getNurseDetailedReportMatrix(start, end) {
   rows.forEach((item) => {
     const nurseName = getEffectiveNurseName(item);
     if (!nurseName) return;
-    const bucket = getNurseServiceBucket(item);
-    if (!bucket) return;
+    const bucketContributions = getNurseServiceBucketContributions(item);
+    if (!bucketContributions.length) return;
 
     const nurseRow = bucketByNurse.get(nurseName) || {
       nurseName,
@@ -9426,7 +9459,9 @@ function getNurseDetailedReportMatrix(start, end) {
       workingDates: new Set(),
       travelAllowance: 0
     };
-    nurseRow.counts[bucket.key] += 1;
+    bucketContributions.forEach(({ bucket, count }) => {
+      nurseRow.counts[bucket.key] += count;
+    });
     if (item.registrationDate) nurseRow.workingDates.add(item.registrationDate);
     const distanceKm = getDistanceKm(item);
     if (distanceKm > 20) nurseRow.travelAllowance += 20000;
@@ -9513,8 +9548,12 @@ function showNurseDailyDetailModal(nurseName, start, end) {
 
   const tbody = shifts.length
     ? shifts.map((item, index) => {
-        const bucket = getNurseServiceBucket(item);
-        const bucketLabel = bucket ? bucket.label : (item.service || "—");
+        const bucketContributions = getNurseServiceBucketContributions(item);
+        const bucketLabel = bucketContributions.length
+          ? bucketContributions
+            .map(({ bucket, count }) => `${bucket.label}${count !== 1 ? ` (${formatNurseBucketCount(count)} ca)` : ""}`)
+            .join(" + ")
+          : (item.service || "—");
         const minutes = getShiftMinutes(item);
         const dateFormatted = (() => {
           const d = item.registrationDate || "";
@@ -9590,7 +9629,7 @@ function renderNurseReportMatrix() {
         <td style="text-align:center;">${row.standardShiftCount.toFixed(2)}</td>
         <td style="text-align:center;">${row.travelAllowance.toLocaleString("vi-VN")} đ</td>
         ${NURSE_REPORT_BUCKETS.map((bucket) => `
-          <td style="text-align:center;">${row.counts[bucket.key] || ""}</td>
+          <td style="text-align:center;">${formatNurseBucketCount(row.counts[bucket.key])}</td>
         `).join("")}
       </tr>
     `).join("")
