@@ -3864,6 +3864,12 @@ if (Array.isArray(schedules)) {
     schedules = [...schedules, ...missingSamples];
     saveJSON(STORAGE.schedule, schedules);
   }
+
+  const consultantRepair = repairConsultantTelegramRows(schedules);
+  if (consultantRepair.changed > 0) {
+    schedules = consultantRepair.rows;
+    saveJSON(STORAGE.schedule, schedules);
+  }
 }
 
 function ensureRecoveredLongMarketingRows() {
@@ -8918,6 +8924,12 @@ function normalizeImportedScheduleRow(raw) {
     || extractMinutesFromText(noteText)
     || 0;
   const contractAmount = parseFlexibleNumber(firstValue(sourceObj, ["contractamount", "giá trị hợp đồng", "gia tri hop dong"]) || 0);
+  const consultantResult = String(firstValue(sourceObj, ["kq", "ketqua", "kết quả", "result"]) || "").trim();
+  const consultantContractCode = normalizeContractCode(String(firstValue(sourceObj, ["mahd", "ma hop dong", "mã hđ", "mã hợp đồng", "mahopdong", "contractcode"]) || "").trim());
+  const consultantContractValue = parseFlexibleNumber(firstValue(sourceObj, ["sotien", "so tien", "giá trị hđ", "gia tri hd", "giatrihd", "amount", "tien"]) || 0);
+  const consultantCollected = parseFlexibleNumber(firstValue(sourceObj, ["thucthu", "thuc thu", "thực thu", "collected", "paid"]) || 0);
+  const consultantPaymentMethod = String(firstValue(sourceObj, ["pttt", "phuongthuctt", "phương thức tt", "paymentmethod", "method"]) || "").trim();
+  const effectiveContractAmount = contractAmount > 0 ? contractAmount : consultantContractValue;
   const explicitReceivableAmount = parseVietnameseAmount(firstValue(sourceObj, ["receivableamount", "congno", "công nợ", "cong no", "debt"]));
   const receivableAmount = explicitReceivableAmount > 0 ? explicitReceivableAmount : extractReceivableAmountFromNote(noteText);
 
@@ -8944,7 +8956,12 @@ function normalizeImportedScheduleRow(raw) {
     experiencePrice: Number(firstValue(sourceObj, ["experienceprice", "gia tn"]) || 0),
     sessionDuration: sessionDurationText || (inferredShiftMinutes > 0 ? `${inferredShiftMinutes}p` : ""),
     source: String(firstValue(sourceObj, ["source", "nguồn data", "nguon data"]) || "Nhập file").trim(),
-    contractAmount,
+    contractAmount: effectiveContractAmount,
+    ...(consultantResult ? { kq: consultantResult } : {}),
+    ...(consultantContractCode ? { mahd: consultantContractCode } : {}),
+    ...(consultantContractValue > 0 ? { sotien: consultantContractValue } : {}),
+    ...(consultantCollected > 0 ? { thucthu: consultantCollected } : {}),
+    ...(consultantPaymentMethod ? { pttt: consultantPaymentMethod } : {}),
     receivableAmount,
     shiftMinutes: inferredShiftMinutes,
     marketingBudget: parseFlexibleNumber(firstValue(sourceObj, ["marketingbudget", "budget", "chiphi", "chiphí", "ngansach", "chi"])),
@@ -8952,7 +8969,7 @@ function normalizeImportedScheduleRow(raw) {
     marketingPhoneCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingphonecount", "phonecount", "sdt", "sodienthoai"])),
     marketingBookedCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingbookedcount", "bookedcount", "lich", "datlich"])),
     marketingContractCount: parseFlexibleNumber(firstValue(sourceObj, ["marketingcontractcount", "contractcount", "hopdong", "hd"])),
-    marketingRevenue: parseFlexibleNumber(firstValue(sourceObj, ["marketingrevenue", "revenue", "doanhso", "doanso"])) || contractAmount,
+    marketingRevenue: parseFlexibleNumber(firstValue(sourceObj, ["marketingrevenue", "revenue", "doanhso", "doanso"])) || effectiveContractAmount,
     caCancelled: parseFlexibleNumber(firstValue(sourceObj, ["cacancelled", "cahoanhuy", "hoanhuy", "cancel"])),
     distanceKm: parseFlexibleNumber(firstValue(sourceObj, ["distancekm", "distance", "khoang cach", "khoảng cách", "quang duong", "quãng đường", "km"])),
     overtimeHolidayAllowance: parseFlexibleNumber(firstValue(sourceObj, ["overtimeholidayallowance", "surchargeamount", "phuphi", "phu phi", "phụ phí", "phu_phi", "phule", "phu le"])),
@@ -8975,6 +8992,94 @@ function normalizeImportedScheduleRow(raw) {
     updatedAt: Date.now(),
     createdAt: Date.now()
   };
+}
+
+function repairConsultantTelegramRows(inputRows = []) {
+  if (!Array.isArray(inputRows) || !inputRows.length) return { rows: inputRows, changed: 0 };
+
+  let changed = 0;
+  const repairedRows = inputRows.map((item) => {
+    const row = item && typeof item === "object" ? { ...item } : item;
+    if (!row || typeof row !== "object") return row;
+
+    const consultantName = String(row.consultant || "").trim();
+    const sourceText = String(row.source || "").toLowerCase();
+    const routeText = String(row.telegramRoute || "").toLowerCase();
+    const isConsultantLike = Boolean(consultantName) && (sourceText.includes("telegram") || routeText === "consultant" || routeText === "congno");
+    if (!isConsultantLike) return row;
+
+    const beforeSignature = JSON.stringify({
+      kq: row.kq,
+      mahd: row.mahd,
+      pttt: row.pttt,
+      sotien: row.sotien,
+      contractAmount: row.contractAmount,
+      thucthu: row.thucthu,
+      receivableAmount: row.receivableAmount
+    });
+
+    if (!String(row.kq || "").trim()) {
+      const fallbackKq = String(row.ketqua || row.result || "").trim();
+      if (fallbackKq) row.kq = fallbackKq;
+    }
+
+    if (!String(row.mahd || "").trim()) {
+      const fallbackMahd = normalizeContractCode(String(row.mahopdong || row.contractCode || row.contract || "").trim());
+      if (fallbackMahd) row.mahd = fallbackMahd;
+    }
+
+    if (!String(row.pttt || "").trim()) {
+      const fallbackPttt = String(row.phuongthuctt || row.paymentMethod || row.method || "").trim();
+      if (fallbackPttt) row.pttt = fallbackPttt;
+    }
+
+    const currentContract = parseFlexibleNumber(row.contractAmount);
+    const fallbackContract = parseFlexibleNumber(row.sotien || row.giatrihd || row.amount || row.tien);
+    if (currentContract <= 0 && fallbackContract > 0) {
+      row.contractAmount = fallbackContract;
+    }
+
+    if (parseFlexibleNumber(row.sotien) <= 0 && parseFlexibleNumber(row.contractAmount) > 0) {
+      row.sotien = parseFlexibleNumber(row.contractAmount);
+    }
+
+    if (parseFlexibleNumber(row.thucthu) <= 0) {
+      const fallbackCollected = parseFlexibleNumber(row.thucThu || row.collected || row.paid);
+      if (fallbackCollected > 0) {
+        row.thucthu = fallbackCollected;
+      } else {
+        const contractValue = parseFlexibleNumber(row.contractAmount || row.sotien);
+        const receivableValue = Math.max(0, parseFlexibleNumber(row.receivableAmount));
+        if (contractValue > 0) {
+          row.thucthu = Math.max(0, contractValue - receivableValue);
+        }
+      }
+    }
+
+    const before = parseFlexibleNumber(row.receivableAmount);
+    if (before <= 0) {
+      const fallbackReceivable = parseFlexibleNumber(row.congno || row.debt || row.outstanding);
+      if (fallbackReceivable > 0) row.receivableAmount = fallbackReceivable;
+    }
+
+    const afterSignature = JSON.stringify({
+      kq: row.kq,
+      mahd: row.mahd,
+      pttt: row.pttt,
+      sotien: row.sotien,
+      contractAmount: row.contractAmount,
+      thucthu: row.thucthu,
+      receivableAmount: row.receivableAmount
+    });
+    if (afterSignature !== beforeSignature) {
+      row.updatedAt = Date.now();
+      changed += 1;
+    }
+
+    return row;
+  });
+
+  return { rows: repairedRows, changed };
 }
 
 function getEffectiveNurseName(item) {
