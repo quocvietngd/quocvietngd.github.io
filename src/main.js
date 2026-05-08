@@ -10456,21 +10456,74 @@ function showConsultantDetailModal(key) {
 
 function renderConsultantReportTable(detailRows) {
   if (!els.reportsTable) return;
+  const normalizeRowFromItems = (row) => {
+    if (!row?.items || !Array.isArray(row.items) || !row.items.length) return row;
+    const hasMissingFinancial = Number(row.contractValue || 0) <= 0 && Number(row.revenue || 0) <= 0;
+    if (!hasMissingFinancial) return row;
+
+    let signedCount = 0;
+    let contractValue = 0;
+    let revenue = 0;
+    let revenueForAvg = 0;
+    let receivable = 0;
+
+    row.items.forEach((item) => {
+      const contractAmount = normalizeLegacyConsultantAmount(parseVietnameseAmount(item.contractAmount), item);
+      const receivableAmount = Math.max(0, parseVietnameseAmount(item.receivableAmount));
+      const parsedThucthu = parseVietnameseAmount(item.thucthu);
+      const explicitThucthu = parsedThucthu > 0 ? parsedThucthu : null;
+      const itemRevenue = explicitThucthu != null
+        ? explicitThucthu
+        : Math.max(0, contractAmount - receivableAmount);
+      const effectiveContractValue = contractAmount > 0 ? contractAmount : itemRevenue;
+      const hasFinancialValue = effectiveContractValue > 0 || itemRevenue > 0;
+      const kqText = normalizeTextForMatching(item.kq || "");
+      const isFail = kqText.includes("fail");
+
+      if (hasFinancialValue) {
+        contractValue += effectiveContractValue;
+        revenue += itemRevenue;
+      }
+      if (hasFinancialValue && !isFail) {
+        signedCount += 1;
+        revenueForAvg += itemRevenue;
+      }
+      receivable += receivableAmount;
+    });
+
+    const receivedCount = Number(row.receivedCount || row.items.length || 0);
+    const signRate = receivedCount ? (signedCount / receivedCount) * 100 : 0;
+    const avgInvoice = signedCount ? revenueForAvg / signedCount : 0;
+    return {
+      ...row,
+      signedCount,
+      contractValue,
+      revenue,
+      receivable,
+      signRate,
+      avgInvoice
+    };
+  };
+
+  const normalizedDetailRows = Array.isArray(detailRows)
+    ? detailRows.map(normalizeRowFromItems)
+    : [];
+
   consultantDetailCache.clear();
-  detailRows.forEach((row) => { if (row.items) consultantDetailCache.set(`${row.date}__${row.consultantName}`, row.items); });
+  normalizedDetailRows.forEach((row) => { if (row.items) consultantDetailCache.set(`${row.date}__${row.consultantName}`, row.items); });
   const formatMoney = (value) => `${Math.round(Number(value) || 0).toLocaleString("vi-VN")} đ`;
 
-  const totalReceived = detailRows.reduce((sum, row) => sum + row.receivedCount, 0);
-  const totalSigned = detailRows.reduce((sum, row) => sum + row.signedCount, 0);
-  const totalPostponed = detailRows.reduce((sum, row) => sum + row.postponedCount, 0);
-  const totalContractValue = detailRows.reduce((sum, row) => sum + row.contractValue, 0);
-  const totalRevenue = detailRows.reduce((sum, row) => sum + row.revenue, 0);
-  const totalReceivable = detailRows.reduce((sum, row) => sum + row.receivable, 0);
+  const totalReceived = normalizedDetailRows.reduce((sum, row) => sum + row.receivedCount, 0);
+  const totalSigned = normalizedDetailRows.reduce((sum, row) => sum + row.signedCount, 0);
+  const totalPostponed = normalizedDetailRows.reduce((sum, row) => sum + row.postponedCount, 0);
+  const totalContractValue = normalizedDetailRows.reduce((sum, row) => sum + row.contractValue, 0);
+  const totalRevenue = normalizedDetailRows.reduce((sum, row) => sum + row.revenue, 0);
+  const totalReceivable = normalizedDetailRows.reduce((sum, row) => sum + row.receivable, 0);
   const totalSignRate = totalReceived ? (totalSigned / totalReceived) * 100 : 0;
   const totalAvgInvoice = totalSigned ? totalRevenue / totalSigned : 0;
 
-  const tbody = detailRows.length
-    ? detailRows.map((row) => `
+  const tbody = normalizedDetailRows.length
+    ? normalizedDetailRows.map((row) => `
       <tr>
         <td>${row.date}</td>
         <td>${row.consultantName}</td>
