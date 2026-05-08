@@ -583,14 +583,24 @@ function extractTelegramHashtags(text) {
 }
 
 function detectTelegramRoute(values, hashtags) {
-  const all = new Set([...(hashtags || []), ...Object.keys(values || {}).map((key) => normalizeVietnamese(key))]);
+  const normalizedTags = new Set((hashtags || []).map((tag) => normalizeVietnamese(tag)));
+  const tagHasAny = (keys) => keys.some((key) => normalizedTags.has(normalizeVietnamese(key)));
 
-  const hasAny = (keys) => keys.some((key) => all.has(normalizeVietnamese(key)));
-  if (hasAny(["congno", "cong_no", "conno"])) return "congno";
-  if (hasAny(["mkt", "marketing", "mk"])) return "marketing";
-  if (hasAny(["tuvan", "tuvan", "tv", "consultant"])) return "consultant";
-  if (hasAny(["telesale", "sale", "ts"])) return "telesale";
-  if (hasAny(["dieuduong", "dieu_duong", "dd", "nurse", "baocao"])) return "nurse";
+  // Explicit hashtags always win, so report owners can force route reliably.
+  if (tagHasAny(["congno", "cong_no", "conno"])) return "congno";
+  if (tagHasAny(["mkt", "marketing", "mk"])) return "marketing";
+  if (tagHasAny(["tuvan", "tv", "consultant"])) return "consultant";
+  if (tagHasAny(["telesale", "sale", "ts"])) return "telesale";
+  if (tagHasAny(["dieuduong", "dieu_duong", "dd", "nurse", "baocao"])) return "nurse";
+
+  const fieldKeys = new Set(Object.keys(values || {}).map((key) => normalizeVietnamese(key)));
+  const fieldHasAny = (keys) => keys.some((key) => fieldKeys.has(normalizeVietnamese(key)));
+
+  if (fieldHasAny(["mkt", "marketing", "mk", "chiphi", "ngansach"])) return "marketing";
+  if (fieldHasAny(["telesale", "sale", "ts", "cahoanhuy", "hoanhuy"])) return "telesale";
+  if (fieldHasAny(["tentv", "tuvan", "consultant", "ketqua", "kq", "giatrihd"])) return "consultant";
+  if (fieldHasAny(["congno", "cong_no", "conno", "thucthu", "pttt"])) return "congno";
+  if (fieldHasAny(["dieuduong", "dieu_duong", "dd", "nurse", "tendd", "tendieuduong"])) return "nurse";
   return "";
 }
 
