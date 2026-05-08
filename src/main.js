@@ -9594,7 +9594,7 @@ function renderNurseReportMatrix() {
         `).join("")}
       </tr>
     `).join("")
-    : `<tr><td colspan="13" style="text-align:center;">Không có ca hoàn tất trong khoảng ngày đã chọn.</td></tr>`;
+    : `<tr><td colspan="14" style="text-align:center;">Không có ca hoàn tất trong khoảng ngày đã chọn.</td></tr>`;
 
   els.reportsTable.innerHTML = `
     <thead>
@@ -9607,6 +9607,7 @@ function renderNurseReportMatrix() {
         <th rowspan="2" style="cursor:pointer;user-select:none;" data-nurse-sort="travelAllowance">PP di chuyển${getNurseReportSortIndicator("travelAllowance")}</th>
         <th colspan="3">Tắm bé - Hợp đồng</th>
         <th colspan="4">Chăm sóc mẹ - Hợp đồng</th>
+        <th colspan="1">Gội đầu - Hợp đồng</th>
       </tr>
       <tr>
         <th style="cursor:pointer;user-select:none;" data-nurse-sort="baby30">Tắm bé 30P${getNurseReportSortIndicator("baby30")}</th>
@@ -9616,6 +9617,7 @@ function renderNurseReportMatrix() {
         <th style="cursor:pointer;user-select:none;" data-nurse-sort="mother75">Ca mẹ 75P${getNurseReportSortIndicator("mother75")}</th>
         <th style="cursor:pointer;user-select:none;" data-nurse-sort="mother90">Mẹ 90P${getNurseReportSortIndicator("mother90")}</th>
         <th style="cursor:pointer;user-select:none;" data-nurse-sort="mother120">Mẹ 120P${getNurseReportSortIndicator("mother120")}</th>
+        <th style="cursor:pointer;user-select:none;" data-nurse-sort="wash60">Gội đầu 60P${getNurseReportSortIndicator("wash60")}</th>
       </tr>
     </thead>
     <tbody>
@@ -9633,6 +9635,7 @@ function renderNurseReportMatrix() {
         <td style="text-align:center;">75</td>
         <td style="text-align:center;">90</td>
         <td style="text-align:center;">120</td>
+        <td style="text-align:center;">60</td>
       </tr>
       <tr style="background:#f8fafc;font-weight:700;">
         <td></td>
