@@ -9395,11 +9395,11 @@ function getCanonicalNurseName(name) {
 function getNurseServiceBucket(item) {
   const serviceText = String(item.service || "").toLowerCase();
   const stageText = String(item.stage || "").toLowerCase();
-  const miHairWash = serviceText.includes("gội") || serviceText.includes("goi") || serviceText.includes("wash") || serviceText.includes("head");
+  const minutes = getShiftMinutes(item);
+  const isHairWash = serviceText.includes("gội") || serviceText.includes("goi") || serviceText.includes("wash") || serviceText.includes("head");
   if (isHairWash) {
     return getClosestBucketByMinutes("wash", minutes);
   }
-  const isnutes = getShiftMinutes(item);
   const isBabyCare = serviceText.includes("bé") || serviceText.includes("tam be") || stageText.includes("em bé");
   const group = isBabyCare ? "baby" : "mother";
   return getClosestBucketByMinutes(group, minutes);
