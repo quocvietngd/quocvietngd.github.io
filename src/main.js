@@ -8315,6 +8315,7 @@ const TELEGRAM_FALLBACK_LINE_RULES = [
   { label: "gia tri hop dong", key: "giatrihd" },
   { label: "thuc thu", key: "thucthu" },
   { label: "cong no", key: "congno" },
+  { label: "phu phi", key: "phuphi" },
   { label: "pt tt", key: "pttt" },
   { label: "phuong thuc tt", key: "pttt" },
   { label: "nhay", key: "ngay" },
@@ -8344,6 +8345,7 @@ function canonicalizeTelegramFieldKey(key) {
     thucthu: "thucthu",
     congno: "congno",
     conno: "congno",
+    phuphi: "phuphi",
     pttt: "pttt",
     tentv: "tentv",
     giatrihd: "giatrihd",
@@ -8364,6 +8366,7 @@ function canonicalizeTelegramFieldKey(key) {
   if (normalized.includes("giatrihd") || normalized === "giatri") return "giatrihd";
   if (normalized.includes("thucthu")) return "thucthu";
   if (normalized.includes("congno") || normalized === "conno") return "congno";
+  if (normalized.includes("phuphi") || normalized.includes("phule") || normalized === "surcharge") return "phuphi";
   if (normalized.includes("phuongthuc") || normalized === "pttt") return "pttt";
   if (normalized.includes("tentv") || normalized === "tuvan") return "tentv";
   return normalized;
@@ -8533,6 +8536,7 @@ function parseTelegramNurseMessage(text) {
     const mahd = normalizeContractCode(obj["mahd"] || obj["mahopdong"] || firstTelegramObjValueByKeyRegex(obj, [/^ma.*hd$/, /^ma.*hopdong$/, /^hd$/]) || "");
     const sobuoi = obj["sobuoi"] || obj["buoi"] || "";
     const khoangcach = obj["khoangcach"] || obj["km"] || obj["distance"] || "";
+    const overtimeHolidayAllowance = parseFlexibleNumber(obj["phuphi"] || obj["phu_phi"] || obj["phu phi"] || obj["phule"] || obj["phu le"] || obj["surcharge"] || 0);
 
     return {
       ...base,
@@ -8543,6 +8547,8 @@ function parseTelegramNurseMessage(text) {
       mahd,
       sobuoi,
       khoangcach,
+      overtimeHolidayAllowance,
+      phuPhi: overtimeHolidayAllowance,
       source: "Telegram Webhook #dieuduong"
     };
   }
@@ -8949,6 +8955,7 @@ function normalizeImportedScheduleRow(raw) {
     marketingRevenue: parseFlexibleNumber(firstValue(sourceObj, ["marketingrevenue", "revenue", "doanhso", "doanso"])) || contractAmount,
     caCancelled: parseFlexibleNumber(firstValue(sourceObj, ["cacancelled", "cahoanhuy", "hoanhuy", "cancel"])),
     distanceKm: parseFlexibleNumber(firstValue(sourceObj, ["distancekm", "distance", "khoang cach", "khoảng cách", "quang duong", "quãng đường", "km"])),
+    overtimeHolidayAllowance: parseFlexibleNumber(firstValue(sourceObj, ["overtimeholidayallowance", "surchargeamount", "phuphi", "phu phi", "phụ phí", "phu_phi", "phule", "phu le"])),
     renewContractAmount: Number(firstValue(sourceObj, ["renewcontractamount", "tai ky", "tái ký", "gia tri tai ky", "giá trị tái ký"]) || 0),
     productSalesAmount: Number(firstValue(sourceObj, ["productsalesamount", "doanh so san pham", "doanh số sản phẩm", "ban san pham", "bán sản phẩm"]) || 0),
     hotBonus: Number(firstValue(sourceObj, ["hotbonus", "thuong nong", "thưởng nóng"]) || 0),
@@ -9350,6 +9357,16 @@ function getDistanceKm(item) {
   return Math.max(0, parseFlexibleNumber(item?.distanceKm));
 }
 
+function getNurseOvertimeHolidayAllowance(item) {
+  return Math.max(0, parseFlexibleNumber(
+    item?.overtimeHolidayAllowance
+    ?? item?.surchargeAmount
+    ?? item?.phuPhi
+    ?? item?.phuphi
+    ?? item?.phu_phi
+  ));
+}
+
 function getClosestBucketByMinutes(group, minutes) {
   const candidates = NURSE_REPORT_BUCKETS.filter((bucket) => bucket.group === group);
   return candidates.reduce((closest, bucket) => {
@@ -9457,7 +9474,8 @@ function getNurseDetailedReportMatrix(start, end) {
       nurseName,
       counts: Object.fromEntries(NURSE_REPORT_BUCKETS.map((column) => [column.key, 0])),
       workingDates: new Set(),
-      travelAllowance: 0
+      travelAllowance: 0,
+      overtimeHolidayAllowance: 0
     };
     bucketContributions.forEach(({ bucket, count }) => {
       nurseRow.counts[bucket.key] += count;
@@ -9467,11 +9485,13 @@ function getNurseDetailedReportMatrix(start, end) {
     if (distanceKm > 20) nurseRow.travelAllowance += 20000;
     else if (distanceKm > 15) nurseRow.travelAllowance += 15000;
     else if (distanceKm > 10) nurseRow.travelAllowance += 10000;
+    nurseRow.overtimeHolidayAllowance += getNurseOvertimeHolidayAllowance(item);
     bucketByNurse.set(nurseName, nurseRow);
   });
 
   const totals = Object.fromEntries(NURSE_REPORT_BUCKETS.map((bucket) => [bucket.key, 0]));
   let totalTravelAllowance = 0;
+  let totalOvertimeHolidayAllowance = 0;
 
   const detailRows = Array.from(bucketByNurse.values())
     .map((row) => {
@@ -9481,6 +9501,7 @@ function getNurseDetailedReportMatrix(start, end) {
         return sum + count * bucket.minutes;
       }, 0);
       totalTravelAllowance += row.travelAllowance;
+      totalOvertimeHolidayAllowance += row.overtimeHolidayAllowance;
       return {
         nurseName: row.nurseName,
         counts: row.counts,
@@ -9488,7 +9509,8 @@ function getNurseDetailedReportMatrix(start, end) {
         total: NURSE_REPORT_BUCKETS.reduce((sum, bucket) => sum + (Number(row.counts[bucket.key]) || 0), 0),
         totalMinutes,
         standardShiftCount: totalMinutes / 90,
-        travelAllowance: row.travelAllowance
+        travelAllowance: row.travelAllowance,
+        overtimeHolidayAllowance: row.overtimeHolidayAllowance
       };
     })
     .sort((a, b) => {
@@ -9504,6 +9526,8 @@ function getNurseDetailedReportMatrix(start, end) {
         compareValue = a.standardShiftCount - b.standardShiftCount;
       } else if (nurseReportSortState.key === "travelAllowance") {
         compareValue = a.travelAllowance - b.travelAllowance;
+      } else if (nurseReportSortState.key === "overtimeHolidayAllowance") {
+        compareValue = a.overtimeHolidayAllowance - b.overtimeHolidayAllowance;
       } else if (nurseReportSortState.key in a.counts) {
         compareValue = (Number(a.counts[nurseReportSortState.key]) || 0) - (Number(b.counts[nurseReportSortState.key]) || 0);
       } else {
@@ -9523,7 +9547,8 @@ function getNurseDetailedReportMatrix(start, end) {
     totalWorkingDays,
     totalWorkedMinutes,
     totalStandardShiftCount: totalWorkedMinutes / 90,
-    totalTravelAllowance
+    totalTravelAllowance,
+    totalOvertimeHolidayAllowance
   };
 }
 
@@ -9628,12 +9653,13 @@ function renderNurseReportMatrix() {
         <td style="text-align:center;">${row.totalMinutes.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${row.standardShiftCount.toFixed(2)}</td>
         <td style="text-align:center;">${row.travelAllowance.toLocaleString("vi-VN")} đ</td>
+        <td style="text-align:center;">${row.overtimeHolidayAllowance.toLocaleString("vi-VN")} đ</td>
         ${NURSE_REPORT_BUCKETS.map((bucket) => `
           <td style="text-align:center;">${formatNurseBucketCount(row.counts[bucket.key])}</td>
         `).join("")}
       </tr>
     `).join("")
-    : `<tr><td colspan="14" style="text-align:center;">Không có ca hoàn tất trong khoảng ngày đã chọn.</td></tr>`;
+    : `<tr><td colspan="15" style="text-align:center;">Không có ca hoàn tất trong khoảng ngày đã chọn.</td></tr>`;
 
   els.reportsTable.innerHTML = `
     <thead>
@@ -9644,6 +9670,7 @@ function renderNurseReportMatrix() {
         <th rowspan="2" style="cursor:pointer;user-select:none;" data-nurse-sort="totalMinutes">Tổng phút${getNurseReportSortIndicator("totalMinutes")}</th>
         <th rowspan="2" style="cursor:pointer;user-select:none;" data-nurse-sort="standardShiftCount">Ca tiêu chuẩn${getNurseReportSortIndicator("standardShiftCount")}</th>
         <th rowspan="2" style="cursor:pointer;user-select:none;" data-nurse-sort="travelAllowance">PP di chuyển${getNurseReportSortIndicator("travelAllowance")}</th>
+        <th rowspan="2" style="cursor:pointer;user-select:none;" data-nurse-sort="overtimeHolidayAllowance">PP tăng ca/lễ${getNurseReportSortIndicator("overtimeHolidayAllowance")}</th>
         <th colspan="3">Tắm bé - Hợp đồng</th>
         <th colspan="4">Chăm sóc mẹ - Hợp đồng</th>
         <th colspan="1">Gội đầu - Hợp đồng</th>
@@ -9667,6 +9694,7 @@ function renderNurseReportMatrix() {
         <td style="text-align:center;">Tổng phút</td>
         <td style="text-align:center;">90p = 1 ca</td>
         <td style="text-align:center;">Theo km</td>
+        <td style="text-align:center;">Theo form</td>
         <td style="text-align:center;">30</td>
         <td style="text-align:center;">45</td>
         <td style="text-align:center;">60</td>
@@ -9683,7 +9711,8 @@ function renderNurseReportMatrix() {
         <td style="text-align:center;">${matrix.totalWorkedMinutes.toLocaleString("vi-VN")}</td>
         <td style="text-align:center;">${matrix.totalStandardShiftCount.toFixed(2)}</td>
         <td style="text-align:center;">${matrix.totalTravelAllowance.toLocaleString("vi-VN")} đ</td>
-        ${NURSE_REPORT_BUCKETS.map((bucket) => `<td style="text-align:center;">${matrix.totals[bucket.key] ? matrix.totals[bucket.key].toLocaleString("vi-VN") : "-"}</td>`).join("")}
+        <td style="text-align:center;">${matrix.totalOvertimeHolidayAllowance.toLocaleString("vi-VN")} đ</td>
+        ${NURSE_REPORT_BUCKETS.map((bucket) => `<td style="text-align:center;">${formatNurseBucketCount(matrix.totals[bucket.key]) || "-"}</td>`).join("")}
       </tr>
       ${bodyRows}
     </tbody>
@@ -9705,7 +9734,7 @@ function renderNurseReportMatrix() {
   const rowsWithTravelAllowance = nurseRowsInRange.filter((item) => getDistanceKm(item) > 10).length;
 
   const nurseLabel = nurseReportState.nurse || "Tất cả điều dưỡng";
-  els.reportsSummary.textContent = `Bộ lọc: ${reportFilterState.start} → ${reportFilterState.end} | Điều dưỡng: ${nurseLabel} | ${matrix.rows.length} điều dưỡng | ${matrix.overallTotal.toLocaleString("vi-VN")} ca hoàn tất | PP di chuyển: ${matrix.totalTravelAllowance.toLocaleString("vi-VN")} đ | Ca có km: ${rowsWithDistance} | Ca >10km: ${rowsWithTravelAllowance} | Telegram: ${telegramRowsInRange.length} ca | Yến: ${yenRowsInRange.length} ca`;
+  els.reportsSummary.textContent = `Bộ lọc: ${reportFilterState.start} → ${reportFilterState.end} | Điều dưỡng: ${nurseLabel} | ${matrix.rows.length} điều dưỡng | ${matrix.overallTotal.toLocaleString("vi-VN")} ca hoàn tất | PP di chuyển: ${matrix.totalTravelAllowance.toLocaleString("vi-VN")} đ | PP tăng ca/lễ: ${matrix.totalOvertimeHolidayAllowance.toLocaleString("vi-VN")} đ | Ca có km: ${rowsWithDistance} | Ca >10km: ${rowsWithTravelAllowance} | Telegram: ${telegramRowsInRange.length} ca | Yến: ${yenRowsInRange.length} ca`;
 }
 
 function getMarketingOwnerName(item) {
@@ -10625,15 +10654,17 @@ function exportReportDetailExcel() {
       return;
     }
 
-    const header = ["STT", "Họ Tên", "Ngày công", "Tổng phút", "Ca tiêu chuẩn", ...NURSE_REPORT_BUCKETS.map((bucket) => bucket.label)];
-    const durationRow = ["a1", "Định mức phút/ca", "Ngày có ca", "Tổng phút", "90p = 1 ca", ...NURSE_REPORT_BUCKETS.map((bucket) => bucket.minutes)];
-    const totalRow = ["", "Số buổi", matrix.totalWorkingDays, matrix.totalWorkedMinutes, matrix.totalStandardShiftCount.toFixed(2), ...NURSE_REPORT_BUCKETS.map((bucket) => matrix.totals[bucket.key] || 0)];
+    const header = ["STT", "Họ Tên", "Ngày công", "Tổng phút", "Ca tiêu chuẩn", "PP di chuyển", "PP tăng ca/lễ", ...NURSE_REPORT_BUCKETS.map((bucket) => bucket.label)];
+    const durationRow = ["a1", "Định mức phút/ca", "Ngày có ca", "Tổng phút", "90p = 1 ca", "Theo km", "Theo form", ...NURSE_REPORT_BUCKETS.map((bucket) => bucket.minutes)];
+    const totalRow = ["", "Số buổi", matrix.totalWorkingDays, matrix.totalWorkedMinutes, matrix.totalStandardShiftCount.toFixed(2), matrix.totalTravelAllowance, matrix.totalOvertimeHolidayAllowance, ...NURSE_REPORT_BUCKETS.map((bucket) => matrix.totals[bucket.key] || 0)];
     const records = matrix.rows.map((row, index) => [
       index + 1,
       row.nurseName,
       row.workingDays,
       row.totalMinutes,
       row.standardShiftCount.toFixed(2),
+      row.travelAllowance,
+      row.overtimeHolidayAllowance,
       ...NURSE_REPORT_BUCKETS.map((bucket) => row.counts[bucket.key] || 0)
     ]);
     const csv = [header, durationRow, totalRow, ...records]

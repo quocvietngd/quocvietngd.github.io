@@ -611,6 +611,7 @@ const TELEGRAM_FALLBACK_LINE_RULES = [
   { label: "gia tri hop dong", key: "giatrihd" },
   { label: "thuc thu", key: "thucthu" },
   { label: "cong no", key: "congno" },
+  { label: "phu phi", key: "phuphi" },
   { label: "pt tt", key: "pttt" },
   { label: "phuong thuc tt", key: "pttt" },
   { label: "nhay", key: "ngay" },
@@ -640,6 +641,7 @@ function canonicalizeTelegramFieldKey(key) {
     thucthu: "thucthu",
     congno: "congno",
     conno: "congno",
+    phuphi: "phuphi",
     pttt: "pttt",
     tentv: "tentv",
     giatrihd: "giatrihd",
@@ -660,6 +662,7 @@ function canonicalizeTelegramFieldKey(key) {
   if (normalized.includes("giatrihd") || normalized === "giatri") return "giatrihd";
   if (normalized.includes("thucthu")) return "thucthu";
   if (normalized.includes("congno") || normalized === "conno") return "congno";
+  if (normalized.includes("phuphi") || normalized.includes("phule") || normalized === "surcharge") return "phuphi";
   if (normalized.includes("phuongthuc") || normalized === "pttt") return "pttt";
   if (normalized.includes("tentv") || normalized === "tuvan") return "tentv";
   return normalized;
@@ -798,6 +801,7 @@ function parseTelegramReportMessage(text) {
     ).trim());
     const sobuoi = String(firstTelegramValue(values, ["sobuoi", "buoi"]) || "").trim();
     const khoangcach = String(firstTelegramValue(values, ["khoangcach", "km", "distance"]) || "").trim();
+    const overtimeHolidayAllowance = parseFlexibleNumber(firstTelegramValue(values, ["phuphi", "phu phi", "phụ phí", "phu_phi", "phule", "phu le", "surcharge"]));
     
     return {
       ...base,
@@ -808,6 +812,8 @@ function parseTelegramReportMessage(text) {
       mahd: mahd || "",
       sobuoi: sobuoi || "",
       khoangcach: khoangcach || "",
+      overtimeHolidayAllowance,
+      phuPhi: overtimeHolidayAllowance,
       source: route ? `Telegram Webhook #${route}` : "Telegram Webhook"
     };
   }
