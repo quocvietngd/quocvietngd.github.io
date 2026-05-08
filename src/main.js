@@ -2942,6 +2942,8 @@ function deriveUsersEndpoint(rawUrl) {
   const normalized = String(rawUrl || "").trim().replace(/\/+$/g, "");
   if (!normalized) return "";
   if (/\/users?$/i.test(normalized)) return normalized;
+  if (/\/app-state$/i.test(normalized)) return normalized.replace(/\/app-state$/i, "/users");
+  if (/\/storage\/status$/i.test(normalized)) return normalized.replace(/\/storage\/status$/i, "/users");
   if (/\/reports?$/i.test(normalized)) return normalized.replace(/\/reports?$/i, "/users");
   return `${normalized}/users`;
 }
