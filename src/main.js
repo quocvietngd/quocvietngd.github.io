@@ -9022,6 +9022,21 @@ function getTelegramDeletionFingerprint(item) {
   return `tgfp:${route}|${date}|${saleName}|${consultant}|${nurse}|${customerName}|${phone}|${appointmentTime}|${service}`;
 }
 
+function getTelegramDeletionScopeFingerprint(item) {
+  if (!isTelegramScheduleRow(item)) return "";
+  const route = normalizeTextForMatching(item?.telegramRoute || "");
+  const date = normalizeScheduleDateKey(item?.registrationDate || item?.date || "") || "";
+  if (!route || !date) return "";
+
+  if (route === "telesale") {
+    const saleName = normalizeTextForMatching(item?.saleStaff || item?.customerName || "");
+    if (!saleName) return "";
+    return `tgscope:${route}|${date}|${saleName}`;
+  }
+
+  return "";
+}
+
 function buildScheduleDeleteMarkerKeys(scheduleLike) {
   const keys = new Set();
   const row = scheduleLike && typeof scheduleLike === "object" ? scheduleLike : null;
@@ -9036,6 +9051,8 @@ function buildScheduleDeleteMarkerKeys(scheduleLike) {
     if (chatId && messageId) keys.add(`tgm-${chatId}:${messageId}`);
     const fingerprint = getTelegramDeletionFingerprint(row);
     if (fingerprint) keys.add(fingerprint);
+    const scopeFingerprint = getTelegramDeletionScopeFingerprint(row);
+    if (scopeFingerprint) keys.add(scopeFingerprint);
   }
 
   return Array.from(keys);
