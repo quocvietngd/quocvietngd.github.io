@@ -9087,9 +9087,71 @@ function filterImportedSchedulesByDeleteMarkers(rows) {
   return list.filter((item) => !isScheduleRestorationBlocked(item));
 }
 
+function buildTelegramNurseDuplicateKey(item) {
+  if (!item || typeof item !== "object") return "";
+  const route = String(item.telegramRoute || "").toLowerCase();
+  const source = String(item.source || "").toLowerCase();
+  const id = String(item.id || "").toLowerCase();
+  const isTelegram = id.startsWith("tg-") || id.startsWith("tgm-") || source.includes("telegram");
+  if (!isTelegram || route !== "nurse") return "";
+
+  const dateKey = normalizeScheduleDateKey(item.registrationDate || "") || "";
+  const serviceKey = normalizeTextForMatching(item.service || "");
+  const customerKey = normalizeTextForMatching(item.customerName || "");
+  const contractKey = normalizeContractCode(item.mahd || "");
+  const timeKey = normalizeTextForMatching(item.appointmentTime || "");
+
+  // Only dedupe when all 5 criteria are present to avoid accidental merges.
+  if (!dateKey || !serviceKey || !customerKey || !contractKey || !timeKey) return "";
+  return `${dateKey}__${serviceKey}__${customerKey}__${contractKey}__${timeKey}`;
+}
+
+function getTelegramRowRecencyScore(item) {
+  const updatedAt = Number(item?.updatedAt || item?.createdAt || 0);
+  const updateIdRaw = String(item?.telegramUpdateId || "").trim();
+  const messageIdRaw = String(item?.telegramMessageId || "").trim();
+  const updateNumeric = Number((updateIdRaw.match(/(\d+)(?!.*\d)/) || [])[1] || 0);
+  const messageNumeric = Number((messageIdRaw.match(/(\d+)(?!.*\d)/) || [])[1] || 0);
+  return (updatedAt * 1_000_000) + (updateNumeric * 1000) + messageNumeric;
+}
+
+function dedupeTelegramNurseRowsKeepNewest(rows = []) {
+  const list = Array.isArray(rows) ? rows.slice() : [];
+  const bestByKey = new Map();
+  const duplicateIndexes = new Set();
+
+  list.forEach((item, index) => {
+    const dupKey = buildTelegramNurseDuplicateKey(item);
+    if (!dupKey) return;
+
+    const existing = bestByKey.get(dupKey);
+    if (!existing) {
+      bestByKey.set(dupKey, { index, score: getTelegramRowRecencyScore(item) });
+      return;
+    }
+
+    const score = getTelegramRowRecencyScore(item);
+    if (score >= existing.score) {
+      duplicateIndexes.add(existing.index);
+      bestByKey.set(dupKey, { index, score });
+    } else {
+      duplicateIndexes.add(index);
+    }
+  });
+
+  if (!duplicateIndexes.size) {
+    return { rows: list, removed: 0 };
+  }
+
+  const deduped = list.filter((_, idx) => !duplicateIndexes.has(idx));
+  return { rows: deduped, removed: duplicateIndexes.size };
+}
+
 function mergeImportedSchedules(imported) {
   const normalized = filterImportedSchedulesByDeleteMarkers(imported.map(normalizeImportedScheduleRow).filter(Boolean));
   if (!normalized.length) return 0;
+
+  const dedupedIncoming = dedupeTelegramNurseRowsKeepNewest(normalized).rows;
 
   const current = Array.isArray(schedules) ? schedules.slice() : [];
   const indexById = new Map();
@@ -9101,7 +9163,7 @@ function mergeImportedSchedules(imported) {
   let changedCount = 0;
   const newRows = [];
 
-  normalized.forEach((item) => {
+  dedupedIncoming.forEach((item) => {
     const key = String(item.id || "");
     if (!key) return;
 
@@ -9124,15 +9186,20 @@ function mergeImportedSchedules(imported) {
     changedCount += 1;
   });
 
+  const mergedRows = [...newRows, ...current];
+  const dedupedAll = dedupeTelegramNurseRowsKeepNewest(mergedRows);
+  if (dedupedAll.removed > 0) changedCount += dedupedAll.removed;
+
   if (!changedCount) return 0;
-  schedules = [...newRows, ...current];
+  schedules = dedupedAll.rows;
   saveJSON(STORAGE.schedule, schedules);
   return changedCount;
 }
 
 function replaceTelegramSchedules(imported) {
   const normalizedTelegramRows = filterImportedSchedulesByDeleteMarkers(imported.map(normalizeImportedScheduleRow).filter(Boolean));
-  const incomingTelegramIds = new Set(normalizedTelegramRows.map((item) => String(item.id || "")).filter(Boolean));
+  const dedupedTelegramRows = dedupeTelegramNurseRowsKeepNewest(normalizedTelegramRows).rows;
+  const incomingTelegramIds = new Set(dedupedTelegramRows.map((item) => String(item.id || "")).filter(Boolean));
   const existingTelegramRows = (schedules || []).filter((item) => {
     const id = String(item.id || "");
     const source = String(item.source || "").toLowerCase();
@@ -9145,7 +9212,8 @@ function replaceTelegramSchedules(imported) {
     const source = String(item.source || "").toLowerCase();
     return !(id.startsWith("tg-") || source.includes("telegram"));
   });
-  schedules = [...normalizedTelegramRows, ...nonTelegramRows];
+  const rebuilt = [...dedupedTelegramRows, ...nonTelegramRows];
+  schedules = dedupeTelegramNurseRowsKeepNewest(rebuilt).rows;
   saveJSON(STORAGE.schedule, schedules);
 
   let changedCount = 0;
