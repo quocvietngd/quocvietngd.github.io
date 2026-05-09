@@ -3497,7 +3497,9 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   isApplyingRemoteCriticalState = true;
   try {
     const mergedCustomers = preferRemoteList(remoteState.customers, customers);
-    const mergedSchedules = filterScheduleRowsByDeleteMarkers(preferRemoteList(remoteSchedulesFiltered, schedules));
+    const mergedSchedules = dedupeTelegramRowsKeepNewest(
+      filterScheduleRowsByDeleteMarkers(preferRemoteList(remoteSchedulesFiltered, schedules))
+    ).rows;
     const mergedDeletedScheduleIds = mergeDeletedScheduleMarkerMaps(remoteState.deletedScheduleIds, deletedScheduleIds);
     const mergedInventoryItems = preferRemoteList(remoteState.inventoryItems, inventoryItems);
     const mergedInventoryTransactions = preferRemoteList(remoteState.inventoryTransactions, inventoryTransactions);
