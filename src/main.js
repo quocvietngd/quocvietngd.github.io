@@ -9313,9 +9313,12 @@ function buildTelegramDuplicateKey(item) {
 
   if (route === "telesale") {
     if (!saleKey) return "";
-    const targetKey = customerKey || phoneKey || serviceKey || noteKey;
-    if (!targetKey && messCount <= 0 && phoneCount <= 0 && bookedCount <= 0 && cancelledCount <= 0 && revenueAmount <= 0 && contractAmount <= 0) return "";
-    return `tgdup:telesale|${dateKey}|${saleKey}|${targetKey || "-"}|${messCount}|${phoneCount}|${bookedCount}|${cancelledCount}|${Math.max(revenueAmount, contractAmount)}|${statusKey}`;
+    if (messCount <= 0 && phoneCount <= 0 && bookedCount <= 0 && cancelledCount <= 0 && revenueAmount <= 0 && contractAmount <= 0) {
+      return "";
+    }
+    // Telesale Telegram rows are daily summary reports per staff.
+    // Keep only the newest row for the same (date, saleStaff).
+    return `tgdup:telesale|${dateKey}|${saleKey}`;
   }
 
   if (route === "consultant") {
