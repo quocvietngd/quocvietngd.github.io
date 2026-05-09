@@ -9255,13 +9255,13 @@ function filterImportedSchedulesByDeleteMarkers(rows) {
   return list.filter((item) => !isScheduleRestorationBlocked(item));
 }
 
-function buildTelegramNurseDuplicateKey(item) {
+function buildTelegramDuplicateKey(item) {
   if (!item || typeof item !== "object") return "";
   const route = String(item.telegramRoute || "").toLowerCase();
   const source = String(item.source || "").toLowerCase();
   const id = String(item.id || "").toLowerCase();
   const isTelegram = id.startsWith("tg-") || id.startsWith("tgm-") || source.includes("telegram");
-  if (!isTelegram || route !== "nurse") return "";
+  if (!isTelegram) return "";
 
   const normalizeDupText = (value) => String(value || "")
     .toLowerCase()
@@ -9272,16 +9272,69 @@ function buildTelegramNurseDuplicateKey(item) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const dateKey = normalizeScheduleDateKey(item.registrationDate || "") || "";
-  const serviceKey = normalizeDupText(item.service || "");
+  const dateKey = normalizeScheduleDateKey(item.registrationDate || item.date || "") || "";
+  if (!dateKey) return "";
+
   const customerKey = normalizeDupText(item.customerName || "");
+  const phoneKey = String(item.phone || "").replace(/\D/g, "");
+  const serviceKey = normalizeDupText(item.service || "");
+  const saleKey = normalizeDupText(item.saleStaff || "");
+  const consultantKey = normalizeDupText(item.consultant || "");
+  const nurseKey = normalizeDupText(item.nurse || "");
+  const marketingKey = normalizeDupText(item.marketingName || item.marketingStaff || item.marketer || "");
   const contractKey = normalizeContractCode(item.mahd || "") || "-";
   const timeKey = normalizeDupText(item.appointmentTime || "") || "-";
+  const statusKey = normalizeDupText(item.status || "") || "-";
+  const kqKey = normalizeDupText(item.kq || "") || "-";
+  const paymentKey = normalizeDupText(item.pttt || "") || "-";
+  const noteKey = normalizeDupText(item.note || "") || "-";
 
-  // Core signature (date + service + customer) must exist;
-  // contract/time are optional and used when present.
-  if (!dateKey || !serviceKey || !customerKey) return "";
-  return `${dateKey}__${serviceKey}__${customerKey}__${contractKey}__${timeKey}`;
+  const messCount = Math.max(0, parseFlexibleNumber(item.marketingMessCount));
+  const phoneCount = Math.max(0, parseFlexibleNumber(item.marketingPhoneCount));
+  const bookedCount = Math.max(0, parseFlexibleNumber(item.marketingBookedCount));
+  const cancelledCount = Math.max(0, parseFlexibleNumber(item.caCancelled));
+  const contractAmount = Math.max(0, parseFlexibleNumber(item.contractAmount));
+  const revenueAmount = Math.max(0, parseFlexibleNumber(item.marketingRevenue));
+  const receivableAmount = Math.max(0, parseFlexibleNumber(item.receivableAmount));
+  const collectedAmount = Math.max(0, parseFlexibleNumber(item.thucthu));
+
+  if (route === "nurse") {
+    if (!serviceKey || !customerKey) return "";
+    return `tgdup:nurse|${dateKey}|${serviceKey}|${customerKey}|${contractKey}|${timeKey}|${phoneKey || "-"}`;
+  }
+
+  if (route === "telesale") {
+    if (!saleKey) return "";
+    const targetKey = customerKey || phoneKey || serviceKey || noteKey;
+    if (!targetKey && messCount <= 0 && phoneCount <= 0 && bookedCount <= 0 && cancelledCount <= 0 && revenueAmount <= 0 && contractAmount <= 0) return "";
+    return `tgdup:telesale|${dateKey}|${saleKey}|${targetKey || "-"}|${messCount}|${phoneCount}|${bookedCount}|${cancelledCount}|${Math.max(revenueAmount, contractAmount)}|${statusKey}`;
+  }
+
+  if (route === "consultant") {
+    if (!consultantKey) return "";
+    const targetKey = customerKey || phoneKey || contractKey;
+    if (!targetKey) return "";
+    return `tgdup:consultant|${dateKey}|${consultantKey}|${targetKey}|${kqKey}|${contractKey}|${contractAmount}|${collectedAmount}|${receivableAmount}|${paymentKey}`;
+  }
+
+  if (route === "marketing") {
+    if (!marketingKey) return "";
+    const targetKey = customerKey || phoneKey || serviceKey || noteKey;
+    if (!targetKey && messCount <= 0 && phoneCount <= 0 && bookedCount <= 0 && revenueAmount <= 0) return "";
+    return `tgdup:marketing|${dateKey}|${marketingKey}|${targetKey || "-"}|${messCount}|${phoneCount}|${bookedCount}|${revenueAmount}|${contractAmount}`;
+  }
+
+  if (route === "congno") {
+    const ownerKey = consultantKey || saleKey || nurseKey;
+    const targetKey = customerKey || phoneKey || contractKey;
+    if (!ownerKey || !targetKey) return "";
+    return `tgdup:congno|${dateKey}|${ownerKey}|${targetKey}|${receivableAmount}|${collectedAmount}|${contractAmount}|${paymentKey}`;
+  }
+
+  // Fallback for other Telegram routes: keep strict key to avoid false-positive dedupe.
+  const identityBits = [saleKey, consultantKey, nurseKey, marketingKey, customerKey, phoneKey, serviceKey].filter(Boolean);
+  if (!identityBits.length) return "";
+  return `tgdup:${route || "unknown"}|${dateKey}|${identityBits.join("|")}|${contractAmount}|${collectedAmount}|${receivableAmount}|${statusKey}`;
 }
 
 function getTelegramRowRecencyScore(item) {
@@ -9293,13 +9346,13 @@ function getTelegramRowRecencyScore(item) {
   return (updatedAt * 1_000_000) + (updateNumeric * 1000) + messageNumeric;
 }
 
-function dedupeTelegramNurseRowsKeepNewest(rows = []) {
+function dedupeTelegramRowsKeepNewest(rows = []) {
   const list = Array.isArray(rows) ? rows.slice() : [];
   const bestByKey = new Map();
   const duplicateIndexes = new Set();
 
   list.forEach((item, index) => {
-    const dupKey = buildTelegramNurseDuplicateKey(item);
+    const dupKey = buildTelegramDuplicateKey(item);
     if (!dupKey) return;
 
     const existing = bestByKey.get(dupKey);
@@ -9325,11 +9378,15 @@ function dedupeTelegramNurseRowsKeepNewest(rows = []) {
   return { rows: deduped, removed: duplicateIndexes.size };
 }
 
+function dedupeRowsForReporting(rows = []) {
+  return dedupeTelegramRowsKeepNewest(rows).rows;
+}
+
 function mergeImportedSchedules(imported) {
   const normalized = filterImportedSchedulesByDeleteMarkers(imported.map(normalizeImportedScheduleRow).filter(Boolean));
   if (!normalized.length) return 0;
 
-  const dedupedIncoming = dedupeTelegramNurseRowsKeepNewest(normalized).rows;
+  const dedupedIncoming = dedupeTelegramRowsKeepNewest(normalized).rows;
 
   const current = Array.isArray(schedules) ? schedules.slice() : [];
   const indexById = new Map();
@@ -9365,7 +9422,7 @@ function mergeImportedSchedules(imported) {
   });
 
   const mergedRows = [...newRows, ...current];
-  const dedupedAll = dedupeTelegramNurseRowsKeepNewest(mergedRows);
+  const dedupedAll = dedupeTelegramRowsKeepNewest(mergedRows);
   if (dedupedAll.removed > 0) changedCount += dedupedAll.removed;
 
   if (!changedCount) return 0;
@@ -10779,12 +10836,13 @@ function renderTelesaleReportTable(rows) {
 }
 
 function getRowsByReportDepartment(departmentKey, start, end) {
-  const inRange = schedules.filter((item) => {
+  const inRangeRaw = schedules.filter((item) => {
     const d = normalizeScheduleDateKey(item.registrationDate) || "";
     if (start && d < start) return false;
     if (end && d > end) return false;
     return true;
   });
+  const inRange = dedupeRowsForReporting(inRangeRaw);
   if (departmentKey === "marketing") {
     return inRange.filter((item) => {
       const source = String(item.source || "").toLowerCase();
@@ -10804,29 +10862,7 @@ function getRowsByReportDepartment(departmentKey, start, end) {
   if (departmentKey === "telesale") return inRange.filter((item) => String(item.saleStaff || "").trim());
   if (departmentKey === "consultant") return inRange.filter((item) => String(item.consultant || "").trim());
   if (departmentKey === "nurse") {
-    const nurseRows = inRange.filter((item) => getEffectiveNurseName(item));
-    const bestByKey = new Map();
-
-    nurseRows.forEach((item, index) => {
-      const dupKey = buildTelegramNurseDuplicateKey(item);
-      // Keep non-telegram / non-qualified rows as-is.
-      if (!dupKey) {
-        bestByKey.set(`row:${index}:${String(item.id || "")}`, item);
-        return;
-      }
-
-      const prev = bestByKey.get(dupKey);
-      if (!prev) {
-        bestByKey.set(dupKey, item);
-        return;
-      }
-
-      if (getTelegramRowRecencyScore(item) >= getTelegramRowRecencyScore(prev)) {
-        bestByKey.set(dupKey, item);
-      }
-    });
-
-    return Array.from(bestByKey.values());
+    return inRange.filter((item) => getEffectiveNurseName(item));
   }
   return inRange;
 }
