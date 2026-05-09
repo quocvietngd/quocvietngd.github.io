@@ -3934,6 +3934,12 @@ if (Array.isArray(schedules)) {
     schedules = consultantRepair.rows;
     saveJSON(STORAGE.schedule, schedules);
   }
+
+  const telegramDedupe = dedupeTelegramRowsKeepNewest(schedules);
+  if (telegramDedupe.removed > 0) {
+    schedules = telegramDedupe.rows;
+    saveJSON(STORAGE.schedule, schedules);
+  }
 }
 
 function ensureRecoveredLongMarketingRows() {
