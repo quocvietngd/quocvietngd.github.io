@@ -3254,6 +3254,32 @@ function preferRemoteObject(remoteObj, localObj) {
   return safeRemote;
 }
 
+function mergeDeletedScheduleMarkerMaps(remoteObj, localObj) {
+  const safeRemote = remoteObj && typeof remoteObj === "object" ? remoteObj : {};
+  const safeLocal = localObj && typeof localObj === "object" ? localObj : {};
+  const merged = {};
+  const keys = new Set([...Object.keys(safeRemote), ...Object.keys(safeLocal)]);
+
+  keys.forEach((key) => {
+    const remoteMeta = safeRemote[key];
+    const localMeta = safeLocal[key];
+    const remoteDeletedAt = Number(remoteMeta?.deletedAt || 0);
+    const localDeletedAt = Number(localMeta?.deletedAt || 0);
+    const chosen = remoteDeletedAt >= localDeletedAt ? remoteMeta : localMeta;
+    merged[key] = {
+      deletedAt: Number(chosen?.deletedAt || 0) || Date.now(),
+      reason: String(chosen?.reason || "manual-delete").trim()
+    };
+  });
+
+  return merged;
+}
+
+function filterScheduleRowsByDeleteMarkers(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  return list.filter((item) => !isScheduleRestorationBlocked(item));
+}
+
 function mergeTelegramSourceFromLocalAndRemote(localCfg = {}, remoteCfg = {}) {
   const localChatIds = parseTelegramAllowedChatIds(localCfg.chatId || "");
   const remoteChatIds = parseTelegramAllowedChatIds(remoteCfg.chatId || "");
@@ -3431,18 +3457,19 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   }
 
   const hasPendingSync = Boolean(loadJSON(STORAGE.criticalStatePendingSync, false));
+  const remoteSchedulesFiltered = filterScheduleRowsByDeleteMarkers(remoteState.schedules);
   const remoteUpdatedAt = Number(remoteState.updatedAt || 0);
   const localUpdatedAt = getLocalCriticalStateUpdatedAt();
 
   // Determine whether there is anything new on the remote not already in local.
-  const remoteScheduleCount = Array.isArray(remoteState.schedules) ? remoteState.schedules.length : 0;
+  const remoteScheduleCount = remoteSchedulesFiltered.length;
   const localScheduleCount = Array.isArray(schedules) ? schedules.length : 0;
   const remoteRows = getRemoteCriticalStateRowCount(remoteState);
   const localRows = getRemoteCriticalStateRowCount(buildCriticalStatePayload(localUpdatedAt || Date.now()));
   const remoteHasNewData = remoteScheduleCount > localScheduleCount
     || remoteRows > localRows
     || remoteUpdatedAt > localUpdatedAt
-    || hasRemoteListIdsMissingLocally(remoteState.schedules, schedules)
+    || hasRemoteListIdsMissingLocally(remoteSchedulesFiltered, schedules)
     || hasRemoteListIdsMissingLocally(remoteState.customers, customers)
     || hasRemoteListIdsMissingLocally(remoteState.inventoryItems, inventoryItems)
     || hasRemoteListIdsMissingLocally(remoteState.inventoryTransactions, inventoryTransactions)
@@ -3470,8 +3497,8 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   isApplyingRemoteCriticalState = true;
   try {
     const mergedCustomers = preferRemoteList(remoteState.customers, customers);
-    const mergedSchedules = preferRemoteList(remoteState.schedules, schedules);
-    const mergedDeletedScheduleIds = preferRemoteObject(remoteState.deletedScheduleIds, deletedScheduleIds);
+    const mergedSchedules = filterScheduleRowsByDeleteMarkers(preferRemoteList(remoteSchedulesFiltered, schedules));
+    const mergedDeletedScheduleIds = mergeDeletedScheduleMarkerMaps(remoteState.deletedScheduleIds, deletedScheduleIds);
     const mergedInventoryItems = preferRemoteList(remoteState.inventoryItems, inventoryItems);
     const mergedInventoryTransactions = preferRemoteList(remoteState.inventoryTransactions, inventoryTransactions);
     const mergedHrFiles = preferRemoteObject(remoteState.hrFiles, hrFiles);
