@@ -10226,7 +10226,7 @@ function getMarketingReportRows(start, end) {
         costRate
       };
     })
-    .sort((a, b) => a.date.localeCompare(b.date) || a.marketingName.localeCompare(b.marketingName));
+    .sort((a, b) => b.date.localeCompare(a.date) || a.marketingName.localeCompare(b.marketingName));
 
   if (marketingReportState.marketing) {
     result = result.filter((row) => row.marketingName === marketingReportState.marketing);
