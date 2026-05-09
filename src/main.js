@@ -4098,28 +4098,11 @@ function migrateLegacyReceivableAmounts() {
 }
 
 function purgeLegacyTelegramRowsWithoutHashtag() {
-  if (!Array.isArray(schedules) || !schedules.length) return;
-  const before = schedules.length;
-  schedules = schedules.filter((item) => {
-    if (!item || typeof item !== "object") return true;
-    const source = String(item.source || "").toLowerCase();
-    const id = String(item.id || "");
-    const isTelegramRow = id.startsWith("tg-") || source.includes("telegram");
-    if (!isTelegramRow) return true;
-
-    const tags = Array.isArray(item.telegramTags)
-      ? item.telegramTags.map((tag) => String(tag || "").trim()).filter(Boolean)
-      : [];
-    return tags.length > 0;
-  });
-
-  if (schedules.length !== before) {
-    saveJSON(STORAGE.schedule, schedules);
-  }
+  // Deprecated migration: Telegram bridge now supports valid structured reports without hashtags.
+  // Keep this as a no-op to avoid accidental data loss on app startup.
 }
 
 ensureRecoveredLongMarketingRows();
-purgeLegacyTelegramRowsWithoutHashtag();
 migrateLegacyReceivableAmounts();
 
 let editingScheduleId = null;
@@ -8294,16 +8277,15 @@ function saveTelegramSourceConfig() {
   saveJSON(STORAGE.telegramSource, telegramSourceConfig);
 }
 
-function clearLocalTelegramSchedules() {
-  const current = Array.isArray(schedules) ? schedules : [];
-  schedules = current.filter((item) => {
-    const id = String(item?.id || "");
-    const source = String(item?.source || "").toLowerCase();
-    return !(id.startsWith("tg-") || source.includes("telegram"));
-  });
-  saveJSON(STORAGE.schedule, schedules);
+function resetTelegramSyncCursor() {
   telegramSourceConfig.lastSyncedAt = 0;
+  telegramSourceConfig.lastUpdateId = 0;
   saveTelegramSourceConfig();
+}
+
+function clearLocalTelegramSchedules() {
+  // Safety no-op: avoid destructive local Telegram data wipes.
+  resetTelegramSyncCursor();
 }
 
 const TELEGRAM_BRIDGE_DEFAULT_API = "https://nora-sync-quocvietngd-2026-2.onrender.com";
@@ -8850,7 +8832,7 @@ async function pullTelegramWebhookReports(options = {}) {
   const since = fullSync ? 0 : Number(telegramSourceConfig.lastSyncedAt || 0);
   const data = await callTelegramBridge(`/api/telegram/pending?since=${since}${fullSync ? "&all=1&forceSync=1" : ""}`);
   const rows = Array.isArray(data.rows) ? data.rows : [];
-  const importedRows = fullSync ? replaceTelegramSchedules(rows) : mergeImportedSchedules(rows);
+  const importedRows = mergeImportedSchedules(rows);
   if (data.lastReceivedAt) {
     telegramSourceConfig.lastSyncedAt = Math.max(Number(telegramSourceConfig.lastSyncedAt || 0), Number(data.lastReceivedAt || 0));
     saveTelegramSourceConfig();
@@ -9366,33 +9348,8 @@ function mergeImportedSchedules(imported) {
 }
 
 function replaceTelegramSchedules(imported) {
-  const normalizedTelegramRows = filterImportedSchedulesByDeleteMarkers(imported.map(normalizeImportedScheduleRow).filter(Boolean));
-  const dedupedTelegramRows = dedupeTelegramNurseRowsKeepNewest(normalizedTelegramRows).rows;
-  const incomingTelegramIds = new Set(dedupedTelegramRows.map((item) => String(item.id || "")).filter(Boolean));
-  const existingTelegramRows = (schedules || []).filter((item) => {
-    const id = String(item.id || "");
-    const source = String(item.source || "").toLowerCase();
-    return id.startsWith("tg-") || source.includes("telegram");
-  });
-  const existingTelegramIds = new Set(existingTelegramRows.map((item) => String(item.id || "")).filter(Boolean));
-
-  const nonTelegramRows = (schedules || []).filter((item) => {
-    const id = String(item.id || "");
-    const source = String(item.source || "").toLowerCase();
-    return !(id.startsWith("tg-") || source.includes("telegram"));
-  });
-  const rebuilt = [...dedupedTelegramRows, ...nonTelegramRows];
-  schedules = dedupeTelegramNurseRowsKeepNewest(rebuilt).rows;
-  saveJSON(STORAGE.schedule, schedules);
-
-  let changedCount = 0;
-  incomingTelegramIds.forEach((id) => {
-    if (!existingTelegramIds.has(id)) changedCount += 1;
-  });
-  existingTelegramIds.forEach((id) => {
-    if (!incomingTelegramIds.has(id)) changedCount += 1;
-  });
-  return changedCount;
+  // Safety alias for backward compatibility: never replace, only merge.
+  return mergeImportedSchedules(imported);
 }
 
 function normalizeSheetUrl(url) {
@@ -15068,10 +15025,9 @@ els.resetTelegramCacheBtn.addEventListener("click", async () => {
   els.telegramSyncStatus.textContent = "Đang reset cache Telegram cục bộ và đồng bộ lại...";
 
   try {
-    clearLocalTelegramSchedules();
-    renderAll();
+    resetTelegramSyncCursor();
     const result = await runTelegramRealtimeSync(false, { fullSync: true });
-    const msg = `Đã reset cache Telegram và nhập lại ${result.importedRows} ca (${result.fetchedRows} bản ghi nhận về).`;
+    const msg = `Đã reset con trỏ đồng bộ Telegram và nhập ${result.importedRows} bản ghi (${result.fetchedRows} bản ghi nhận về).`;
     els.telegramSyncStatus.textContent = `✓ ${msg} (${new Date().toLocaleTimeString("vi-VN")})`;
     showToast(msg, "success");
     renderAll();
