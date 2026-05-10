@@ -2791,7 +2791,7 @@ let criticalStatePullTimer = null;
 let criticalStateSyncInFlight = false;
 let criticalStateSyncListenersBound = false;
 let isApplyingRemoteCriticalState = false;
-const CRITICAL_STATE_AUTO_SYNC_INTERVAL = 30000;
+const CRITICAL_STATE_AUTO_SYNC_INTERVAL = 8000;
 let editingUserId = null;
 let editingCustomerId = null;
 let editingInventoryId = null;
@@ -3439,12 +3439,30 @@ function queueCriticalStateSync(storageKey) {
   if (!APP_STATE_SYNC_KEYS.has(storageKey)) return;
   touchLocalCriticalStateUpdatedAt();
   localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
+
+  const runSync = () => {
+    syncCriticalStateToRemote(false)
+      .then((ok) => {
+        if (ok) return;
+        if (!Boolean(loadJSON(STORAGE.criticalStatePendingSync, false))) return;
+        if (criticalStateSyncQueueTimer) clearTimeout(criticalStateSyncQueueTimer);
+        criticalStateSyncQueueTimer = setTimeout(() => {
+          runSync();
+        }, 3000);
+      })
+      .catch(() => {
+        if (!Boolean(loadJSON(STORAGE.criticalStatePendingSync, false))) return;
+        if (criticalStateSyncQueueTimer) clearTimeout(criticalStateSyncQueueTimer);
+        criticalStateSyncQueueTimer = setTimeout(() => {
+          runSync();
+        }, 3000);
+      });
+  };
+
   if (criticalStateSyncQueueTimer) clearTimeout(criticalStateSyncQueueTimer);
   criticalStateSyncQueueTimer = setTimeout(() => {
-    syncCriticalStateToRemote(false).catch(() => {
-      // Keep local data and retry on next cycle.
-    });
-  }, 1200);
+    runSync();
+  }, 250);
 }
 
 async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
