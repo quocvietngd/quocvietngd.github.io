@@ -14485,10 +14485,25 @@ async function postRemoteReport(type, url, payload) {
 }
 
 els.loginBtn.addEventListener("click", async () => {
+  const btnLabel = els.loginBtn.textContent;
+  els.loginBtn.disabled = true;
+  els.loginBtn.textContent = "Đang xác thực...";
+  if (els.authMessage) els.authMessage.textContent = "";
+
   try {
-    await syncUsersFromRemote(false);
+    // Race against a 8-second timeout so a slow/cold Render server doesn't freeze the UI.
+    await Promise.race([
+      syncUsersFromRemote(false),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000))
+    ]);
   } catch (err) {
-    showToast(`Không thể tải tài khoản cloud: ${err.message}`, "warning");
+    if (err.message !== "timeout") {
+      showToast(`Không thể tải tài khoản cloud: ${err.message}`, "warning");
+    }
+    // Continue login attempt with cached local users.
+  } finally {
+    els.loginBtn.disabled = false;
+    els.loginBtn.textContent = btnLabel;
   }
 
   const username = els.loginUsername.value.trim().toLowerCase();
