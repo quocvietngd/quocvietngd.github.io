@@ -13230,8 +13230,11 @@ if (els.activityBody) {
       return;
     }
 
-    const restoreRef = target.dataset.restoreRef;
-    const restoreActivityId = target.dataset.restoreActivityId;
+    const restoreBtn = target.closest(".activity-restore-btn");
+    if (!(restoreBtn instanceof HTMLElement)) return;
+
+    const restoreRef = restoreBtn.dataset.restoreRef;
+    const restoreActivityId = restoreBtn.dataset.restoreActivityId;
     if (!restoreRef && !restoreActivityId) return;
 
     hideAllActionMenus();
@@ -13243,8 +13246,12 @@ if (els.activityBody) {
       restored = restoreActivityAction(restoreActivityId);
     }
 
-    if (!restored) return;
+    if (!restored) {
+      showToast("Khôi phục không thành công hoặc dữ liệu đã được khôi phục trước đó.", "warning");
+      return;
+    }
     renderAll();
+    showToast("✓ Dữ liệu đã được khôi phục thành công.");
   });
 }
 
