@@ -3496,9 +3496,9 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   isApplyingRemoteCriticalState = true;
   try {
     const mergedCustomers = preferRemoteList(remoteState.customers, customers);
-    const mergedSchedules = dedupeTelegramRowsKeepNewest(
+    const mergedSchedules = dedupeSchedulesByIdKeepNewest(
       filterScheduleRowsByDeleteMarkers(preferRemoteList(remoteSchedulesFromTelesale, schedules))
-    ).rows.filter((item) => isScheduleFromTelesaleFlow(item));
+    ).filter((item) => isScheduleFromTelesaleFlow(item));
     const mergedDeletedScheduleIds = mergeDeletedScheduleMarkerMaps(remoteState.deletedScheduleIds, deletedScheduleIds);
     const mergedInventoryItems = preferRemoteList(remoteState.inventoryItems, inventoryItems);
     const mergedInventoryTransactions = preferRemoteList(remoteState.inventoryTransactions, inventoryTransactions);
@@ -3938,9 +3938,9 @@ if (Array.isArray(schedules)) {
     saveJSON(STORAGE.schedule, schedules);
   }
 
-  const telegramDedupe = dedupeTelegramRowsKeepNewest(schedules);
-  if (telegramDedupe.removed > 0) {
-    schedules = telegramDedupe.rows;
+  const schedulesByIdDeduped = dedupeSchedulesByIdKeepNewest(schedules);
+  if (schedulesByIdDeduped.length !== schedules.length) {
+    schedules = schedulesByIdDeduped;
     saveJSON(STORAGE.schedule, schedules);
   }
 }
@@ -9493,6 +9493,34 @@ function dedupeTelegramRowsKeepNewest(rows = []) {
   return { rows: deduped, removed: duplicateIndexes.size };
 }
 
+function dedupeSchedulesByIdKeepNewest(rows = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  const bestById = new Map();
+  const extras = [];
+
+  list.forEach((item) => {
+    const id = String(item?.id || "").trim();
+    if (!id) {
+      extras.push(item);
+      return;
+    }
+
+    const existing = bestById.get(id);
+    if (!existing) {
+      bestById.set(id, item);
+      return;
+    }
+
+    const incomingUpdatedAt = Number(item?.updatedAt || item?.createdAt || 0);
+    const existingUpdatedAt = Number(existing?.updatedAt || existing?.createdAt || 0);
+    if (incomingUpdatedAt >= existingUpdatedAt) {
+      bestById.set(id, item);
+    }
+  });
+
+  return [...bestById.values(), ...extras];
+}
+
 function dedupeRowsForReporting(rows = []) {
   return dedupeTelegramRowsKeepNewest(rows).rows;
 }
@@ -14543,6 +14571,14 @@ els.loginBtn.addEventListener("click", async () => {
   activePage = requestedPage && canAccessPage(requestedPage) ? requestedPage : "news";
   pageHistory = [];
   saveJSON(STORAGE.auth, authState);
+  try {
+    await Promise.race([
+      syncCriticalStateFromRemote(false),
+      new Promise((resolve) => setTimeout(resolve, 8000))
+    ]);
+  } catch {
+    // Keep local fallback if cloud pull is temporarily unavailable.
+  }
   logActivity("Xác thực", "Đăng nhập", `Người dùng: ${user.username}`);
   renderAll();
 });
