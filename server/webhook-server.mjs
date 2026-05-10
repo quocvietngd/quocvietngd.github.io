@@ -128,11 +128,13 @@ function normalizeAppState(input = {}) {
     schemaVersion: Number(input.schemaVersion) || 1,
     customers: Array.isArray(input.customers) ? input.customers : [],
     schedules: Array.isArray(input.schedules) ? input.schedules : [],
+    deletedScheduleIds: input.deletedScheduleIds && typeof input.deletedScheduleIds === "object" ? input.deletedScheduleIds : {},
     inventoryItems: Array.isArray(input.inventoryItems) ? input.inventoryItems : [],
     inventoryTransactions: Array.isArray(input.inventoryTransactions) ? input.inventoryTransactions : [],
     hrFiles: input.hrFiles && typeof input.hrFiles === "object" ? input.hrFiles : {},
     customerCareProgress: input.customerCareProgress && typeof input.customerCareProgress === "object" ? input.customerCareProgress : {},
     customerCareFilters: input.customerCareFilters && typeof input.customerCareFilters === "object" ? input.customerCareFilters : {},
+    customerCareManualRows: Array.isArray(input.customerCareManualRows) ? input.customerCareManualRows : [],
     activities: Array.isArray(input.activities) ? input.activities : [],
     recycleBin: Array.isArray(input.recycleBin) ? input.recycleBin : [],
     rolePermissions: input.rolePermissions && typeof input.rolePermissions === "object" ? input.rolePermissions : {},
@@ -2188,6 +2190,27 @@ const server = createServer(async (req, res) => {
         return [...byId.values(), ...extras];
       };
 
+      const mergeDeletedScheduleIds = (existingObj = {}, incomingObj = {}) => {
+        const safeExisting = existingObj && typeof existingObj === "object" ? existingObj : {};
+        const safeIncoming = incomingObj && typeof incomingObj === "object" ? incomingObj : {};
+        const merged = {};
+        const keys = new Set([...Object.keys(safeExisting), ...Object.keys(safeIncoming)]);
+
+        keys.forEach((key) => {
+          const existingMeta = safeExisting[key];
+          const incomingMeta = safeIncoming[key];
+          const existingDeletedAt = Number(existingMeta?.deletedAt || 0);
+          const incomingDeletedAt = Number(incomingMeta?.deletedAt || 0);
+          const chosen = incomingDeletedAt >= existingDeletedAt ? incomingMeta : existingMeta;
+          merged[key] = {
+            deletedAt: Number(chosen?.deletedAt || 0) || Date.now(),
+            reason: String(chosen?.reason || "manual-delete").trim()
+          };
+        });
+
+        return merged;
+      };
+
       const dedupeTelegramNurseSchedules = (rows = []) => {
         const normalizeDupText = (value) => String(value || "")
           .toLowerCase()
@@ -2274,6 +2297,12 @@ const server = createServer(async (req, res) => {
       // Merge all list fields — never replace anything blindly.
       incomingAppState.schedules = mergeLists(existingAppState.schedules, incomingAppState.schedules);
       incomingAppState.schedules = dedupeTelegramNurseSchedules(incomingAppState.schedules);
+      incomingAppState.deletedScheduleIds = mergeDeletedScheduleIds(existingAppState.deletedScheduleIds, incomingAppState.deletedScheduleIds);
+      incomingAppState.schedules = incomingAppState.schedules.filter((item) => {
+        const rowId = String(item?.id || "").trim();
+        if (!rowId) return true;
+        return !incomingAppState.deletedScheduleIds[rowId];
+      });
       incomingAppState.customers = mergeLists(existingAppState.customers, incomingAppState.customers);
       incomingAppState.inventoryItems = mergeLists(existingAppState.inventoryItems, incomingAppState.inventoryItems);
       incomingAppState.inventoryTransactions = mergeLists(existingAppState.inventoryTransactions, incomingAppState.inventoryTransactions);
