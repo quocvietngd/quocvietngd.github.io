@@ -7408,6 +7408,7 @@ function getFilteredSchedules() {
   const { month, status, staff, source, keyword } = scheduleFilterState;
   return schedules.filter((s) => {
     if (!isScheduleFromTelesaleFlow(s)) return false;
+    if (isScheduleRestorationBlocked(s)) return false;
     if (month && !s.registrationDate.startsWith(month)) return false;
     if (status && s.status !== status) return false;
     if (staff && staff !== "all") {
@@ -12668,6 +12669,7 @@ function renderAll() {
   renderNewsPage();
   renderUserTable();
   renderScheduleStaffControls();
+  renderScheduleTable();
   renderCustomerCarePage();
   renderMetricsFilterControls();
   renderAccountingPage();
@@ -13223,6 +13225,35 @@ document.addEventListener("click", (event) => {
   closeCustomerDateRangePopover();
 });
 
+function handleActivityRestoreClick(target) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (!can("canManageUsers")) return false;
+
+  const restoreBtn = target.closest(".activity-restore-btn");
+  if (!(restoreBtn instanceof HTMLElement)) return false;
+
+  const restoreRef = restoreBtn.dataset.restoreRef;
+  const restoreActivityId = restoreBtn.dataset.restoreActivityId;
+  if (!restoreRef && !restoreActivityId) return false;
+
+  hideAllActionMenus();
+
+  let restored = false;
+  if (restoreRef) {
+    restored = restoreDeletedRecord(restoreRef);
+  } else if (restoreActivityId) {
+    restored = restoreActivityAction(restoreActivityId);
+  }
+
+  if (restored) {
+    renderAll();
+    showToast("✓ Dữ liệu đã được khôi phục thành công.");
+  } else {
+    showToast("Khôi phục không thành công hoặc dữ liệu đã được khôi phục trước đó.", "warning");
+  }
+  return true;
+}
+
 if (els.activityBody) {
   els.activityBody.addEventListener("click", (event) => {
     const target = event.target;
@@ -13238,30 +13269,18 @@ if (els.activityBody) {
       return;
     }
 
-    const restoreBtn = target.closest(".activity-restore-btn");
-    if (!(restoreBtn instanceof HTMLElement)) return;
-
-    const restoreRef = restoreBtn.dataset.restoreRef;
-    const restoreActivityId = restoreBtn.dataset.restoreActivityId;
-    if (!restoreRef && !restoreActivityId) return;
-
-    hideAllActionMenus();
-
-    let restored = false;
-    if (restoreRef) {
-      restored = restoreDeletedRecord(restoreRef);
-    } else if (restoreActivityId) {
-      restored = restoreActivityAction(restoreActivityId);
-    }
-
-    if (restored) {
-      renderAll();
-      showToast("✓ Dữ liệu đã được khôi phục thành công.");
-    } else {
-      showToast("Khôi phục không thành công hoặc dữ liệu đã được khôi phục trước đó.", "warning");
-    }
+    handleActivityRestoreClick(target);
   });
 }
+
+// Bắt nút Khôi phục trong menu nổi (menu được append vào document.body bởi openActionMenuAtToggle)
+document.body.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const menu = target.closest(".user-action-menu-floating");
+  if (!menu) return;
+  handleActivityRestoreClick(target);
+});
 
 if (els.applyActivityFilterBtn) {
   els.applyActivityFilterBtn.addEventListener("click", () => {
