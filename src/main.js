@@ -14055,7 +14055,6 @@ els.scheduleBody.addEventListener("dblclick", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
   const cell = target.closest("td.schedule-editable");
-  if (!(cell instanceof HTMLTableCellElement)) return;
   const row = cell.closest("tr[data-sch-id]");
   if (!(row instanceof HTMLTableRowElement)) return;
   const id = row.dataset.schId;
