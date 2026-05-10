@@ -320,8 +320,8 @@ function syncUrlWithPage(pageKey, options = {}) {
 }
 
 const seedUsers = [
-  { id: "u-admin", username: "admin", password: "NORA-ADMIN-2026", fullName: "System Admin", roleKey: "admin", department: "Vận hành", createdAt: Date.now() - 1000 * 60 * 60 * 24 * 30 },
-  { id: "u-ceo", username: "ceo", password: "NORA-CEO-2026", fullName: "CEO Demo", roleKey: "ceo", department: "Ban điều hành", createdAt: Date.now() - 1000 * 60 * 60 * 24 * 10 },
+  { id: "u-admin", username: "admin", password: "123456", fullName: "System Admin", roleKey: "admin", department: "Vận hành", createdAt: Date.now() - 1000 * 60 * 60 * 24 * 30 },
+  { id: "u-ceo", username: "ceo", password: "123456", fullName: "CEO Demo", roleKey: "ceo", department: "Ban điều hành", createdAt: Date.now() - 1000 * 60 * 60 * 24 * 10 },
   { id: "u-head-tech", username: "head-tech", password: "NORA-HEAD-2026", fullName: "Trưởng BP Kỹ thuật", roleKey: "head", department: "Kỹ thuật", createdAt: Date.now() - 1000 * 60 * 60 * 24 * 8 }
 ];
 
