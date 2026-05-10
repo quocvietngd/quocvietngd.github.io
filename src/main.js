@@ -14083,7 +14083,6 @@ els.scheduleBody.addEventListener("click", (event) => {
   } else if (target.classList.contains("schedule-delete-btn") || event.altKey) {
     const s = schedules.find((x) => x.id === id);
     if (!s) return;
-    if (!confirm(`Xóa lịch của "${s.customerName}" ngày ${s.registrationDate}?`)) return;
     hideAllActionMenus();
     schedules = schedules.filter((x) => x.id !== id);
     saveJSON(STORAGE.schedule, schedules);
@@ -14105,7 +14104,6 @@ document.addEventListener("click", (event) => {
   if (!scheduleId) return;
   const schedule = schedules.find((item) => item.id === scheduleId);
   if (!schedule) return;
-  if (!confirm(`Xóa lịch của "${schedule.customerName}" ngày ${schedule.registrationDate}?`)) return;
 
   hideAllActionMenus();
   schedules = schedules.filter((item) => item.id !== scheduleId);
