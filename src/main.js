@@ -7566,6 +7566,49 @@ function openScheduleModalFromCustomer(customerId) {
   els.scheduleModal.classList.remove("hidden");
 }
 
+function autoCreateScheduleFromCustomer(customerId) {
+  const c = customers.find((x) => x.id === customerId);
+  if (!c) { showToast("Không tìm thấy khách hàng.", "warning"); return; }
+  const customerName = c.name || c.contactPerson || "";
+  if (!customerName) { showToast("Khách hàng chưa có tên, vui lòng cập nhật.", "warning"); return; }
+  const entry = {
+    id: `sc-${Date.now()}`,
+    customerRefId: String(c.id || ""),
+    scheduleSourceType: SCHEDULE_SOURCE_TYPE_TELESALE,
+    createdSource: "telesale",
+    registrationDate: today,
+    appointmentTime: "",
+    customerName,
+    phone: c.phone || "",
+    address: c.address || "",
+    motherAge: "",
+    birthHistory: "",
+    babyBirthday: "",
+    priority: "",
+    service: "",
+    stage: "",
+    motherCondition: c.demand || "",
+    babyCondition: "",
+    consultant: "",
+    nurse: "",
+    saleStaff: c.owner || "",
+    experiencePrice: 0,
+    sessionDuration: "",
+    source: c.source || "",
+    contractAmount: 0,
+    status: "pending",
+    note: c.note || "",
+    updatedAt: Date.now(),
+    createdAt: Date.now()
+  };
+  schedules.unshift(entry);
+  saveJSON(STORAGE.schedule, schedules);
+  renderScheduleTable();
+  renderCustomerCarePage();
+  logActivity("Lịch KH", "Thêm lịch mới", `${customerName} | ${entry.registrationDate}`);
+  showToast("✓ Đã lên lịch trải nghiệm. Có thể chỉnh sửa chi tiết trên trang Lịch.");
+}
+
 function exportScheduleExcel() {
   const rows = getFilteredSchedules();
   const header = ["STT","Ngày trải nghiệm","Giờ trải nghiệm","Họ tên","Số điện thoại","Địa chỉ","Tình trạng","Ghi chú","Dịch vụ đăng ký","Tư vấn","Điều dưỡng","Nguồn data","Giá trị hợp đồng","Telesale"];
@@ -14563,8 +14606,8 @@ els.customerBody.addEventListener("click", (event) => {
   }
 
   if (target.classList.contains("customer-schedule-btn")) {
-    openScheduleModalFromCustomer(customerId);
-    navigateTo("schedule");
+    const customerId = target.getAttribute("data-customer-id");
+    autoCreateScheduleFromCustomer(customerId);
     return;
   }
 
