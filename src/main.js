@@ -5511,7 +5511,9 @@ function restoreDeletedRecord(restoreRef) {
 }
 
 function restoreActivityAction(activityId) {
-  const item = activityLogs.find((entry) => entry.id === activityId);
+  // Reload from localStorage to ensure we have the latest data
+  const latestActivities = loadJSON(STORAGE.activities) || [];
+  const item = latestActivities.find((entry) => entry.id === activityId);
   if (!item || item.restoredAt || !item.restoreAction) return false;
 
   const action = item.restoreAction;
@@ -5568,7 +5570,13 @@ function restoreActivityAction(activityId) {
   }
 
   item.restoredAt = Date.now();
-  saveJSON(STORAGE.activities, activityLogs);
+  // Update the latest activities array and save
+  const idx = latestActivities.findIndex((e) => e.id === item.id);
+  if (idx !== -1) latestActivities[idx] = item;
+  saveJSON(STORAGE.activities, latestActivities);
+  // Also update the in-memory array if it exists
+  const memIdx = activityLogs.findIndex((e) => e.id === item.id);
+  if (memIdx !== -1) activityLogs[memIdx] = item;
   logActivity("Khôi phục", "Khôi phục chỉnh sửa", item.detail || item.action, { restoredAt: item.restoredAt });
   return true;
 }
