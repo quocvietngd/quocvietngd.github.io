@@ -325,6 +325,18 @@ const seedUsers = [
   { id: "u-head-tech", username: "head-tech", password: "NORA-HEAD-2026", fullName: "Trưởng BP Kỹ thuật", roleKey: "head", department: "Kỹ thuật", createdAt: Date.now() - 1000 * 60 * 60 * 24 * 8 }
 ];
 
+const LEGACY_DEMO_PASSWORDS = {
+  admin: ["NORA-ADMIN-2026"],
+  ceo: ["NORA-CEO-2026"]
+};
+
+function isValidUserPassword(user, inputPassword) {
+  const password = String(inputPassword || "");
+  if (String(user?.password || "") === password) return true;
+  const legacyPasswords = LEGACY_DEMO_PASSWORDS[String(user?.username || "").toLowerCase()] || [];
+  return legacyPasswords.includes(password);
+}
+
 const seedReports = [
   { date: today, department: "Kỹ thuật", completion: 88, quality: 91, issues: 2, submitter: "Nguyễn Minh", updatedAt: Date.now() - 3600 * 1000 * 4 },
   { date: today, department: "Kinh doanh", completion: 76, quality: 83, issues: 3, submitter: "Trần Phúc", updatedAt: Date.now() - 3600 * 1000 * 2 },
@@ -14510,7 +14522,7 @@ els.loginBtn.addEventListener("click", async () => {
   const password = els.loginPassword.value;
   const user = users.find((u) => u.username.toLowerCase() === username);
 
-  if (!user || user.password !== password) {
+  if (!user || !isValidUserPassword(user, password)) {
     els.authMessage.textContent = "Tên đăng nhập hoặc mật khẩu không hợp lệ";
     return;
   }
