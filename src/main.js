@@ -14095,6 +14095,28 @@ els.scheduleBody.addEventListener("click", (event) => {
   }
 });
 
+document.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const deleteButton = target.closest(".schedule-delete-btn");
+  if (!(deleteButton instanceof HTMLElement)) return;
+
+  const scheduleId = deleteButton.dataset.schId;
+  if (!scheduleId) return;
+  const schedule = schedules.find((item) => item.id === scheduleId);
+  if (!schedule) return;
+  if (!confirm(`Xóa lịch của "${schedule.customerName}" ngày ${schedule.registrationDate}?`)) return;
+
+  hideAllActionMenus();
+  schedules = schedules.filter((item) => item.id !== scheduleId);
+  saveJSON(STORAGE.schedule, schedules);
+  markDeletedScheduleRows([schedule], "manual-schedule-delete");
+  renderScheduleTable();
+  renderCustomerCarePage();
+  showToast("Đã xóa lịch.");
+  logActivity("Lịch KH", "Xóa lịch", `${schedule.customerName} | ${schedule.registrationDate}`, { restoreAction: { kind: "schedule-delete", deletedSchedule: clonePlain(schedule) } });
+});
+
 els.saveScheduleBtn.addEventListener("click", () => {
   const customerName = els.scheduleName.value.trim();
   if (!customerName) { showToast("Vui lòng nhập tên khách hàng.", "warning"); return; }
