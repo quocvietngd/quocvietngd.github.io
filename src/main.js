@@ -1882,6 +1882,7 @@ app.innerHTML = `
                   <th>Nguồn data</th>
                   <th>Giá trị hợp đồng</th>
                   <th>Telesale</th>
+                  <th>Thao tác</th>
                 </tr>
               </thead>
               <tbody id="scheduleBody"></tbody>
@@ -7441,7 +7442,7 @@ function renderScheduleTable() {
     counter += 1;
     const rowClass = `schedule-row-${s.status || "pending"}`;
     const daySeparator = lastDate && s.registrationDate !== lastDate
-      ? `<tr class="schedule-day-separator"><td colspan="14"></td></tr>`
+      ? `<tr class="schedule-day-separator"><td colspan="15"></td></tr>`
       : "";
     lastDate = s.registrationDate;
     const noteValue = s.note || s.motherCondition || "";
@@ -7460,6 +7461,12 @@ function renderScheduleTable() {
       <td class="schedule-editable schedule-col-source" data-field="source">${s.source || ""}</td>
       <td class="schedule-editable schedule-col-contract" data-field="contractAmount">${Number(s.contractAmount || 0).toLocaleString("vi-VN")}</td>
       <td class="schedule-editable schedule-col-sale" data-field="saleStaff">${s.saleStaff || ""}</td>
+      <td class="schedule-col-action">
+        <button class="btn secondary user-action-toggle" type="button" data-sch-id="${s.id}" title="Thao tác">...</button>
+        <div class="user-action-menu hidden" data-schedule-action-menu="${s.id}">
+          <button class="user-action-item user-action-item--danger schedule-delete-btn" type="button" data-sch-id="${s.id}">Xóa lịch</button>
+        </div>
+      </td>
     </tr>`;
   }).join("");
   syncScheduleBottomScrollerWidth();
@@ -14065,12 +14072,20 @@ els.scheduleBody.addEventListener("click", (event) => {
   const row = target.closest("tr[data-sch-id]");
   const id = row instanceof HTMLTableRowElement ? row.dataset.schId : undefined;
   if (!id) return;
+
+  if (target.classList.contains("user-action-toggle")) {
+    const menu = document.querySelector(`.user-action-menu[data-schedule-action-menu="${id}"]`);
+    if (menu instanceof HTMLElement) openActionMenuAtToggle(target, menu);
+    return;
+  }
+
   if (target.classList.contains("schedule-edit-btn")) {
     openScheduleModal(id);
   } else if (target.classList.contains("schedule-delete-btn") || event.altKey) {
     const s = schedules.find((x) => x.id === id);
     if (!s) return;
     if (!confirm(`Xóa lịch của "${s.customerName}" ngày ${s.registrationDate}?`)) return;
+    hideAllActionMenus();
     schedules = schedules.filter((x) => x.id !== id);
     saveJSON(STORAGE.schedule, schedules);
     markDeletedScheduleRows([s], "manual-schedule-delete");
