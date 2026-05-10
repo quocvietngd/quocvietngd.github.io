@@ -13246,11 +13246,13 @@ if (els.activityBody) {
       restored = restoreActivityAction(restoreActivityId);
     }
 
+    // Always renderAll after restore attempt
+    renderAll();
+    
     if (!restored) {
       showToast("Khôi phục không thành công hoặc dữ liệu đã được khôi phục trước đó.", "warning");
       return;
     }
-    renderAll();
     showToast("✓ Dữ liệu đã được khôi phục thành công.");
   });
 }
