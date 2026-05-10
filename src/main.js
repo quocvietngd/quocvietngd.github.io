@@ -3339,6 +3339,14 @@ function hasRemoteListIdsMissingLocally(remoteList = [], localList = []) {
   return false;
 }
 
+function hasRemoteObjectKeysMissingLocally(remoteObj = {}, localObj = {}) {
+  const safeRemote = remoteObj && typeof remoteObj === "object" ? remoteObj : {};
+  const safeLocal = localObj && typeof localObj === "object" ? localObj : {};
+  const remoteKeys = Object.keys(safeRemote);
+  if (!remoteKeys.length) return false;
+  return remoteKeys.some((key) => !Object.prototype.hasOwnProperty.call(safeLocal, key));
+}
+
 function flushCriticalStateToRemoteWithBeacon() {
   const endpointUrl = getAppStateSyncEndpoint();
   if (!endpointUrl || typeof navigator.sendBeacon !== "function") return false;
@@ -3468,6 +3476,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   const remoteHasNewData = remoteScheduleCount > localScheduleCount
     || remoteRows > localRows
     || remoteUpdatedAt > localUpdatedAt
+    || hasRemoteObjectKeysMissingLocally(remoteState.deletedScheduleIds, deletedScheduleIds)
     || hasRemoteListIdsMissingLocally(remoteSchedulesFromTelesale, schedules)
     || hasRemoteListIdsMissingLocally(remoteState.customers, customers)
     || hasRemoteListIdsMissingLocally(remoteState.inventoryItems, inventoryItems)
