@@ -3443,18 +3443,19 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
 
   const hasPendingSync = Boolean(loadJSON(STORAGE.criticalStatePendingSync, false));
   const remoteSchedulesFiltered = filterScheduleRowsByDeleteMarkers(remoteState.schedules);
+  const remoteSchedulesFromTelesale = remoteSchedulesFiltered.filter((item) => isScheduleFromTelesaleFlow(item));
   const remoteUpdatedAt = Number(remoteState.updatedAt || 0);
   const localUpdatedAt = getLocalCriticalStateUpdatedAt();
 
   // Determine whether there is anything new on the remote not already in local.
-  const remoteScheduleCount = remoteSchedulesFiltered.length;
+  const remoteScheduleCount = remoteSchedulesFromTelesale.length;
   const localScheduleCount = Array.isArray(schedules) ? schedules.length : 0;
   const remoteRows = getRemoteCriticalStateRowCount(remoteState);
   const localRows = getRemoteCriticalStateRowCount(buildCriticalStatePayload(localUpdatedAt || Date.now()));
   const remoteHasNewData = remoteScheduleCount > localScheduleCount
     || remoteRows > localRows
     || remoteUpdatedAt > localUpdatedAt
-    || hasRemoteListIdsMissingLocally(remoteSchedulesFiltered, schedules)
+    || hasRemoteListIdsMissingLocally(remoteSchedulesFromTelesale, schedules)
     || hasRemoteListIdsMissingLocally(remoteState.customers, customers)
     || hasRemoteListIdsMissingLocally(remoteState.inventoryItems, inventoryItems)
     || hasRemoteListIdsMissingLocally(remoteState.inventoryTransactions, inventoryTransactions)
@@ -3483,8 +3484,8 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   try {
     const mergedCustomers = preferRemoteList(remoteState.customers, customers);
     const mergedSchedules = dedupeTelegramRowsKeepNewest(
-      filterScheduleRowsByDeleteMarkers(preferRemoteList(remoteSchedulesFiltered, schedules))
-    ).rows;
+      filterScheduleRowsByDeleteMarkers(preferRemoteList(remoteSchedulesFromTelesale, schedules))
+    ).rows.filter((item) => isScheduleFromTelesaleFlow(item));
     const mergedDeletedScheduleIds = mergeDeletedScheduleMarkerMaps(remoteState.deletedScheduleIds, deletedScheduleIds);
     const mergedInventoryItems = preferRemoteList(remoteState.inventoryItems, inventoryItems);
     const mergedInventoryTransactions = preferRemoteList(remoteState.inventoryTransactions, inventoryTransactions);
@@ -3907,7 +3908,8 @@ function startUsersAutoSync() {
 let attendanceAutoSyncSignature = "";
 let telegramRealtimeSyncTimer = null;
 // One-time migration: xóa sạch lịch cũ (sai nguồn), chỉ giữ lịch tạo từ Telesales
-const SCHEDULE_CLEAR_FLAG = "nora_sched_cleared_v1";
+const SCHEDULE_CLEAR_FLAG = "nora_sched_cleared_v2";
+const SCHEDULE_SOURCE_TYPE_TELESALE = "telesale-flow";
 if (!localStorage.getItem(SCHEDULE_CLEAR_FLAG)) {
   localStorage.removeItem(STORAGE.schedule);
   localStorage.removeItem(STORAGE.deletedScheduleIds);
@@ -4127,6 +4129,7 @@ ensureRecoveredLongMarketingRows();
 migrateLegacyReceivableAmounts();
 
 let editingScheduleId = null;
+let scheduleModalCustomerId = "";
 let scheduleFilterState = { month: today.slice(0, 7), status: "", staff: "all", source: "", keyword: "" };
 let metricsFilterState = { start: filterState.start, end: filterState.end, department: "all" };
 let customerCareProgress = loadJSON(STORAGE.customerCareProgress, {});
@@ -7395,6 +7398,7 @@ function formatScheduleDisplayDate(dateValue) {
 function getFilteredSchedules() {
   const { month, status, staff, source, keyword } = scheduleFilterState;
   return schedules.filter((s) => {
+    if (!isScheduleFromTelesaleFlow(s)) return false;
     if (month && !s.registrationDate.startsWith(month)) return false;
     if (status && s.status !== status) return false;
     if (staff && staff !== "all") {
@@ -7409,6 +7413,14 @@ function getFilteredSchedules() {
     }
     return true;
   }).sort((a, b) => a.registrationDate.localeCompare(b.registrationDate) || (a.appointmentTime || "").localeCompare(b.appointmentTime || ""));
+}
+
+function isScheduleFromTelesaleFlow(item = {}) {
+  const sourceType = String(item?.scheduleSourceType || "").trim().toLowerCase();
+  if (sourceType === SCHEDULE_SOURCE_TYPE_TELESALE) return true;
+  if (String(item?.createdSource || "").trim().toLowerCase() === "telesale") return true;
+  if (String(item?.customerRefId || "").trim()) return true;
+  return false;
 }
 
 function renderScheduleTable() {
@@ -7459,6 +7471,7 @@ function openScheduleModal(id) {
   if (id) {
     const s = schedules.find((x) => x.id === id);
     if (!s) return;
+    scheduleModalCustomerId = String(s.customerRefId || "");
     els.scheduleModalTitle.textContent = `Chỉnh sửa: ${s.customerName}`;
     els.scheduleRegDate.value = s.registrationDate || "";
     els.scheduleTime.value = s.appointmentTime || "";
@@ -7482,6 +7495,7 @@ function openScheduleModal(id) {
     els.scheduleContractAmount.value = s.contractAmount || "";
     els.scheduleNote.value = s.note || "";
   } else {
+    scheduleModalCustomerId = "";
     els.scheduleModalTitle.textContent = "Thêm lịch trải nghiệm";
     els.scheduleRegDate.value = today;
     els.scheduleTime.value = "";
@@ -7511,6 +7525,7 @@ function openScheduleModal(id) {
 function closeScheduleModal() {
   els.scheduleModal.classList.add("hidden");
   editingScheduleId = null;
+  scheduleModalCustomerId = "";
 }
 
 function openScheduleModalFromCustomer(customerId) {
@@ -7518,6 +7533,7 @@ function openScheduleModalFromCustomer(customerId) {
   if (!c) return;
   renderScheduleStaffControls();
   editingScheduleId = null;
+  scheduleModalCustomerId = String(c.id || "");
   els.scheduleModalTitle.textContent = "Lên lịch trải nghiệm: " + (c.name || c.contactPerson || "");
   els.scheduleRegDate.value = today;
   els.scheduleTime.value = "";
@@ -14068,8 +14084,13 @@ els.scheduleBody.addEventListener("click", (event) => {
 els.saveScheduleBtn.addEventListener("click", () => {
   const customerName = els.scheduleName.value.trim();
   if (!customerName) { showToast("Vui lòng nhập tên khách hàng.", "warning"); return; }
+  const existingSchedule = editingScheduleId ? schedules.find((x) => x.id === editingScheduleId) : null;
+  const isFromTelesaleFlow = Boolean(scheduleModalCustomerId) || String(existingSchedule?.scheduleSourceType || "") === SCHEDULE_SOURCE_TYPE_TELESALE;
   const entry = {
     id: editingScheduleId || `sc-${Date.now()}`,
+    customerRefId: scheduleModalCustomerId || String(existingSchedule?.customerRefId || ""),
+    scheduleSourceType: isFromTelesaleFlow ? SCHEDULE_SOURCE_TYPE_TELESALE : String(existingSchedule?.scheduleSourceType || ""),
+    createdSource: isFromTelesaleFlow ? "telesale" : String(existingSchedule?.createdSource || ""),
     registrationDate: els.scheduleRegDate.value || today,
     appointmentTime: els.scheduleTime.value.trim(),
     customerName,
@@ -14093,7 +14114,7 @@ els.saveScheduleBtn.addEventListener("click", () => {
     status: els.scheduleStatus.value || "pending",
     note: els.scheduleNote.value.trim(),
     updatedAt: Date.now(),
-    createdAt: editingScheduleId ? (schedules.find((x) => x.id === editingScheduleId)?.createdAt || Date.now()) : Date.now()
+    createdAt: editingScheduleId ? (existingSchedule?.createdAt || Date.now()) : Date.now()
   };
   if (editingScheduleId) {
     const previousSchedule = clonePlain(schedules.find((x) => x.id === editingScheduleId) || null);
