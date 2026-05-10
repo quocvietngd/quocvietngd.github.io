@@ -63,7 +63,7 @@ body::after {
 .app {
   position: relative;
   z-index: 1;
-  width: min(1240px, 94%);
+  width: min(1180px, calc(100vw - 20px));
   margin: 14px auto 22px;
 }
 
@@ -418,7 +418,7 @@ body::after {
 .layout {
   margin-top: 8px;
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: minmax(260px, 280px) minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -466,7 +466,7 @@ body::after {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: linear-gradient(155deg, #ffffff 0%, #f6fbff 100%);
-  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(130px, 1fr));
+  grid-template-columns: minmax(200px, 1.8fr) repeat(4, minmax(120px, 1fr));
   gap: 8px;
   align-items: end;
 }
@@ -1921,7 +1921,20 @@ tr.schedule-row-pending:hover { background: #fef3c7; }
 #scheduleTable th:nth-child(13),
 #scheduleTable td:nth-child(13) { width: 7%; }
 #scheduleTable th:nth-child(14),
-#scheduleTable td:nth-child(14) { width: 4%; }
+#scheduleTable td:nth-child(14) { width: 3%; }
+#scheduleTable th:nth-child(15),
+#scheduleTable td:nth-child(15) { width: 4%; }
+
+.schedule-col-action {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.schedule-col-action .user-action-toggle {
+  padding: 2px 9px;
+  font-size: 1rem;
+  line-height: 1;
+}
 
 .schedule-day-separator td {
   padding: 0;
@@ -2123,7 +2136,7 @@ td.schedule-editable:hover {
   }
 
   #scheduleTable {
-    min-width: 1260px !important;
+    min-width: 1340px !important;
     table-layout: fixed;
   }
 
@@ -2140,6 +2153,11 @@ td.schedule-editable:hover {
     z-index: 3;
     background: inherit;
     box-shadow: 1px 0 0 rgba(148, 163, 184, 0.4);
+  }
+
+  #scheduleTable th:nth-child(15),
+  #scheduleTable td:nth-child(15) {
+    white-space: nowrap;
   }
 
   #scheduleTable thead th:nth-child(1) {
