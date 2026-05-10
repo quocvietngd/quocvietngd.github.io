@@ -26,7 +26,7 @@ const DEPARTMENT_MONTHLY_REVENUE_TARGET = {
   "Vận hành": 360000000,
   "Tài chính": 300000000
 };
-const CUSTOMER_STATUSES = ["Đã gọi", "Không nghe máy", "Đang cân nhắc", "Đã ký", "Đang chăm lại"];
+const CUSTOMER_STATUSES = ["Đã gọi", "Không nghe máy", "Đang cân nhắc", "Chốt trải nghiệm", "Đã ký", "Đang chăm lại"];
 const CUSTOMER_SOURCES = ["Nhập tay", "Website", "Facebook", "Zalo", "Giới thiệu", "API", "Google Sheets"];
 /* eslint-disable */
 const VN_ADDRESSES = {
@@ -565,22 +565,7 @@ const seedAccountingAttendance = [
 
 const app = document.querySelector("#app");
 
-const seedSchedule = [
-  { id: "sc-001", registrationDate: "2026-04-01", appointmentTime: "10h", customerName: "Trần Thuý Anh", phone: "328897997", address: "Số nhà 52 L11 khu đô thị Louis Tân Mai Hoàng Mai", motherAge: "", birthHistory: "", babyBirthday: "", service: "Chăm sóc mẹ bầu", stage: "Mẹ bầu 20w", motherCondition: "Bầu 20 tuần, đau mỏi nhiều phần lưng, mới trải nghiệm gói chăm sóc bầu 249k/ 90 phút", priority: "", babyCondition: "", consultant: "Quyền", nurse: "Yến", experiencePrice: 249000, sessionDuration: "90p", saleStaff: "Hồ Trang", source: "Facebook", contractAmount: 249000, status: "confirmed", note: "", createdAt: Date.now() - 86400000 * 11, updatedAt: Date.now() - 86400000 * 11 },
-  { id: "sc-002", registrationDate: "2026-04-01", appointmentTime: "10h", customerName: "Phạm Thanh Bình", phone: "912265555", address: "Chung cư brg diamond residence 25 lê văn lương - thanh xuân - hn", motherAge: "", birthHistory: "", babyBirthday: "", service: "Chăm sóc mẹ & bé", stage: "Em bé", motherCondition: "Tắm bé 45p, bé được hơn 10 ngày tuổi, khách quan tâm gói tắm chăm sóc bé 1 tháng, hỏi thêm về các vấn đề cảm dịch âm", priority: "10 ngày tuổi", babyCondition: "", consultant: "Phương", nurse: "", experiencePrice: 99000, sessionDuration: "45p", saleStaff: "Hồ Trang", source: "Zalo", contractAmount: 99000, status: "confirmed", note: "", createdAt: Date.now() - 86400000 * 11, updatedAt: Date.now() - 86400000 * 11 },
-  { id: "sc-003", registrationDate: "2026-03-31", appointmentTime: "10h30 - 10h40", customerName: "Ma Kết", phone: "988211188", address: "Số 36 Hoàng Cầu, Ô Chợ Dừa", motherAge: "", birthHistory: "", babyBirthday: "", service: "Chăm sóc mẹ bầu", stage: "Mẹ bầu 19w", motherCondition: "Bầu 19 tuần, khách muốn massage chăm sóc body bầu, k massa mặt, tư vấn trải nghiệm 90 phút 249k", priority: "", babyCondition: "", consultant: "Thanh", nurse: "Linh", experiencePrice: 249000, sessionDuration: "90p", saleStaff: "", source: "Giới thiệu", contractAmount: 0, status: "cancelled", note: "", createdAt: Date.now() - 86400000 * 12, updatedAt: Date.now() - 86400000 * 12 },
-  { id: "sc-004", registrationDate: "2026-03-25", appointmentTime: "14h", customerName: "Hà Trương", phone: "989129899", address: "Số 6 ngõ 97 Khương Trung, Thanh Xuân, Hà Nội", motherAge: "", birthHistory: "", babyBirthday: "", service: "Chăm sóc mẹ bầu", stage: "Mẹ bầu 23w", motherCondition: "Bầu 23 tuần, trải nghiệm 1 buổi chăm sóc mẹ bầu 120p 349k, đặt lịch lại 2 tuần sau", priority: "", babyCondition: "", consultant: "Thanh", nurse: "Nhung", experiencePrice: 349000, sessionDuration: "120p", saleStaff: "", source: "Zalo", contractAmount: 0, status: "cancelled", note: "", createdAt: Date.now() - 86400000 * 18, updatedAt: Date.now() - 86400000 * 18 },
-  { id: "sc-005", registrationDate: "2026-04-02", appointmentTime: "15h30", customerName: "Dotty Nguyen", phone: "988080861", address: "Tòa hh1b chung cư meco 102 trường chính", motherAge: "", birthHistory: "", babyBirthday: "", service: "Chăm sóc mẹ bầu", stage: "Mẹ bầu 17w", motherCondition: "Bầu 17 tuần, khu vực Trường Chính, hay bị nhức mỏi, cơ rút thêm phần chân, trải nghiệm buổi 249k/ 90p", priority: "", babyCondition: "", consultant: "Phương", nurse: "Linh", experiencePrice: 249000, sessionDuration: "90p", saleStaff: "Hồ Trang", source: "Facebook", contractAmount: 16749000, status: "confirmed", note: "", createdAt: Date.now() - 86400000 * 10, updatedAt: Date.now() - 86400000 * 10 },
-  { id: "sc-006", registrationDate: "2026-04-02", appointmentTime: "16h30", customerName: "c Dương", phone: "0965899999", address: "Phòng 1902, Grandeur Place - Sảnh A, 138B Giảng Võ, TP Hà Nội", motherAge: "", birthHistory: "", babyBirthday: "", service: "Chăm sóc mẹ bầu", stage: "Mẹ bầu 15w", motherCondition: "Bầu 15 tuần, đang bị bó cơ, đau đầu. Thời gian: hơn 4h đến 4h30", priority: "", babyCondition: "", consultant: "Quyền", nurse: "Khuyên", experiencePrice: 249000, sessionDuration: "90p", saleStaff: "Hồ Trang", source: "Facebook", contractAmount: 39349000, status: "confirmed", note: "", createdAt: Date.now() - 86400000 * 10, updatedAt: Date.now() - 86400000 * 10 },
-  { id: "sc-007", registrationDate: "2026-04-02", appointmentTime: "10h", customerName: "Lê Thu Thủy", phone: "912351988", address: "P709 25T2 Nguyễn Thị Thập, Yên Hòa, Hà Nội", motherAge: "38 tuổi", birthHistory: "", babyBirthday: "", service: "Chăm sóc mẹ bầu", stage: "Mẹ bầu 37w", motherCondition: "Bầu 37 tuần, đợt này bị mỏi ng, khó ngủ, quan tâm gói chăm sóc mẹ và bé sau sinh, mới trải nghiệm chăm sóc bầu 249k/90p", priority: "", babyCondition: "", consultant: "Quyền", nurse: "Linh", experiencePrice: 249000, sessionDuration: "90p", saleStaff: "Hồ Trang", source: "Zalo", contractAmount: 5249000, status: "completed", note: "", createdAt: Date.now() - 86400000 * 10, updatedAt: Date.now() - 86400000 * 10 },
-  { id: "sc-008", registrationDate: "2026-04-03", appointmentTime: "10h", customerName: "Mai Dương", phone: "989606356", address: "188 Đường Bưởi", motherAge: "", birthHistory: "", babyBirthday: "", service: "Chăm sóc mẹ bầu", stage: "Mẹ bầu 37w", motherCondition: "Khách ở Hoàng Quốc Việt, bầu 37 tuần, đau mỏi nhiều", priority: "", babyCondition: "", consultant: "Thanh", nurse: "Phương", experiencePrice: 249000, sessionDuration: "90p", saleStaff: "Hồ Trang", source: "Giới thiệu", contractAmount: 249000, status: "pending", note: "", createdAt: Date.now() - 86400000 * 9, updatedAt: Date.now() - 86400000 * 9 },
-  { id: "sc-009", registrationDate: "2026-04-02", appointmentTime: "1h30", customerName: "Nguyễn Thúy Nga", phone: "366319268", address: "Số 49 ngách 1/66 đường văn bội, Bắc Từ Liêm Hà Nội", motherAge: "", birthHistory: "", babyBirthday: "", service: "Chăm sóc mẹ bầu", stage: "Mẹ bầu 33w", motherCondition: "Gần học viện tài chính, bác sĩ liêm hà nội, bầu 33 tuần, phù chân mỏi lưng, tư vấn buổi trải nghiệm 249k/ 90 phút", priority: "", babyCondition: "", consultant: "Thanh", nurse: "Nhung", experiencePrice: 249000, sessionDuration: "90p", saleStaff: "Hồ Trang", source: "Facebook", contractAmount: 2749000, status: "completed", note: "", createdAt: Date.now() - 86400000 * 10, updatedAt: Date.now() - 86400000 * 10 },
-  { id: "sc-010", registrationDate: "2026-04-05", appointmentTime: "09h30", customerName: "Phan Bảo Trâm", phone: "0911288668", address: "KĐT Vinhomes Smart City, Nam Từ Liêm, Hà Nội", motherAge: "31 tuổi", birthHistory: "Con so", babyBirthday: "", service: "Chăm sóc mẹ bầu", stage: "Mẹ bầu 28w", motherCondition: "Mất ngủ 2 tuần gần đây, đau thắt lưng dưới, quan tâm liệu trình 5 buổi", priority: "", babyCondition: "", consultant: "Quyền", nurse: "Yến", experiencePrice: 249000, sessionDuration: "90p", saleStaff: "Hồ Trang", source: "Google Ads", contractAmount: 12450000, status: "confirmed", note: "Đã cọc 1 triệu", createdAt: Date.now() - 86400000 * 7, updatedAt: Date.now() - 86400000 * 7 },
-  { id: "sc-011", registrationDate: "2026-04-06", appointmentTime: "11h00", customerName: "Đỗ Minh Châu", phone: "0983388123", address: "Ngõ 67 Phùng Khoang, Thanh Xuân, Hà Nội", motherAge: "29 tuổi", birthHistory: "Con 1", babyBirthday: "", service: "Tư vấn chăm sóc sau sinh", stage: "Mẹ bầu 35w", motherCondition: "Khách muốn tìm hiểu combo mẹ và bé sau sinh tại nhà", priority: "", babyCondition: "", consultant: "Thanh", nurse: "Nhung", experiencePrice: 149000, sessionDuration: "60p", saleStaff: "Linh Phạm", source: "Tiktok", contractAmount: 0, status: "pending", note: "Hẹn gọi lại 20h tối", createdAt: Date.now() - 86400000 * 6, updatedAt: Date.now() - 86400000 * 6 },
-  { id: "sc-012", registrationDate: "2026-04-07", appointmentTime: "14h30", customerName: "Ngô Quỳnh Mai", phone: "0902333109", address: "Ecohome 3, Đông Ngạc, Bắc Từ Liêm, Hà Nội", motherAge: "34 tuổi", birthHistory: "Con 2", babyBirthday: "15 ngày tuổi", service: "Tắm bé + chăm sóc mẹ sau sinh", stage: "Em bé", motherCondition: "Sau sinh mổ, cần hỗ trợ chăm sóc mẹ và bé trong 1 tháng", priority: "15 ngày tuổi", babyCondition: "Bé ngủ không sâu giấc", consultant: "Phương", nurse: "Khuyên", experiencePrice: 199000, sessionDuration: "75p", saleStaff: "Hồ Trang", source: "Giới thiệu", contractAmount: 8900000, status: "completed", note: "Đã ký gói 1 tháng", createdAt: Date.now() - 86400000 * 5, updatedAt: Date.now() - 86400000 * 4 },
-  { id: "sc-013", registrationDate: "2026-04-08", appointmentTime: "16h00", customerName: "Vũ Thị Hà", phone: "0977112288", address: "CT3A Mễ Trì Thượng, Nam Từ Liêm, Hà Nội", motherAge: "27 tuổi", birthHistory: "Con so", babyBirthday: "", service: "Massage bầu giảm đau mỏi", stage: "Mẹ bầu 24w", motherCondition: "Đau vai gáy kéo dài, bắp chân hay bị chuột rút khi ngủ", priority: "", babyCondition: "", consultant: "Quyền", nurse: "Linh", experiencePrice: 249000, sessionDuration: "90p", saleStaff: "Ngọc Anh", source: "Facebook", contractAmount: 0, status: "cancelled", note: "Khách bận công tác, xin dời lịch", createdAt: Date.now() - 86400000 * 4, updatedAt: Date.now() - 86400000 * 3 },
-  { id: "sc-014", registrationDate: "2026-04-09", appointmentTime: "18h30", customerName: "Lương Kim Oanh", phone: "0935661200", address: "An Bình City, Cổ Nhuế 1, Bắc Từ Liêm, Hà Nội", motherAge: "32 tuổi", birthHistory: "Con 1", babyBirthday: "", service: "Combo chăm sóc mẹ bầu chuyên sâu", stage: "Mẹ bầu 30w", motherCondition: "Phù nhẹ bàn chân, đau cột sống thắt lưng, mong muốn chăm sóc định kỳ đến lúc sinh", priority: "", babyCondition: "", consultant: "Thanh", nurse: "Yến", experiencePrice: 349000, sessionDuration: "120p", saleStaff: "Hồ Trang", source: "Website", contractAmount: 15900000, status: "confirmed", note: "Đã gửi hợp đồng điện tử", createdAt: Date.now() - 86400000 * 3, updatedAt: Date.now() - 86400000 * 2 }
-];
+const seedSchedule = [];
 app.innerHTML = `
   <div class="app" id="dashboardRoot">
     <header class="topbar card">
@@ -3921,15 +3906,16 @@ function startUsersAutoSync() {
 }
 let attendanceAutoSyncSignature = "";
 let telegramRealtimeSyncTimer = null;
-let schedules = loadJSON(STORAGE.schedule, seedSchedule);
+// One-time migration: xóa sạch lịch cũ (sai nguồn), chỉ giữ lịch tạo từ Telesales
+const SCHEDULE_CLEAR_FLAG = "nora_sched_cleared_v1";
+if (!localStorage.getItem(SCHEDULE_CLEAR_FLAG)) {
+  localStorage.removeItem(STORAGE.schedule);
+  localStorage.removeItem(STORAGE.deletedScheduleIds);
+  localStorage.setItem(SCHEDULE_CLEAR_FLAG, "1");
+}
+let schedules = loadJSON(STORAGE.schedule, []);
 let deletedScheduleIds = normalizeDeletedScheduleIdMap(loadJSON(STORAGE.deletedScheduleIds, {}));
 if (Array.isArray(schedules)) {
-  const existingIds = new Set(schedules.map((item) => item.id));
-  const missingSamples = seedSchedule.filter((item) => !existingIds.has(item.id));
-  if (missingSamples.length) {
-    schedules = [...schedules, ...missingSamples];
-    saveJSON(STORAGE.schedule, schedules);
-  }
 
   const consultantRepair = repairConsultantTelegramRows(schedules);
   if (consultantRepair.changed > 0) {
@@ -6954,6 +6940,7 @@ function renderCustomerTable() {
         <td>
           <button class="btn secondary customer-edit-btn" type="button" data-customer-id="${c.id}">Sửa</button>
           <button class="btn warn customer-delete-btn" type="button" data-customer-id="${c.id}">Xóa</button>
+          ${c.status === "Chốt trải nghiệm" ? `<button class="btn secondary customer-schedule-btn" type="button" data-customer-id="${c.id}" style="background:#1a7a2e;color:#fff;border-color:#1a7a2e;">📅 Lên lịch</button>` : ""}
         </td>
       </tr>
     `)
@@ -7524,6 +7511,36 @@ function openScheduleModal(id) {
 function closeScheduleModal() {
   els.scheduleModal.classList.add("hidden");
   editingScheduleId = null;
+}
+
+function openScheduleModalFromCustomer(customerId) {
+  const c = customers.find((x) => x.id === customerId);
+  if (!c) return;
+  renderScheduleStaffControls();
+  editingScheduleId = null;
+  els.scheduleModalTitle.textContent = "Lên lịch trải nghiệm: " + (c.name || c.contactPerson || "");
+  els.scheduleRegDate.value = today;
+  els.scheduleTime.value = "";
+  els.scheduleStatus.value = "pending";
+  els.scheduleName.value = c.name || c.contactPerson || "";
+  els.schedulePhone.value = c.phone || "";
+  els.scheduleAddress.value = c.address || "";
+  els.scheduleMotherAge.value = "";
+  els.scheduleBirthHistory.value = "";
+  els.scheduleBabyBirthday.value = "";
+  els.scheduleStage.value = "";
+  els.scheduleService.value = "";
+  els.scheduleMotherCondition.value = c.demand || "";
+  els.scheduleBabyCondition.value = "";
+  els.scheduleConsultant.value = "";
+  els.scheduleNurse.value = "";
+  els.scheduleSale.value = c.owner || "";
+  els.scheduleExpPrice.value = "";
+  els.scheduleSessionDuration.value = "";
+  els.scheduleSource.value = c.source || "";
+  els.scheduleContractAmount.value = "";
+  els.scheduleNote.value = c.note || "";
+  els.scheduleModal.classList.remove("hidden");
 }
 
 function exportScheduleExcel() {
@@ -14487,6 +14504,12 @@ els.customerBody.addEventListener("click", (event) => {
     els.customerDemand.value = customer.demand || "";
     els.customerNote.value = customer.note || "";
     openCustomerModal();
+    return;
+  }
+
+  if (target.classList.contains("customer-schedule-btn")) {
+    openScheduleModalFromCustomer(customerId);
+    navigateTo("schedule");
     return;
   }
 
