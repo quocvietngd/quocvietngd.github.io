@@ -212,6 +212,7 @@ const STORAGE = {
   hrFiles: "nora_hr_files_v1",
   schedule: "nora_schedule_v1",
   deletedScheduleIds: "nora_deleted_schedule_ids_v1",
+  deletedCustomerIds: "nora_deleted_customer_ids_v1",
   deletedCustomerCareManualRowIds: "nora_deleted_customer_care_manual_row_ids_v1",
   customerCareProgress: "nora_customer_care_progress_v1",
   customerCareFilters: "nora_customer_care_filters_v1",
@@ -2749,6 +2750,12 @@ let metricsDeptKpiChart;
 const CARE_STATUS_OPTIONS = ["Mới chốt", "Đang chăm sóc", "Cần gọi lại", "Đã hoàn tất", "Tạm dừng"];
 let users = loadJSON(STORAGE.users, seedUsers);
 let customers = loadJSON(STORAGE.customers, seedCustomers);
+let deletedCustomerIds = normalizeDeletedScheduleIdMap(loadJSON(STORAGE.deletedCustomerIds, {}));
+customers = customers.filter((customer) => {
+  const customerId = String(customer?.id || "").trim();
+  if (!customerId) return true;
+  return !deletedCustomerIds[customerId];
+});
 customers = customers.map((customer) => normalizeCustomer(customer));
 let inventoryItems = loadJSON(STORAGE.inventoryItems, seedInventoryItems).map((item) => ({
   ...item,
@@ -2985,6 +2992,7 @@ function getUsersSyncEndpoint() {
 
 const APP_STATE_SYNC_KEYS = new Set([
   STORAGE.customers,
+  STORAGE.deletedCustomerIds,
   STORAGE.schedule,
   STORAGE.deletedScheduleIds,
   STORAGE.deletedCustomerCareManualRowIds,
@@ -3128,6 +3136,7 @@ function touchLocalCriticalStateUpdatedAt() {
 function hasLocalCriticalData() {
   return (
     (Array.isArray(customers) && customers.length > 0) ||
+    countObjectKeys(deletedCustomerIds) > 0 ||
     (Array.isArray(schedules) && schedules.length > 0) ||
     countObjectKeys(deletedScheduleIds) > 0 ||
     (Array.isArray(inventoryItems) && inventoryItems.length > 0) ||
@@ -3152,6 +3161,7 @@ function buildCriticalStatePayload(updatedAt = Date.now()) {
   return {
     schemaVersion: 2,
     customers: Array.isArray(customers) ? customers : [],
+    deletedCustomerIds: deletedCustomerIds && typeof deletedCustomerIds === "object" ? deletedCustomerIds : {},
     schedules: Array.isArray(schedules) ? schedules : [],
     deletedScheduleIds: deletedScheduleIds && typeof deletedScheduleIds === "object" ? deletedScheduleIds : {},
     inventoryItems: Array.isArray(inventoryItems) ? inventoryItems : [],
@@ -3185,6 +3195,7 @@ function normalizeRemoteCriticalState(raw = {}) {
   return {
     schemaVersion: Number(raw.schemaVersion) || 1,
     customers: Array.isArray(raw.customers) ? raw.customers : [],
+    deletedCustomerIds: raw.deletedCustomerIds && typeof raw.deletedCustomerIds === "object" ? raw.deletedCustomerIds : {},
     schedules: Array.isArray(raw.schedules) ? raw.schedules : [],
     deletedScheduleIds: raw.deletedScheduleIds && typeof raw.deletedScheduleIds === "object" ? raw.deletedScheduleIds : {},
     inventoryItems: Array.isArray(raw.inventoryItems) ? raw.inventoryItems : [],
@@ -3305,6 +3316,7 @@ function mergeTelegramSourceFromLocalAndRemote(localCfg = {}, remoteCfg = {}) {
 function getRemoteCriticalStateRowCount(remoteState) {
   return (
     (remoteState.customers?.length || 0) +
+    countObjectKeys(remoteState.deletedCustomerIds) +
     (remoteState.schedules?.length || 0) +
     countObjectKeys(remoteState.deletedScheduleIds) +
     (remoteState.inventoryItems?.length || 0) +
@@ -3499,6 +3511,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   const remoteHasNewData = remoteScheduleCount > localScheduleCount
     || remoteRows > localRows
     || remoteUpdatedAt > localUpdatedAt
+    || hasRemoteObjectKeysMissingLocally(remoteState.deletedCustomerIds, deletedCustomerIds)
     || hasRemoteObjectKeysMissingLocally(remoteState.deletedScheduleIds, deletedScheduleIds)
     || hasRemoteListIdsMissingLocally(remoteSchedulesFromTelesale, schedules)
     || hasRemoteListIdsMissingLocally(remoteState.customers, customers)
@@ -3528,6 +3541,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   isApplyingRemoteCriticalState = true;
   try {
     const mergedCustomers = preferRemoteList(remoteState.customers, customers);
+    const mergedDeletedCustomerIds = mergeDeletedScheduleMarkerMaps(remoteState.deletedCustomerIds, deletedCustomerIds);
     const mergedSchedules = dedupeSchedulesByIdKeepNewest(
       filterScheduleRowsByDeleteMarkers(preferRemoteList(remoteSchedulesFromTelesale, schedules))
     ).filter((item) => isScheduleFromTelesaleFlow(item));
@@ -3553,7 +3567,14 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     const mergedNurseReportOverrides = preferRemoteObject(remoteState.nurseReportOverrides, nurseReportOverrides);
     const mergedReports = preferRemoteList(remoteState.reports, reports);
 
-    customers = mergedCustomers.map((customer) => normalizeCustomer(customer));
+    customers = mergedCustomers
+      .filter((customer) => {
+        const customerId = String(customer?.id || "").trim();
+        if (!customerId) return true;
+        return !mergedDeletedCustomerIds[customerId];
+      })
+      .map((customer) => normalizeCustomer(customer));
+    deletedCustomerIds = normalizeDeletedScheduleIdMap(mergedDeletedCustomerIds);
     schedules = mergedSchedules;
     deletedScheduleIds = normalizeDeletedScheduleIdMap(mergedDeletedScheduleIds);
     deletedCustomerCareManualRowIds = normalizeDeletedScheduleIdMap(mergedDeletedCustomerCareManualRowIds);
@@ -3607,6 +3628,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     reports = mergedReports;
 
     saveJSON(STORAGE.customers, customers);
+    saveJSON(STORAGE.deletedCustomerIds, deletedCustomerIds);
     saveJSON(STORAGE.schedule, schedules);
     saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
     saveJSON(STORAGE.deletedCustomerCareManualRowIds, deletedCustomerCareManualRowIds);
@@ -5551,6 +5573,10 @@ function restoreDeletedRecord(restoreRef) {
     if (!exists) {
       customers.unshift(item.payload);
       saveJSON(STORAGE.customers, customers);
+      if (item.payload?.id && deletedCustomerIds[item.payload.id]) {
+        delete deletedCustomerIds[item.payload.id];
+        saveJSON(STORAGE.deletedCustomerIds, deletedCustomerIds);
+      }
     }
   } else {
     return false;
@@ -14875,6 +14901,11 @@ els.customerBody.addEventListener("click", (event) => {
   const deletedCustomer = customers.find((item) => item.id === customerId);
   customers = customers.filter((item) => item.id !== customerId);
   saveJSON(STORAGE.customers, customers);
+  deletedCustomerIds[customerId] = {
+    deletedAt: Date.now(),
+    reason: "manual-customer-delete"
+  };
+  saveJSON(STORAGE.deletedCustomerIds, deletedCustomerIds);
   if (deletedCustomer) {
     const restoreRef = addToRecycleBin("customer", deletedCustomer, `Khách hàng: ${deletedCustomer.name}`);
     logActivity("Khách hàng", "Xóa hồ sơ khách hàng", deletedCustomer.name, { restoreRef });

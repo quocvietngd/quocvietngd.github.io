@@ -127,6 +127,7 @@ function normalizeAppState(input = {}) {
   return {
     schemaVersion: Number(input.schemaVersion) || 1,
     customers: Array.isArray(input.customers) ? input.customers : [],
+    deletedCustomerIds: input.deletedCustomerIds && typeof input.deletedCustomerIds === "object" ? input.deletedCustomerIds : {},
     schedules: Array.isArray(input.schedules) ? input.schedules : [],
     deletedScheduleIds: input.deletedScheduleIds && typeof input.deletedScheduleIds === "object" ? input.deletedScheduleIds : {},
     inventoryItems: Array.isArray(input.inventoryItems) ? input.inventoryItems : [],
@@ -2409,6 +2410,12 @@ const server = createServer(async (req, res) => {
       incomingAppState.deletedScheduleIds = mergeDeletedScheduleIds(existingAppState.deletedScheduleIds, incomingAppState.deletedScheduleIds);
       incomingAppState.schedules = incomingAppState.schedules.filter((item) => !isScheduleDeletedByMarkerMap(item, incomingAppState.deletedScheduleIds));
       incomingAppState.customers = mergeLists(existingAppState.customers, incomingAppState.customers);
+      incomingAppState.deletedCustomerIds = mergeDeletedScheduleIds(existingAppState.deletedCustomerIds, incomingAppState.deletedCustomerIds);
+      incomingAppState.customers = incomingAppState.customers.filter((item) => {
+        const customerId = String(item?.id || "").trim();
+        if (!customerId) return true;
+        return !incomingAppState.deletedCustomerIds[customerId];
+      });
       incomingAppState.inventoryItems = mergeLists(existingAppState.inventoryItems, incomingAppState.inventoryItems);
       incomingAppState.inventoryTransactions = mergeLists(existingAppState.inventoryTransactions, incomingAppState.inventoryTransactions);
       incomingAppState.customerCareManualRows = mergeLists(existingAppState.customerCareManualRows, incomingAppState.customerCareManualRows);
