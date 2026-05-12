@@ -5549,7 +5549,17 @@ function addToRecycleBin(entityType, payload, label) {
     deletedBy: getCurrentUser()?.username || "system",
     restoredAt: null
   });
-  saveJSON(STORAGE.recycleBin, recycleBin);
+  try {
+    saveJSON(STORAGE.recycleBin, recycleBin);
+  } catch {
+    // If storage is full, keep the newest entries and retry once.
+    recycleBin = recycleBin.slice(0, 150);
+    try {
+      saveJSON(STORAGE.recycleBin, recycleBin);
+    } catch {
+      showToast("Bộ nhớ trình duyệt gần đầy, đã lược bớt thùng rác để tiếp tục thao tác.", "warning");
+    }
+  }
   return restoreRef;
 }
 
