@@ -2099,6 +2099,7 @@ td.schedule-editable:hover {
   padding: 8px 14px;
   font-size: 0.85rem;
   background: transparent;
+  color: #1f2937;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -2110,10 +2111,6 @@ td.schedule-editable:hover {
 .cust-action-dropdown .btn.warn:hover {
   background: #fff0f0;
   color: #c0392b;
-}
-  max-width: 74px;
-  padding: 3px 4px;
-  text-align: center;
 }
 
 .care-remaining-cell {
