@@ -7002,9 +7002,14 @@ function renderCustomerTable() {
         </td>
         <td>${new Date(c.updatedAt).toLocaleString("vi-VN", { hour12: false })}</td>
         <td>
-          <button class="btn secondary customer-edit-btn" type="button" data-customer-id="${c.id}">Sửa</button>
-          <button class="btn warn customer-delete-btn" type="button" data-customer-id="${c.id}">Xóa</button>
-          ${c.status === "Chốt trải nghiệm" ? `<button class="btn secondary customer-schedule-btn" type="button" data-customer-id="${c.id}" style="background:#1a7a2e;color:#fff;border-color:#1a7a2e;">📅 Lên lịch</button>` : ""}
+          <div class="cust-action-menu-wrap">
+            <button class="btn secondary cust-action-toggle-btn" type="button" data-customer-id="${c.id}">...</button>
+            <div class="cust-action-dropdown hidden">
+              <button class="btn secondary customer-edit-btn" type="button" data-customer-id="${c.id}">✏️ Sửa</button>
+              <button class="btn warn customer-delete-btn" type="button" data-customer-id="${c.id}">🗑️ Xóa</button>
+              ${c.status === "Chốt trải nghiệm" ? `<button class="btn secondary customer-schedule-btn" type="button" data-customer-id="${c.id}" style="background:#1a7a2e;color:#fff;border-color:#1a7a2e;">📅 Lên lịch</button>` : ""}
+            </div>
+          </div>
         </td>
       </tr>
     `)
@@ -13268,6 +13273,12 @@ document.addEventListener("click", (e) => {
   hideAllActionMenus();
 });
 
+document.addEventListener("click", (e) => {
+  if (!(e.target instanceof HTMLElement) || !e.target.closest(".cust-action-menu-wrap")) {
+    document.querySelectorAll(".cust-action-dropdown").forEach((d) => d.classList.add("hidden"));
+  }
+});
+
 els.openCustomerModalBtn.addEventListener("click", openCustomerModal);
 els.closeCustomerModalBtn.addEventListener("click", closeCustomerModal);
 els.customerModalBackdrop.addEventListener("click", closeCustomerModal);
@@ -14751,6 +14762,19 @@ els.saveCustomerBtn.addEventListener("click", () => {
 els.customerBody.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
+
+  if (target.classList.contains("cust-action-toggle-btn")) {
+    const wrap = target.closest(".cust-action-menu-wrap");
+    if (!wrap) return;
+    const dropdown = wrap.querySelector(".cust-action-dropdown");
+    if (!dropdown) return;
+    const isHidden = dropdown.classList.contains("hidden");
+    document.querySelectorAll(".cust-action-dropdown").forEach((d) => d.classList.add("hidden"));
+    if (isHidden) dropdown.classList.remove("hidden");
+    event.stopPropagation();
+    return;
+  }
+
   const customerId = target.dataset.customerId;
   if (!customerId) return;
 
