@@ -135,6 +135,7 @@ function normalizeAppState(input = {}) {
     customerCareProgress: input.customerCareProgress && typeof input.customerCareProgress === "object" ? input.customerCareProgress : {},
     customerCareFilters: input.customerCareFilters && typeof input.customerCareFilters === "object" ? input.customerCareFilters : {},
     customerCareManualRows: Array.isArray(input.customerCareManualRows) ? input.customerCareManualRows : [],
+    deletedCustomerCareManualRowIds: input.deletedCustomerCareManualRowIds && typeof input.deletedCustomerCareManualRowIds === "object" ? input.deletedCustomerCareManualRowIds : {},
     activities: Array.isArray(input.activities) ? input.activities : [],
     recycleBin: Array.isArray(input.recycleBin) ? input.recycleBin : [],
     rolePermissions: input.rolePermissions && typeof input.rolePermissions === "object" ? input.rolePermissions : {},
@@ -2307,6 +2308,12 @@ const server = createServer(async (req, res) => {
       incomingAppState.inventoryItems = mergeLists(existingAppState.inventoryItems, incomingAppState.inventoryItems);
       incomingAppState.inventoryTransactions = mergeLists(existingAppState.inventoryTransactions, incomingAppState.inventoryTransactions);
       incomingAppState.customerCareManualRows = mergeLists(existingAppState.customerCareManualRows, incomingAppState.customerCareManualRows);
+      incomingAppState.deletedCustomerCareManualRowIds = mergeDeletedScheduleIds(existingAppState.deletedCustomerCareManualRowIds, incomingAppState.deletedCustomerCareManualRowIds);
+      incomingAppState.customerCareManualRows = incomingAppState.customerCareManualRows.filter((item) => {
+        const rowKey = String(item?.key || "").trim();
+        if (!rowKey) return true;
+        return !incomingAppState.deletedCustomerCareManualRowIds[rowKey];
+      });
       incomingAppState.newsPosts = mergeLists(existingAppState.newsPosts, incomingAppState.newsPosts);
       incomingAppState.newsPinned = mergeLists(existingAppState.newsPinned, incomingAppState.newsPinned);
       incomingAppState.newsEvents = mergeLists(existingAppState.newsEvents, incomingAppState.newsEvents);

@@ -212,6 +212,7 @@ const STORAGE = {
   hrFiles: "nora_hr_files_v1",
   schedule: "nora_schedule_v1",
   deletedScheduleIds: "nora_deleted_schedule_ids_v1",
+  deletedCustomerCareManualRowIds: "nora_deleted_customer_care_manual_row_ids_v1",
   customerCareProgress: "nora_customer_care_progress_v1",
   customerCareFilters: "nora_customer_care_filters_v1",
   customerCareManualRows: "nora_care_manual_rows_v1",
@@ -2986,6 +2987,7 @@ const APP_STATE_SYNC_KEYS = new Set([
   STORAGE.customers,
   STORAGE.schedule,
   STORAGE.deletedScheduleIds,
+  STORAGE.deletedCustomerCareManualRowIds,
   STORAGE.inventoryItems,
   STORAGE.inventoryTransactions,
   STORAGE.hrFiles,
@@ -3132,6 +3134,7 @@ function hasLocalCriticalData() {
     (Array.isArray(inventoryTransactions) && inventoryTransactions.length > 0) ||
     countObjectKeys(hrFiles) > 0 ||
     countObjectKeys(customerCareProgress) > 0 ||
+    countObjectKeys(deletedCustomerCareManualRowIds) > 0 ||
     (Array.isArray(customerCareManualRows) && customerCareManualRows.length > 0) ||
     (Array.isArray(activityLogs) && activityLogs.length > 0) ||
     (Array.isArray(recycleBin) && recycleBin.length > 0) ||
@@ -3157,6 +3160,7 @@ function buildCriticalStatePayload(updatedAt = Date.now()) {
     customerCareProgress: customerCareProgress && typeof customerCareProgress === "object" ? customerCareProgress : {},
     customerCareFilters: customerCareFilterState && typeof customerCareFilterState === "object" ? customerCareFilterState : {},
     customerCareManualRows: Array.isArray(customerCareManualRows) ? customerCareManualRows : [],
+    deletedCustomerCareManualRowIds: deletedCustomerCareManualRowIds && typeof deletedCustomerCareManualRowIds === "object" ? deletedCustomerCareManualRowIds : {},
     activities: Array.isArray(activityLogs) ? activityLogs : [],
     recycleBin: Array.isArray(recycleBin) ? recycleBin : [],
     rolePermissions: rolePermissionsState && typeof rolePermissionsState === "object" ? rolePermissionsState : {},
@@ -3189,6 +3193,7 @@ function normalizeRemoteCriticalState(raw = {}) {
     customerCareProgress: raw.customerCareProgress && typeof raw.customerCareProgress === "object" ? raw.customerCareProgress : {},
     customerCareFilters: raw.customerCareFilters && typeof raw.customerCareFilters === "object" ? raw.customerCareFilters : {},
     customerCareManualRows: Array.isArray(raw.customerCareManualRows) ? raw.customerCareManualRows : [],
+    deletedCustomerCareManualRowIds: raw.deletedCustomerCareManualRowIds && typeof raw.deletedCustomerCareManualRowIds === "object" ? raw.deletedCustomerCareManualRowIds : {},
     activities: Array.isArray(raw.activities) ? raw.activities : [],
     recycleBin: Array.isArray(raw.recycleBin) ? raw.recycleBin : [],
     rolePermissions: raw.rolePermissions && typeof raw.rolePermissions === "object" ? raw.rolePermissions : {},
@@ -3531,7 +3536,12 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     const mergedInventoryTransactions = preferRemoteList(remoteState.inventoryTransactions, inventoryTransactions);
     const mergedHrFiles = preferRemoteObject(remoteState.hrFiles, hrFiles);
     const mergedCustomerCareProgress = preferRemoteObject(remoteState.customerCareProgress, customerCareProgress);
-    const mergedCustomerCareManualRows = preferRemoteList(remoteState.customerCareManualRows, customerCareManualRows);
+    const mergedDeletedCustomerCareManualRowIds = mergeDeletedScheduleMarkerMaps(remoteState.deletedCustomerCareManualRowIds, deletedCustomerCareManualRowIds);
+    const mergedCustomerCareManualRows = preferRemoteList(remoteState.customerCareManualRows, customerCareManualRows).filter((item) => {
+      const rowKey = String(item?.key || "").trim();
+      if (!rowKey) return true;
+      return !mergedDeletedCustomerCareManualRowIds[rowKey];
+    });
     const mergedActivities = preferRemoteList(remoteState.activities, activityLogs);
     const mergedRecycleBin = preferRemoteList(remoteState.recycleBin, recycleBin);
     const mergedRolePermissions = preferRemoteObject(remoteState.rolePermissions, rolePermissionsState);
@@ -3546,6 +3556,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     customers = mergedCustomers.map((customer) => normalizeCustomer(customer));
     schedules = mergedSchedules;
     deletedScheduleIds = normalizeDeletedScheduleIdMap(mergedDeletedScheduleIds);
+    deletedCustomerCareManualRowIds = normalizeDeletedScheduleIdMap(mergedDeletedCustomerCareManualRowIds);
     inventoryItems = mergedInventoryItems.map((item) => ({
       ...item,
       purchasePrice: Number(item.purchasePrice) || 0,
@@ -3598,6 +3609,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     saveJSON(STORAGE.customers, customers);
     saveJSON(STORAGE.schedule, schedules);
     saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
+    saveJSON(STORAGE.deletedCustomerCareManualRowIds, deletedCustomerCareManualRowIds);
     saveJSON(STORAGE.inventoryItems, inventoryItems);
     saveJSON(STORAGE.inventoryTransactions, inventoryTransactions);
     saveJSON(STORAGE.hrFiles, hrFiles);
@@ -3957,6 +3969,7 @@ if (!localStorage.getItem(SCHEDULE_CLEAR_FLAG)) {
 }
 let schedules = loadJSON(STORAGE.schedule, []);
 let deletedScheduleIds = normalizeDeletedScheduleIdMap(loadJSON(STORAGE.deletedScheduleIds, {}));
+let deletedCustomerCareManualRowIds = normalizeDeletedScheduleIdMap(loadJSON(STORAGE.deletedCustomerCareManualRowIds, {}));
 if (Array.isArray(schedules)) {
 
   const consultantRepair = repairConsultantTelegramRows(schedules);
@@ -8131,6 +8144,13 @@ function renderCustomerCareTable() {
         saveJSON(STORAGE.customerCareManualRows, customerCareManualRows);
         delete customerCareProgress[key];
         saveJSON(STORAGE.customerCareProgress, customerCareProgress);
+        // Mark as deleted in cloud to prevent rollback
+        deletedCustomerCareManualRowIds[key] = {
+          deletedAt: Date.now(),
+          reason: "manual-delete"
+        };
+        saveJSON(STORAGE.deletedCustomerCareManualRowIds, deletedCustomerCareManualRowIds);
+        queueCriticalStateSync(STORAGE.deletedCustomerCareManualRowIds);
         showToast("Đã xóa dòng CSKH thủ công/import.", "success");
         logActivity("CSKH", "Xóa dòng thủ công/import", `Khóa KH: ${key}`);
         renderCustomerCarePage();
