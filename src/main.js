@@ -8086,7 +8086,14 @@ function renderCustomerCareTable() {
           <td><select class="care-auto-save care-input-sm" data-care-key="${row.key}" data-care-field="status">${CARE_STATUS_OPTIONS.map((s) => `<option value="${s}"${progress.status === s ? " selected" : ""}>${s}</option>`).join("")}</select></td>
           <td><input class="care-auto-save care-input-sm" type="date" value="${progress.nextDate || ""}" data-care-key="${row.key}" data-care-field="nextDate" /></td>
           <td><input class="care-auto-save care-input-sm" type="text" value="${progress.note || ""}" data-care-key="${row.key}" data-care-field="note" placeholder="Ghi chú" /></td>
-          <td style="text-align:center;">${row.sourceType === "auto" ? "--" : `<button class="btn danger care-delete-row-btn" type="button" data-care-delete-key="${row.key}">X</button>`}</td>
+          <td style="text-align:center;">${row.sourceType === "auto" ? "--" : `
+            <div class="care-action-menu-wrap">
+              <button class="btn care-action-toggle-btn" type="button" data-care-action-key="${row.key}" title="Tùy chọn">&#8942;</button>
+              <div class="care-action-dropdown hidden" data-care-action-menu="${row.key}">
+                <button class="btn danger care-delete-row-btn" type="button" data-care-delete-key="${row.key}">🗑 Xóa dòng</button>
+              </div>
+            </div>
+          `}</td>
         </tr>
       `;
     }).join("");
@@ -8135,6 +8142,8 @@ function renderCustomerCareTable() {
     const deleteButtons = document.querySelectorAll(".care-delete-row-btn");
     deleteButtons.forEach((btn) => {
       btn.addEventListener("click", (e) => {
+        // Đóng dropdown trước khi xóa
+        document.querySelectorAll(".care-action-dropdown").forEach((d) => d.classList.add("hidden"));
         const key = e.currentTarget?.getAttribute("data-care-delete-key");
         if (!key) return;
         const found = (Array.isArray(customerCareManualRows) ? customerCareManualRows : []).find((item) => item.key === key);
@@ -8156,6 +8165,25 @@ function renderCustomerCareTable() {
         renderCustomerCarePage();
       });
     });
+
+    // Toggle dropdown ... cho mỗi dòng
+    document.querySelectorAll(".care-action-toggle-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const key = btn.getAttribute("data-care-action-key");
+        const menu = document.querySelector(`.care-action-dropdown[data-care-action-menu="${key}"]`);
+        if (!menu) return;
+        const isOpen = !menu.classList.contains("hidden");
+        // Đóng tất cả menu khác
+        document.querySelectorAll(".care-action-dropdown").forEach((d) => d.classList.add("hidden"));
+        if (!isOpen) menu.classList.remove("hidden");
+      });
+    });
+
+    // Click ngoài thì đóng tất cả dropdown care
+    document.addEventListener("click", () => {
+      document.querySelectorAll(".care-action-dropdown").forEach((d) => d.classList.add("hidden"));
+    }, { once: true, capture: true });
   }, 100);
 }
 
