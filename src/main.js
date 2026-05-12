@@ -9099,6 +9099,34 @@ async function runTelegramRealtimeSync(silent = false, options = {}) {
 }
 // ─── End Telegram Integration ──────────────────────────────────────────────────
 
+function hashStringFNV1a(input = "") {
+  let hash = 0x811c9dc5;
+  const source = String(input || "");
+  for (let i = 0; i < source.length; i += 1) {
+    hash ^= source.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function buildImportedScheduleStableId(seed = {}) {
+  const dateKey = normalizeScheduleDateKey(seed.registrationDate || seed.date || "") || "";
+  const phoneKey = String(seed.phone || "").replace(/\D/g, "");
+  const parts = [
+    normalizeTextForMatching(seed.route || "") || "-",
+    dateKey || "-",
+    normalizeTextForMatching(seed.customerName || "") || "-",
+    phoneKey || "-",
+    normalizeTextForMatching(seed.appointmentTime || "") || "-",
+    normalizeTextForMatching(seed.service || "") || "-",
+    normalizeTextForMatching(seed.saleStaff || "") || "-",
+    normalizeTextForMatching(seed.consultant || "") || "-",
+    normalizeTextForMatching(seed.nurse || "") || "-",
+    normalizeTextForMatching(seed.source || "") || "-"
+  ];
+  return `imp-${hashStringFNV1a(parts.join("|"))}`;
+}
+
 function normalizeImportedScheduleRow(raw) {
   const sourceObj = {};
   Object.keys(raw || {}).forEach((key) => {
@@ -9151,7 +9179,18 @@ function normalizeImportedScheduleRow(raw) {
     ? `tgm-${telegramChatId}:${telegramMessageId}`
     : telegramUpdateId
       ? `tg-${telegramUpdateId}`
-      : `sc-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+      : buildImportedScheduleStableId({
+        route: telegramRouteRaw,
+        registrationDate: normalizedDate,
+        customerName,
+        phone: String(firstValue(sourceObj, ["phone", "số điện thoại", "so dien thoai"]) || "").trim(),
+        appointmentTime: String(firstValue(sourceObj, ["appointmenttime", "time", "gio", "giờ trải nghiệm", "gio trai nghiem"]) || "").trim(),
+        service: String(firstValue(sourceObj, ["service", "dịch vụ", "dich vu"]) || "").trim(),
+        saleStaff: String(firstValue(sourceObj, ["salestaff", "telesale", "sale", "telesale phụ trách", "telesale phu trach"]) || "").trim(),
+        consultant: String(firstValue(sourceObj, ["consultant", "tư vấn", "tu van"]) || "").trim(),
+        nurse: String(firstValue(sourceObj, ["nurse", "điều dưỡng", "dieu duong"]) || "").trim(),
+        source: String(firstValue(sourceObj, ["source", "nguồn data", "nguon data"]) || "Nhập file").trim()
+      });
   const serviceText = String(firstValue(sourceObj, ["service", "dịch vụ", "dich vu"]) || "").trim();
   const sessionDurationText = String(firstValue(sourceObj, ["sessionduration", "thời gian", "thoi gian"]) || "").trim();
   const noteText = String(firstValue(sourceObj, ["note", "ghi chú", "ghi chu"]) || "").trim();
@@ -9380,6 +9419,28 @@ function getTelegramDeletionScopeFingerprint(item) {
   return "";
 }
 
+function getImportedScheduleDeletionFingerprint(item) {
+  if (!item || typeof item !== "object") return "";
+  if (isTelegramScheduleRow(item)) return "";
+  if (String(item?.customerRefId || "").trim()) return "";
+  if (String(item?.scheduleSourceType || "").trim().toLowerCase() === SCHEDULE_SOURCE_TYPE_TELESALE) return "";
+  if (String(item?.createdSource || "").trim().toLowerCase() === "telesale") return "";
+
+  const date = normalizeScheduleDateKey(item?.registrationDate || item?.date || "") || "";
+  if (!date) return "";
+
+  const customer = normalizeTextForMatching(item?.customerName || "") || "-";
+  const phone = String(item?.phone || "").replace(/\D/g, "") || "-";
+  const time = normalizeTextForMatching(item?.appointmentTime || "") || "-";
+  const service = normalizeTextForMatching(item?.service || "") || "-";
+  const sale = normalizeTextForMatching(item?.saleStaff || "") || "-";
+  const consultant = normalizeTextForMatching(item?.consultant || "") || "-";
+  const nurse = normalizeTextForMatching(item?.nurse || "") || "-";
+  const source = normalizeTextForMatching(item?.source || item?.reportSource || item?.createdSource || "") || "-";
+
+  return `impsfp:${date}|${customer}|${phone}|${time}|${service}|${sale}|${consultant}|${nurse}|${source}`;
+}
+
 function buildScheduleDeleteMarkerKeys(scheduleLike) {
   const keys = new Set();
   const row = scheduleLike && typeof scheduleLike === "object" ? scheduleLike : null;
@@ -9396,6 +9457,8 @@ function buildScheduleDeleteMarkerKeys(scheduleLike) {
     if (fingerprint) keys.add(fingerprint);
     const scopeFingerprint = getTelegramDeletionScopeFingerprint(row);
     if (scopeFingerprint) keys.add(scopeFingerprint);
+    const importedFingerprint = getImportedScheduleDeletionFingerprint(row);
+    if (importedFingerprint) keys.add(importedFingerprint);
   }
 
   return Array.from(keys);

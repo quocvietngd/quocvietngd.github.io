@@ -156,6 +156,114 @@ function normalizeAppState(input = {}) {
   };
 }
 
+function normalizeTextForDeleteKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function normalizeDateKeyForDeleteKey(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split("/");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) {
+    const [dd, mm, yyyy] = raw.split("-");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return "";
+}
+
+function isTelegramScheduleRowForDeleteKey(item) {
+  const id = String(item?.id || "").trim().toLowerCase();
+  const source = String(item?.source || item?.reportSource || item?.createdSource || "").toLowerCase();
+  return id.startsWith("tg-") || id.startsWith("tgm-") || source.includes("telegram");
+}
+
+function getTelegramDeletionFingerprintForDeleteKey(item) {
+  if (!isTelegramScheduleRowForDeleteKey(item)) return "";
+  const route = normalizeTextForDeleteKey(item?.telegramRoute || "");
+  const date = normalizeDateKeyForDeleteKey(item?.registrationDate || item?.date || "");
+  const saleName = normalizeTextForDeleteKey(item?.saleStaff || "");
+  const consultant = normalizeTextForDeleteKey(item?.consultant || "");
+  const nurse = normalizeTextForDeleteKey(item?.nurse || "");
+  const customerName = normalizeTextForDeleteKey(item?.customerName || "");
+  const phone = String(item?.phone || "").replace(/\D/g, "");
+  const appointmentTime = normalizeTextForDeleteKey(item?.appointmentTime || "");
+  const service = normalizeTextForDeleteKey(item?.service || "");
+  return `tgfp:${route}|${date}|${saleName}|${consultant}|${nurse}|${customerName}|${phone}|${appointmentTime}|${service}`;
+}
+
+function getTelegramDeletionScopeFingerprintForDeleteKey(item) {
+  if (!isTelegramScheduleRowForDeleteKey(item)) return "";
+  const route = normalizeTextForDeleteKey(item?.telegramRoute || "");
+  const date = normalizeDateKeyForDeleteKey(item?.registrationDate || item?.date || "");
+  if (!route || !date) return "";
+  if (route === "telesale") {
+    const saleName = normalizeTextForDeleteKey(item?.saleStaff || item?.customerName || "");
+    if (!saleName) return "";
+    return `tgscope:${route}|${date}|${saleName}`;
+  }
+  return "";
+}
+
+function getImportedScheduleDeletionFingerprintForDeleteKey(item) {
+  if (!item || typeof item !== "object") return "";
+  if (isTelegramScheduleRowForDeleteKey(item)) return "";
+  if (String(item?.customerRefId || "").trim()) return "";
+  if (String(item?.scheduleSourceType || "").trim().toLowerCase() === "telesale-flow") return "";
+  if (String(item?.createdSource || "").trim().toLowerCase() === "telesale") return "";
+
+  const date = normalizeDateKeyForDeleteKey(item?.registrationDate || item?.date || "");
+  if (!date) return "";
+
+  const customer = normalizeTextForDeleteKey(item?.customerName || "") || "-";
+  const phone = String(item?.phone || "").replace(/\D/g, "") || "-";
+  const time = normalizeTextForDeleteKey(item?.appointmentTime || "") || "-";
+  const service = normalizeTextForDeleteKey(item?.service || "") || "-";
+  const sale = normalizeTextForDeleteKey(item?.saleStaff || "") || "-";
+  const consultant = normalizeTextForDeleteKey(item?.consultant || "") || "-";
+  const nurse = normalizeTextForDeleteKey(item?.nurse || "") || "-";
+  const source = normalizeTextForDeleteKey(item?.source || item?.reportSource || item?.createdSource || "") || "-";
+
+  return `impsfp:${date}|${customer}|${phone}|${time}|${service}|${sale}|${consultant}|${nurse}|${source}`;
+}
+
+function buildScheduleDeleteMarkerKeysForServer(scheduleLike) {
+  const keys = new Set();
+  const row = scheduleLike && typeof scheduleLike === "object" ? scheduleLike : null;
+  const id = row ? String(row.id || "").trim() : String(scheduleLike || "").trim();
+  if (id) keys.add(id);
+  if (!row) return Array.from(keys);
+
+  const updateId = String(row.telegramUpdateId || "").trim();
+  const messageId = String(row.telegramMessageId || "").trim();
+  const chatId = String(row.telegramChatId || "").trim();
+  if (updateId) keys.add(`tg-${updateId}`);
+  if (chatId && messageId) keys.add(`tgm-${chatId}:${messageId}`);
+
+  const tgFp = getTelegramDeletionFingerprintForDeleteKey(row);
+  if (tgFp) keys.add(tgFp);
+  const tgScope = getTelegramDeletionScopeFingerprintForDeleteKey(row);
+  if (tgScope) keys.add(tgScope);
+  const importedFp = getImportedScheduleDeletionFingerprintForDeleteKey(row);
+  if (importedFp) keys.add(importedFp);
+
+  return Array.from(keys);
+}
+
+function isScheduleDeletedByMarkerMap(scheduleLike, markerMap = {}) {
+  const keys = buildScheduleDeleteMarkerKeysForServer(scheduleLike);
+  if (!keys.length) return false;
+  return keys.some((key) => Boolean(markerMap[key]));
+}
+
 function normalizeState(raw = {}) {
   const token = String(raw.token || ENV_TELEGRAM_TOKEN || "");
   const chatId = String(raw.chatId || ENV_TELEGRAM_CHAT_ID || "");
@@ -2299,11 +2407,7 @@ const server = createServer(async (req, res) => {
       incomingAppState.schedules = mergeLists(existingAppState.schedules, incomingAppState.schedules);
       incomingAppState.schedules = dedupeTelegramNurseSchedules(incomingAppState.schedules);
       incomingAppState.deletedScheduleIds = mergeDeletedScheduleIds(existingAppState.deletedScheduleIds, incomingAppState.deletedScheduleIds);
-      incomingAppState.schedules = incomingAppState.schedules.filter((item) => {
-        const rowId = String(item?.id || "").trim();
-        if (!rowId) return true;
-        return !incomingAppState.deletedScheduleIds[rowId];
-      });
+      incomingAppState.schedules = incomingAppState.schedules.filter((item) => !isScheduleDeletedByMarkerMap(item, incomingAppState.deletedScheduleIds));
       incomingAppState.customers = mergeLists(existingAppState.customers, incomingAppState.customers);
       incomingAppState.inventoryItems = mergeLists(existingAppState.inventoryItems, incomingAppState.inventoryItems);
       incomingAppState.inventoryTransactions = mergeLists(existingAppState.inventoryTransactions, incomingAppState.inventoryTransactions);
