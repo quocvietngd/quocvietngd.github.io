@@ -9780,12 +9780,73 @@ const OFFICIAL_METRICS_FALLBACK = {
   nurseCompleteRate: 63.5
 };
 
+function buildMetricsFromReportData(start, end) {
+  // Marketing – aggregated from report rows
+  const mkRows = getMarketingReportRows(start, end);
+  const mkMessTotal = mkRows.reduce((s, r) => s + (r.messCount || 0), 0);
+  const mkPhoneTotal = mkRows.reduce((s, r) => s + (r.phoneCount || 0), 0);
+  const mkBookedTotal = mkRows.reduce((s, r) => s + (r.bookedCount || 0), 0);
+  const mkLeadRate = mkMessTotal > 0 ? (mkBookedTotal / mkMessTotal) * 100 : 0;
+
+  // Telesale – aggregated from report rows
+  const tsRows = getTelesaleReportRows(start, end);
+  const tsBookedTotal = tsRows.reduce((s, r) => s + (r.bookedCount || 0), 0);
+  const tsCancelledTotal = tsRows.reduce((s, r) => s + (r.cancelledCount || 0), 0);
+  const tsMessTotal = tsRows.reduce((s, r) => s + (r.messCount || 0), 0);
+  const tsBookingRate = tsMessTotal > 0 ? (tsBookedTotal / tsMessTotal) * 100 : 0;
+  const tsCancelRate = tsMessTotal > 0 ? (tsCancelledTotal / tsMessTotal) * 100 : 0;
+
+  // Consultant – aggregated from report rows
+  const csRows = getConsultantReportRows(start, end);
+  const csRevenue = csRows.reduce((s, r) => s + (r.revenue || 0), 0);
+  const csReceived = csRows.reduce((s, r) => s + (r.receivedCount || 0), 0);
+  const csSigned = csRows.reduce((s, r) => s + (r.signedCount || 0), 0);
+  const csSignRate = csReceived > 0 ? (csSigned / csReceived) * 100 : 0;
+  const csRevenueForAvg = csRows.reduce((s, r) => s + (r.revenueForAvg != null ? r.revenueForAvg : (r.revenue || 0)), 0);
+  const csAvgInvoice = csSigned > 0 ? csRevenueForAvg / csSigned : 0;
+
+  // Nurse – from raw rows
+  const nurseRaw = getRowsByReportDepartment("nurse", start, end);
+  const nurseCaring = nurseRaw.filter((i) => i.status === "pending" || i.status === "confirmed").length;
+  const nurseCompleted = nurseRaw.filter((i) => i.status === "completed").length;
+  const nurseServiceScore = nurseRaw.length > 0 ? Math.min(5, (nurseCompleted / nurseRaw.length) * 5) : 0;
+  const nurseCompleteRate = nurseRaw.length > 0 ? (nurseCompleted / nurseRaw.length) * 100 : 0;
+
+  return {
+    marketingInteractions: mkMessTotal,
+    marketingPhones: mkPhoneTotal,
+    marketingLeadRate: mkLeadRate,
+    telesaleAppointments: tsBookedTotal,
+    telesaleBookingRate: tsBookingRate,
+    telesaleCancelRate: tsCancelRate,
+    consultantRevenue: csRevenue,
+    consultantSignRate: csSignRate,
+    consultantAvgContract: csAvgInvoice,
+    nurseCaring,
+    nurseServiceScore,
+    nurseCompleteRate,
+    _mkRows: mkRows.length,
+    _tsRows: tsRows.length,
+    _csRows: csRows.length,
+    _nurseRows: nurseRaw.length
+  };
+}
+
 function renderDepartmentMetrics() {
   if (!els.mkInteractions) return;
 
-  const rows = getFilteredSchedulesForMetrics();
+  const start = metricsFilterState.start || null;
+  const end = metricsFilterState.end || null;
+  const dep = metricsFilterState.department || "all";
+  const depMap = { all: "tất cả phòng ban", marketing: "Marketing", telesale: "Telesale", consultant: "Tư vấn", nurse: "Điều dưỡng" };
+  const depLabel = depMap[dep] || "tất cả phòng ban";
+  const startLabel = start || "--";
+  const endLabel = end || "--";
 
-  if (rows.length === 0) {
+  const metrics = buildMetricsFromReportData(start, end);
+  const totalRows = metrics._mkRows + metrics._tsRows + metrics._csRows + metrics._nurseRows;
+
+  if (totalRows === 0) {
     const fallback = OFFICIAL_METRICS_FALLBACK;
     els.mkInteractions.textContent = fallback.marketingInteractions.toLocaleString("vi-VN");
     els.mkPhones.textContent = fallback.marketingPhones.toLocaleString("vi-VN");
@@ -9806,15 +9867,11 @@ function renderDepartmentMetrics() {
       nurseCompleteRate: fallback.nurseCompleteRate
     });
     if (els.metricsFilterSummary) {
-      const startLabel = metricsFilterState.start || "--";
-      const endLabel = metricsFilterState.end || "--";
-      const depMap = { all: "tất cả phòng ban", marketing: "Marketing", telesale: "Telesale", consultant: "Tư vấn", nurse: "Điều dưỡng" };
-      const depLabel = depMap[metricsFilterState.department] || "tất cả phòng ban";
-      els.metricsFilterSummary.textContent = `Bộ lọc: ${startLabel} → ${endLabel} | ${depLabel} · 0 lịch (đang dùng dữ liệu tạm)`;
+      els.metricsFilterSummary.textContent = `Bộ lọc: ${startLabel} → ${endLabel} | ${depLabel} · 0 báo cáo (đang dùng dữ liệu tạm)`;
     }
     return;
   }
-  const metrics = buildMetricsFromRows(rows);
+
   els.mkInteractions.textContent = metrics.marketingInteractions.toLocaleString("vi-VN");
   els.mkPhones.textContent = metrics.marketingPhones.toLocaleString("vi-VN");
   els.mkLeadRate.textContent = `${metrics.marketingLeadRate.toFixed(1)}%`;
@@ -9830,11 +9887,7 @@ function renderDepartmentMetrics() {
   drawMetricsDeptKpiChart(metrics);
 
   if (els.metricsFilterSummary) {
-    const startLabel = metricsFilterState.start || "--";
-    const endLabel = metricsFilterState.end || "--";
-    const depMap = { all: "tất cả phòng ban", marketing: "Marketing", telesale: "Telesale", consultant: "Tư vấn", nurse: "Điều dưỡng" };
-    const depLabel = depMap[metricsFilterState.department] || "tất cả phòng ban";
-    els.metricsFilterSummary.textContent = `Bộ lọc: ${startLabel} → ${endLabel} | ${depLabel} · ${rows.length} lịch`;
+    els.metricsFilterSummary.textContent = `Bộ lọc: ${startLabel} → ${endLabel} | ${depLabel} · MKT: ${metrics._mkRows} | TS: ${metrics._tsRows} | TV: ${metrics._csRows} | ĐD: ${metrics._nurseRows} dòng`;
   }
 }
 
