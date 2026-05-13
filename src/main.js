@@ -4206,7 +4206,7 @@ migrateLegacyReceivableAmounts();
 let editingScheduleId = null;
 let scheduleModalCustomerId = "";
 let scheduleFilterState = { month: today.slice(0, 7), status: "", staff: "all", source: "", keyword: "" };
-let metricsFilterState = { start: filterState.start, end: filterState.end, department: "all" };
+let metricsFilterState = { start: "", end: "", department: "all" };
 let customerCareProgress = loadJSON(STORAGE.customerCareProgress, {});
 let customerCareManualRows = loadJSON(STORAGE.customerCareManualRows, []);
 let customerCareLegacyCleaned = false;
@@ -9788,16 +9788,22 @@ function buildMetricsFromReportData(start, end) {
   const mkBookedTotal = mkRows.reduce((s, r) => s + (r.bookedCount || 0), 0);
   const mkLeadRate = mkMessTotal > 0 ? (mkBookedTotal / mkMessTotal) * 100 : 0;
 
-  // Telesale – aggregated from report rows
+  // Telesale – aggregated from report rows (bypass person filter)
+  const _savedTsSale = telesaleReportState.sale;
+  telesaleReportState.sale = "";
   const tsRows = getTelesaleReportRows(start, end);
+  telesaleReportState.sale = _savedTsSale;
   const tsBookedTotal = tsRows.reduce((s, r) => s + (r.bookedCount || 0), 0);
   const tsCancelledTotal = tsRows.reduce((s, r) => s + (r.cancelledCount || 0), 0);
   const tsMessTotal = tsRows.reduce((s, r) => s + (r.messCount || 0), 0);
   const tsBookingRate = tsMessTotal > 0 ? (tsBookedTotal / tsMessTotal) * 100 : 0;
   const tsCancelRate = tsMessTotal > 0 ? (tsCancelledTotal / tsMessTotal) * 100 : 0;
 
-  // Consultant – aggregated from report rows
+  // Consultant – aggregated from report rows (bypass person filter)
+  const _savedCsConsultant = consultantReportState.consultant;
+  consultantReportState.consultant = "";
   const csRows = getConsultantReportRows(start, end);
+  consultantReportState.consultant = _savedCsConsultant;
   const csRevenue = csRows.reduce((s, r) => s + (r.revenue || 0), 0);
   const csReceived = csRows.reduce((s, r) => s + (r.receivedCount || 0), 0);
   const csSigned = csRows.reduce((s, r) => s + (r.signedCount || 0), 0);
@@ -14307,7 +14313,7 @@ els.applyMetricsFilterBtn.addEventListener("click", () => {
 });
 
 els.resetMetricsFilterBtn.addEventListener("click", () => {
-  metricsFilterState = { start: filterState.start, end: filterState.end, department: "all" };
+  metricsFilterState = { start: "", end: "", department: "all" };
   renderMetricsFilterControls();
   renderDepartmentMetrics();
 });
