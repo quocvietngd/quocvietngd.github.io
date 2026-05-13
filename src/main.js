@@ -12885,45 +12885,74 @@ function drawHomeRevenueChart(filteredReports) {
 }
 
 function renderHomeOverview(filteredReports) {
-  const latestToday = getLatestRowsByDepartment(filteredReports);
-  const latestReport = filteredReports.length ? [...filteredReports].sort((a, b) => b.updatedAt - a.updatedAt)[0] : null;
-  const latestByDayDepartment = getLatestRowsByDateDepartment(filteredReports);
-  const anchorDate = latestReport ? latestReport.date : filterState.end;
+  // ── Revenue from real report data ──────────────────────────────────────────
+  const _savedCsConsultant = consultantReportState.consultant;
+  consultantReportState.consultant = "";
+  const allCsRows = getConsultantReportRows(null, null);
+  consultantReportState.consultant = _savedCsConsultant;
+
+  const _savedTsSale = telesaleReportState.sale;
+  telesaleReportState.sale = "";
+  const allTsRows = getTelesaleReportRows(null, null);
+  telesaleReportState.sale = _savedTsSale;
+
+  const allMkRows = getMarketingReportRows(null, null);
+  const allNurseRaw = getRowsByReportDepartment("nurse", null, null);
+
+  const csRevenueByDate = new Map();
+  allCsRows.forEach((r) => {
+    csRevenueByDate.set(r.date, (csRevenueByDate.get(r.date) || 0) + (r.revenue || 0));
+  });
+
+  const anchorDate = today;
   const monthKey = anchorDate.slice(0, 7);
-  const dailyRows = latestByDayDepartment.filter((row) => row.date === anchorDate);
 
-  const todayRevenue = dailyRows.reduce((sum, row) => sum + getRevenueFromReport(row), 0);
-  const monthRevenue = latestByDayDepartment
-    .filter((row) => row.date.startsWith(monthKey))
-    .reduce((sum, row) => sum + getRevenueFromReport(row), 0);
-  const totalRevenue = latestByDayDepartment.reduce((sum, row) => sum + getRevenueFromReport(row), 0);
+  const todayRevenue = csRevenueByDate.get(anchorDate) || 0;
+  const monthRevenue = Array.from(csRevenueByDate.entries())
+    .filter(([d]) => d.startsWith(monthKey))
+    .reduce((s, [, v]) => s + v, 0);
+  const totalRevenue = allCsRows.reduce((s, r) => s + (r.revenue || 0), 0);
 
-  const monthTarget = Object.values(DEPARTMENT_MONTHLY_REVENUE_TARGET).reduce((sum, target) => sum + target, 0);
+  const monthTarget = Object.values(DEPARTMENT_MONTHLY_REVENUE_TARGET).reduce((sum, t) => sum + t, 0);
   const monthProgress = monthTarget > 0 ? ((monthRevenue / monthTarget) * 100).toFixed(1) : "0.0";
 
   els.homeDailyRevenue.textContent = formatVnd(todayRevenue);
-  els.homeDailyRevenueMeta.textContent = `Mốc ngày: ${anchorDate}`;
+  els.homeDailyRevenueMeta.textContent = `Doanh số thực thu hôm nay (${anchorDate})`;
   els.homeMonthlyRevenue.textContent = formatVnd(monthRevenue);
-  els.homeMonthlyRevenueMeta.textContent = `Tháng ${monthKey.slice(5, 7)}/${monthKey.slice(0, 4)} - Hoàn thành ${monthProgress}%`;
+  els.homeMonthlyRevenueMeta.textContent = `Tháng ${monthKey.slice(5, 7)}/${monthKey.slice(0, 4)} · Hoàn thành ${monthProgress}%`;
   els.homeTotalRevenue.textContent = formatVnd(totalRevenue);
-  els.homeTotalRevenueMeta.textContent = `Dữ liệu trong kỳ: ${filterState.start} đến ${filterState.end}`;
+  els.homeTotalRevenueMeta.textContent = `Tổng thực thu từ ${allCsRows.length} dòng tư vấn`;
 
-  const departmentRows = DEPARTMENTS.map((department) => {
-    const rowsByDepartment = latestByDayDepartment.filter((item) => item.department === department);
-    const row = rowsByDepartment.sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    if (!row) return { department, score: 0, revenue: 0, risk: "Chưa có dữ liệu" };
-    const score = ((row.completion * 0.55) + (row.quality * 0.35) - (row.issues * 3.5));
-    const revenue = rowsByDepartment.reduce((sum, item) => sum + getRevenueFromReport(item), 0);
-    const risk = row.issues >= 3 || row.completion < 70 ? "Cao" : row.issues >= 1 ? "Trung bình" : "Thấp";
-    return { department, score, revenue, risk };
-  });
+  // ── Department summary table ────────────────────────────────────────────────
+  const csTotalRevenue = allCsRows.reduce((s, r) => s + (r.revenue || 0), 0);
+  const csReceived = allCsRows.reduce((s, r) => s + (r.receivedCount || 0), 0);
+  const csSigned = allCsRows.reduce((s, r) => s + (r.signedCount || 0), 0);
+  const csSignRate = csReceived > 0 ? (csSigned / csReceived) * 100 : 0;
 
-  els.homeDeptBody.innerHTML = departmentRows
+  const tsBooked = allTsRows.reduce((s, r) => s + (r.bookedCount || 0), 0);
+  const tsMess = allTsRows.reduce((s, r) => s + (r.messCount || 0), 0);
+  const tsRate = tsMess > 0 ? (tsBooked / tsMess) * 100 : 0;
+
+  const mkMess = allMkRows.reduce((s, r) => s + (r.messCount || 0), 0);
+  const mkBooked = allMkRows.reduce((s, r) => s + (r.bookedCount || 0), 0);
+  const mkRate = mkMess > 0 ? (mkBooked / mkMess) * 100 : 0;
+
+  const nurseCompleted = allNurseRaw.filter((i) => i.status === "completed").length;
+  const nurseRate = allNurseRaw.length > 0 ? (nurseCompleted / allNurseRaw.length) * 100 : 0;
+
+  const deptSummary = [
+    { department: "Marketing",    score: mkRate.toFixed(1),  revenue: mkMess,           revenueLabel: `${mkMess} mess · ${mkBooked} đặt lịch`,              risk: mkRate >= 30 ? "Thấp" : mkRate >= 15 ? "Trung bình" : "Cao" },
+    { department: "Telesale",     score: tsRate.toFixed(1),  revenue: tsBooked,          revenueLabel: `${tsBooked} lịch trải nghiệm / ${tsMess} mess`,       risk: tsRate >= 30 ? "Thấp" : tsRate >= 15 ? "Trung bình" : "Cao" },
+    { department: "Tư vấn",       score: csSignRate.toFixed(1), revenue: csTotalRevenue, revenueLabel: formatVnd(csTotalRevenue),                              risk: csSignRate >= 30 ? "Thấp" : csSignRate >= 15 ? "Trung bình" : "Cao" },
+    { department: "Điều dưỡng",   score: nurseRate.toFixed(1), revenue: nurseCompleted,  revenueLabel: `${nurseCompleted} ca hoàn tất / ${allNurseRaw.length}`, risk: nurseRate >= 50 ? "Thấp" : nurseRate >= 30 ? "Trung bình" : "Cao" }
+  ];
+
+  els.homeDeptBody.innerHTML = deptSummary
     .map((item) => `
       <tr>
         <td>${item.department}</td>
-        <td>${item.score.toFixed(1)}</td>
-        <td>${formatVnd(item.revenue)}</td>
+        <td>${item.score}%</td>
+        <td>${item.revenueLabel}</td>
         <td>${item.risk}</td>
       </tr>
     `)
