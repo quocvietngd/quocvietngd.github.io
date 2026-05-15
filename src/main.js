@@ -8540,6 +8540,34 @@ function getTelegramDirectPollingBlockedMessage() {
   return "Bot đang bật webhook realtime, app sẽ không gọi getUpdates trực tiếp để tránh lỗi Telegram 409.";
 }
 
+function getFriendlyTelegramErrorMessage(input) {
+  const raw = String(input?.message || input || "").trim();
+  const normalized = raw.toLowerCase();
+  if (!raw) return "Lỗi Telegram chưa xác định.";
+  if (normalized.includes("http: 409") || normalized.includes("http 409") || normalized.includes("conflict")) {
+    return "Bot Telegram đang bị xung đột chế độ nhận tin. Nếu đã bật webhook realtime thì không dùng getUpdates ở nơi khác với cùng token.";
+  }
+  if (normalized.includes("bot dang bat webhook realtime") || normalized.includes("tranh loi telegram 409")) {
+    return getTelegramDirectPollingBlockedMessage();
+  }
+  if (normalized.includes("failed to fetch") || normalized.includes("networkerror") || normalized.includes("load failed") || normalized.includes("cors")) {
+    return "Không kết nối được tới Telegram Bridge hoặc Telegram API. Kiểm tra mạng, CORS và trạng thái server rồi thử lại.";
+  }
+  if (normalized.includes("timeout")) {
+    return "Kết nối Telegram bị quá thời gian chờ. Server bridge có thể đang chậm hoặc tạm không phản hồi.";
+  }
+  if (normalized.includes("chat not found")) {
+    return "Chat ID chưa đúng hoặc bot chưa được thêm vào nhóm/chat cần đồng bộ.";
+  }
+  if (normalized.includes("unauthorized") || normalized.includes("forbidden") || normalized.includes("token")) {
+    return "Bot Token không hợp lệ hoặc bot chưa có quyền truy cập chat này.";
+  }
+  if (normalized.includes("chua thay chat nao")) {
+    return "Chưa thấy chat nào. Hãy thêm bot vào nhóm, gửi một tin nhắn rồi thử lấy Chat ID lại.";
+  }
+  return raw;
+}
+
 function resetTelegramSyncCursor() {
   telegramSourceConfig.lastSyncedAt = 0;
   telegramSourceConfig.lastUpdateId = 0;
@@ -9140,7 +9168,7 @@ async function runTelegramRealtimeSync(silent = false, options = {}) {
     if (result.importedRows > 0) renderAll();
     return result;
   } catch (err) {
-    if (silent) return { importedRows: 0, fetchedRows: 0, pendingCount: 0, configured: false, error: err.message };
+    if (silent) return { importedRows: 0, fetchedRows: 0, pendingCount: 0, configured: false, error: getFriendlyTelegramErrorMessage(err) };
     throw err;
   }
 }
@@ -15600,8 +15628,9 @@ els.syncTelegramBtn.addEventListener("click", async () => {
     showToast(msg, result.importedRows > 0 ? "success" : "info");
     if (result.importedRows > 0) renderAll();
   } catch (err) {
-    els.telegramSyncStatus.textContent = `Lỗi: ${err.message}`;
-    showToast(`Lỗi Telegram: ${err.message}`, "error");
+    const friendlyError = getFriendlyTelegramErrorMessage(err);
+    els.telegramSyncStatus.textContent = `Lỗi: ${friendlyError}`;
+    showToast(`Lỗi Telegram: ${friendlyError}`, "error");
   } finally {
     els.syncTelegramBtn.disabled = false;
   }
@@ -15627,8 +15656,9 @@ els.resetTelegramCacheBtn.addEventListener("click", async () => {
     showToast(msg, "success");
     renderAll();
   } catch (err) {
-    els.telegramSyncStatus.textContent = `Lỗi: ${err.message}`;
-    showToast(`Lỗi reset Telegram: ${err.message}`, "error");
+    const friendlyError = getFriendlyTelegramErrorMessage(err);
+    els.telegramSyncStatus.textContent = `Lỗi: ${friendlyError}`;
+    showToast(`Lỗi reset Telegram: ${friendlyError}`, "error");
   } finally {
     els.resetTelegramCacheBtn.disabled = false;
     if (els.syncTelegramBtn) els.syncTelegramBtn.disabled = false;
@@ -15652,7 +15682,8 @@ els.testTelegramBtn.addEventListener("click", async () => {
     startTelegramRealtimeSync();
     await runTelegramRealtimeSync(false, { fullSync: true });
   } catch (err) {
-    showToast(`Lỗi Telegram: ${err.message}`, "error");
+    const friendlyError = getFriendlyTelegramErrorMessage(err);
+    showToast(`Lỗi Telegram: ${friendlyError}`, "error");
   }
 });
 
@@ -15694,14 +15725,16 @@ els.discoverTelegramChatIdBtn.addEventListener("click", async () => {
         els.telegramSyncStatus.textContent = `✓ Đã lưu ${chats.length} chat lên server. ${summary}`;
       }
     } catch (configErr) {
-      showToast(`Đã lấy Chat ID nhưng chưa lưu lên server: ${configErr.message}`, "warning");
+      const friendlyError = getFriendlyTelegramErrorMessage(configErr);
+      showToast(`Đã lấy Chat ID nhưng chưa lưu lên server: ${friendlyError}`, "warning");
       if (els.telegramSyncStatus) {
-        els.telegramSyncStatus.textContent = `Chat ID đã lưu cục bộ. Lỗi đẩy server: ${configErr.message}`;
+        els.telegramSyncStatus.textContent = `Chat ID đã lưu cục bộ. Lỗi đẩy server: ${friendlyError}`;
       }
     }
   } catch (err) {
-    if (els.telegramSyncStatus) els.telegramSyncStatus.textContent = `Lỗi lấy Chat ID: ${err.message}`;
-    showToast(`Lỗi lấy Chat ID: ${err.message}`, "error");
+    const friendlyError = getFriendlyTelegramErrorMessage(err);
+    if (els.telegramSyncStatus) els.telegramSyncStatus.textContent = `Lỗi lấy Chat ID: ${friendlyError}`;
+    showToast(`Lỗi lấy Chat ID: ${friendlyError}`, "error");
   } finally {
     els.discoverTelegramChatIdBtn.disabled = false;
   }
