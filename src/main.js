@@ -2954,12 +2954,26 @@ function deriveUsersEndpoint(rawUrl) {
   return `${normalized}/users`;
 }
 
+function normalizeUsersSyncEndpointEndpoint(rawEndpoint) {
+  const value = String(rawEndpoint || "").trim();
+  if (!value) return "";
+  if (/nora-sync-quocvietngd-2026-2\.onrender\.com/i.test(value)) {
+    return value.replace(/nora-sync-quocvietngd-2026-2\.onrender\.com/ig, "nora-sync-quocvietngd-2026.onrender.com");
+  }
+  return value;
+}
+
 function getSavedUsersSyncEndpoint() {
-  return String(loadJSON(STORAGE.usersSyncEndpoint, "") || "").trim();
+  const saved = String(loadJSON(STORAGE.usersSyncEndpoint, "") || "").trim();
+  const normalized = normalizeUsersSyncEndpointEndpoint(saved);
+  if (normalized && normalized !== saved) {
+    saveJSON(STORAGE.usersSyncEndpoint, normalized);
+  }
+  return normalized;
 }
 
 function saveUsersSyncEndpoint(endpointUrl) {
-  saveJSON(STORAGE.usersSyncEndpoint, String(endpointUrl || "").trim());
+  saveJSON(STORAGE.usersSyncEndpoint, normalizeUsersSyncEndpointEndpoint(endpointUrl));
 }
 
 function rememberUsersSyncEndpointFromSource() {
