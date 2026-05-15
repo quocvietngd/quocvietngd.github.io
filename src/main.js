@@ -13666,6 +13666,59 @@ function handleActivityRestoreClick(target) {
   return true;
 }
 
+function handleReportDeleteClick(target) {
+  if (!(target instanceof HTMLElement)) return false;
+
+  const deleteBtn = target.closest("[data-report-delete-type]");
+  if (!(deleteBtn instanceof HTMLElement)) return false;
+
+  hideAllActionMenus();
+  const reportType = String(deleteBtn.dataset.reportDeleteType || "").trim();
+  const reportDate = String(deleteBtn.dataset.reportDate || "").trim();
+  const encodedName = String(deleteBtn.dataset.reportName || "").trim();
+  const reportName = decodeURIComponent(encodedName || "").trim();
+
+  if (!["marketing", "consultant", "telesale"].includes(reportType)) return true;
+  if (!reportDate || !reportName) {
+    showToast("Thiếu thông tin dòng báo cáo để xóa.", "warning");
+    return true;
+  }
+
+  const labels = {
+    marketing: "Marketing",
+    consultant: "Tư vấn",
+    telesale: "Telesale"
+  };
+  const confirmed = window.confirm(
+    `Xóa dòng báo cáo ${labels[reportType]}\nNgày: ${reportDate}\nNhân sự: ${reportName}\n\nThao tác này sẽ xóa dữ liệu nguồn khỏi lịch đã lưu. Tiếp tục?`
+  );
+  if (!confirmed) return true;
+
+  const { removedCount, deletedRows } = deleteSchedulesByReportRow(reportType, reportDate, reportName);
+  if (!removedCount) {
+    showToast("Không tìm thấy dữ liệu nguồn khớp để xóa.", "warning");
+    return true;
+  }
+
+  logActivity(
+    "Báo cáo",
+    "Xóa dòng báo cáo",
+    `${labels[reportType]} | ${reportDate} | ${reportName} | ${removedCount} lịch`,
+    {
+      restoreAction: {
+        kind: "schedule-bulk-delete-report-row",
+        deletedSchedules: deletedRows,
+        reportType,
+        reportDate,
+        reportName
+      }
+    }
+  );
+  renderAll();
+  showToast(`Đã xóa ${removedCount} bản ghi nguồn khỏi báo cáo ${labels[reportType]}.`, "success");
+  return true;
+}
+
 if (els.activityBody) {
   els.activityBody.addEventListener("click", (event) => {
     const target = event.target;
@@ -13691,6 +13744,7 @@ document.body.addEventListener("click", (event) => {
   if (!(target instanceof HTMLElement)) return;
   const menu = target.closest(".user-action-menu-floating");
   if (!menu) return;
+  if (handleReportDeleteClick(target)) return;
   handleActivityRestoreClick(target);
 });
 
@@ -13812,52 +13866,7 @@ if (els.reportsSection) {
       return;
     }
 
-    const deleteBtn = target.closest("[data-report-delete-type]");
-    if (deleteBtn instanceof HTMLElement) {
-      hideAllActionMenus();
-      const reportType = String(deleteBtn.dataset.reportDeleteType || "").trim();
-      const reportDate = String(deleteBtn.dataset.reportDate || "").trim();
-      const encodedName = String(deleteBtn.dataset.reportName || "").trim();
-      const reportName = decodeURIComponent(encodedName || "").trim();
-
-      if (!["marketing", "consultant", "telesale"].includes(reportType)) return;
-      if (!reportDate || !reportName) {
-        showToast("Thiếu thông tin dòng báo cáo để xóa.", "warning");
-        return;
-      }
-
-      const labels = {
-        marketing: "Marketing",
-        consultant: "Tư vấn",
-        telesale: "Telesale"
-      };
-      const confirmed = window.confirm(
-        `Xóa dòng báo cáo ${labels[reportType]}\nNgày: ${reportDate}\nNhân sự: ${reportName}\n\nThao tác này sẽ xóa dữ liệu nguồn khỏi lịch đã lưu. Tiếp tục?`
-      );
-      if (!confirmed) return;
-
-      const { removedCount, deletedRows } = deleteSchedulesByReportRow(reportType, reportDate, reportName);
-      if (!removedCount) {
-        showToast("Không tìm thấy dữ liệu nguồn khớp để xóa.", "warning");
-        return;
-      }
-
-      logActivity(
-        "Báo cáo",
-        "Xóa dòng báo cáo",
-        `${labels[reportType]} | ${reportDate} | ${reportName} | ${removedCount} lịch`,
-        {
-          restoreAction: {
-            kind: "schedule-bulk-delete-report-row",
-            deletedSchedules: deletedRows,
-            reportType,
-            reportDate,
-            reportName
-          }
-        }
-      );
-      renderAll();
-      showToast(`Đã xóa ${removedCount} bản ghi nguồn khỏi báo cáo ${labels[reportType]}.`, "success");
+    if (handleReportDeleteClick(target)) {
       return;
     }
 
