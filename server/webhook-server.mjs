@@ -211,6 +211,16 @@ function getTelegramDeletionScopeFingerprintForDeleteKey(item) {
     if (!saleName) return "";
     return `tgscope:${route}|${date}|${saleName}`;
   }
+  if (route === "consultant") {
+    const consultantName = normalizeTextForDeleteKey(item?.consultant || "");
+    if (!consultantName) return "";
+    return `tgscope:${route}|${date}|${consultantName}`;
+  }
+  if (route === "marketing") {
+    const marketingName = normalizeTextForDeleteKey(item?.marketingName || item?.marketingStaff || item?.marketer || item?.customerName || "");
+    if (!marketingName) return "";
+    return `tgscope:${route}|${date}|${marketingName}`;
+  }
   return "";
 }
 

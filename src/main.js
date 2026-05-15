@@ -9533,6 +9533,18 @@ function getTelegramDeletionScopeFingerprint(item) {
     return `tgscope:${route}|${date}|${saleName}`;
   }
 
+  if (route === "consultant") {
+    const consultantName = normalizeTextForMatching(item?.consultant || "");
+    if (!consultantName) return "";
+    return `tgscope:${route}|${date}|${consultantName}`;
+  }
+
+  if (route === "marketing") {
+    const marketingName = normalizeTextForMatching(getMarketingOwnerName(item));
+    if (!marketingName) return "";
+    return `tgscope:${route}|${date}|${marketingName}`;
+  }
+
   return "";
 }
 
@@ -11370,6 +11382,12 @@ function deleteSchedulesByReportRow(type, dateKey, personName) {
   if (removedCount > 0) {
     saveJSON(STORAGE.schedule, schedules);
     markDeletedScheduleRows(deletedRows, `report-row-${type}`);
+    const scopeType = String(type || "").trim().toLowerCase();
+    if (["marketing", "telesale", "consultant"].includes(scopeType)) {
+      const scopeKey = `tgscope:${scopeType}|${normalizedDate}|${normalizedName}`;
+      deletedScheduleIds[scopeKey] = { deletedAt: Date.now(), reason: `report-row-${scopeType}` };
+      saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
+    }
   }
   return { removedCount, deletedRows };
 }
