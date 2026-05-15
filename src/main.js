@@ -2916,9 +2916,9 @@ const _rawTelegramSourceConfig = loadJSON(STORAGE.telegramSource, { token: "", c
 if (_rawTelegramSourceConfig.bridgeApiUrl && /localhost|127\.0\.0\.1/.test(_rawTelegramSourceConfig.bridgeApiUrl)) {
   delete _rawTelegramSourceConfig.bridgeApiUrl;
 }
-// Migrate: chuyển bridge service cũ sang service hiện tại (-2)
-if (_rawTelegramSourceConfig.bridgeApiUrl && /nora-sync-quocvietngd-2026\.onrender\.com/.test(_rawTelegramSourceConfig.bridgeApiUrl)) {
-  _rawTelegramSourceConfig.bridgeApiUrl = "https://nora-sync-quocvietngd-2026-2.onrender.com";
+// Migrate: fallback từ service -2 (không ổn định) về service chuẩn đang hoạt động.
+if (_rawTelegramSourceConfig.bridgeApiUrl && /nora-sync-quocvietngd-2026-2\.onrender\.com/.test(_rawTelegramSourceConfig.bridgeApiUrl)) {
+  _rawTelegramSourceConfig.bridgeApiUrl = "https://nora-sync-quocvietngd-2026.onrender.com";
 }
 let telegramSourceConfig = _rawTelegramSourceConfig;
 let attendanceAutoSyncTimer = null;
@@ -3085,6 +3085,16 @@ async function ensureDurableCloudStorage(showWarning = false, forceRefresh = fal
 
   try {
     const response = await fetch(endpointUrl, { method: "GET", cache: "no-store" });
+    if (response.status === 404) {
+      // Legacy backend may not expose /storage/status; treat as durable-compatible.
+      cloudStorageStatus = {
+        checkedAt: now,
+        durable: true,
+        mode: "legacy-compatible",
+        reason: ""
+      };
+      return true;
+    }
     if (!response.ok) {
       throw new Error(`Không thể kiểm tra storage status (${response.status})`);
     }
@@ -8582,7 +8592,7 @@ function clearLocalTelegramSchedules() {
   resetTelegramSyncCursor();
 }
 
-const TELEGRAM_BRIDGE_DEFAULT_API = "https://nora-sync-quocvietngd-2026-2.onrender.com";
+const TELEGRAM_BRIDGE_DEFAULT_API = "https://nora-sync-quocvietngd-2026.onrender.com";
 function getTelegramBridgeApiBase() {
   const configured = String(telegramSourceConfig.bridgeApiUrl || "").trim();
   return (configured || TELEGRAM_BRIDGE_DEFAULT_API).replace(/\/+$/, "");
