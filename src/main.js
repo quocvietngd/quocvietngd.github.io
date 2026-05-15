@@ -8532,6 +8532,14 @@ function saveTelegramSourceConfig() {
   saveJSON(STORAGE.telegramSource, telegramSourceConfig);
 }
 
+function isTelegramWebhookModeEnabled() {
+  return Boolean(String(telegramSourceConfig.webhookBaseUrl || "").trim());
+}
+
+function getTelegramDirectPollingBlockedMessage() {
+  return "Bot đang bật webhook realtime, app sẽ không gọi getUpdates trực tiếp để tránh lỗi Telegram 409.";
+}
+
 function resetTelegramSyncCursor() {
   telegramSourceConfig.lastSyncedAt = 0;
   telegramSourceConfig.lastUpdateId = 0;
@@ -9020,7 +9028,7 @@ async function discoverTelegramChats() {
   }
 
   const token = String(telegramSourceConfig.token || "").trim();
-  if (token) {
+  if (token && !isTelegramWebhookModeEnabled()) {
     const url = `https://api.telegram.org/bot${token}/getUpdates?limit=100`;
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Telegram API lỗi HTTP: ${response.status}`);
@@ -9036,6 +9044,9 @@ async function fetchAndParseTelegramMessagesDirect(options = {}) {
   const { fullSync = false } = options;
   const { token, chatId, lastUpdateId } = telegramSourceConfig;
   if (!token || !chatId) throw new Error("Chưa nhập Bot Token hoặc Chat ID.");
+  if (isTelegramWebhookModeEnabled()) {
+    throw new Error(getTelegramDirectPollingBlockedMessage());
+  }
   const allowedChatIds = parseTelegramAllowedChatIds(chatId);
   const offset = !fullSync && lastUpdateId ? lastUpdateId + 1 : undefined;
   const url = "https://api.telegram.org/bot" + token + "/getUpdates?limit=100" +
@@ -15571,6 +15582,7 @@ els.syncTelegramBtn.addEventListener("click", async () => {
   if (!can("canSyncData")) { showToast("Bạn không có quyền đồng bộ dữ liệu.", "warning"); return; }
   saveTelegramInputs();
   const hasDirectConfig = telegramSourceConfig.token && telegramSourceConfig.chatId;
+  const canUseDirectFallback = hasDirectConfig && !isTelegramWebhookModeEnabled();
   els.syncTelegramBtn.disabled = true;
   els.telegramSyncStatus.textContent = "Đang đồng bộ dữ liệu Telegram...";
   try {
@@ -15578,8 +15590,8 @@ els.syncTelegramBtn.addEventListener("click", async () => {
     try {
       result = await runTelegramRealtimeSync(false, { fullSync: true });
     } catch (bridgeErr) {
-      // Fallback: direct Telegram polling if bridge server is not available.
-      if (!hasDirectConfig) throw bridgeErr;
+      // Only fallback to direct polling when webhook mode is not enabled.
+      if (!canUseDirectFallback) throw bridgeErr;
       const direct = await fetchAndParseTelegramMessagesDirect();
       result = { importedRows: direct.importedRows, fetchedRows: direct.parsedMessages, pendingCount: 0, configured: false };
     }
