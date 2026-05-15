@@ -8553,6 +8553,9 @@ function getFriendlyTelegramErrorMessage(input) {
   if (normalized.includes("failed to fetch") || normalized.includes("networkerror") || normalized.includes("load failed") || normalized.includes("cors")) {
     return "Không kết nối được tới Telegram Bridge hoặc Telegram API. Kiểm tra mạng, CORS và trạng thái server rồi thử lại.";
   }
+  if (normalized.includes("http 503") || normalized.includes("http: 503") || normalized.includes("hibernate-wake-error") || normalized.includes("service unavailable")) {
+    return "Telegram Bridge đang được Render đánh thức lại sau thời gian ngủ. Hệ thống sẽ tự thử lại; nếu vẫn lỗi, hãy bấm lại sau vài giây.";
+  }
   if (normalized.includes("timeout")) {
     return "Kết nối Telegram bị quá thời gian chờ. Server bridge có thể đang chậm hoặc tạm không phản hồi.";
   }
@@ -8759,32 +8762,47 @@ function parseTelegramLineToField(line) {
 async function callTelegramBridge(path, options = {}) {
   const base = getTelegramBridgeApiBase();
   if (!base) throw new Error("Chưa cấu hình Telegram Bridge API URL.");
-  
-  const controller = new AbortController();
   const timeoutMs = options.timeoutMs || 30000;
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const response = await fetch(`${base}${path}`, {
-      method: options.method || "GET",
-      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-      body: options.body,
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    
-    const text = await response.text();
-    const data = text ? JSON.parse(text) : {};
-    if (!response.ok || data.ok === false) {
-      throw new Error(data.error || data.message || `HTTP ${response.status}`);
+  const retryCount = Number.isFinite(options.retryCount) ? Number(options.retryCount) : 2;
+  const retryDelayMs = Number.isFinite(options.retryDelayMs) ? Number(options.retryDelayMs) : 2200;
+
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${base}${path}`, {
+        method: options.method || "GET",
+        headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+        body: options.body,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!response.ok || data.ok === false) {
+        const message = data.error || data.message || `HTTP ${response.status}`;
+        const error = new Error(message);
+        error.httpStatus = response.status;
+        throw error;
+      }
+      return data;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const isAbort = err.name === "AbortError";
+      const status = Number(err.httpStatus || 0);
+      const rawMessage = String(err.message || "").toLowerCase();
+      const isWake503 = status === 503 || rawMessage.includes("http 503") || rawMessage.includes("service unavailable") || rawMessage.includes("hibernate-wake-error");
+      const isTransientNetwork = rawMessage.includes("failed to fetch") || rawMessage.includes("load failed") || rawMessage.includes("networkerror");
+      if (attempt < retryCount && (isAbort || isWake503 || isTransientNetwork)) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs * (attempt + 1)));
+        continue;
+      }
+      if (isAbort) {
+        throw new Error(`Timeout kết nối tới Telegram Bridge sau ${timeoutMs}ms`);
+      }
+      throw err;
     }
-    return data;
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      throw new Error(`Timeout kết nối tới Telegram Bridge sau ${timeoutMs}ms`);
-    }
-    throw err;
   }
 }
 
