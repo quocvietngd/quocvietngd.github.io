@@ -39,7 +39,19 @@ const BACKUP_INTERVAL_MS = Math.max(5, Number(process.env.BACKUP_INTERVAL_MINUTE
 const IS_RENDER_DISK_ATTACHED = existsSync(RENDER_DISK_ROOT);
 const IS_STATE_FILE_ON_RENDER_DISK = STATE_FILE === RENDER_DISK_PATH || STATE_FILE.startsWith(`${RENDER_DISK_PATH}/`);
 const IS_DURABLE_FILE_MODE = !USE_POSTGRES && IS_RENDER_DISK_ATTACHED && IS_STATE_FILE_ON_RENDER_DISK;
-const IS_DURABLE_STORAGE = USE_POSTGRES || IS_DURABLE_FILE_MODE;
+
+// GitHub Gist-based durable storage (free, no credit card, just GITHUB_TOKEN env var with gist scope)
+const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || "").trim();
+const GITHUB_GIST_ID = String(process.env.GITHUB_GIST_ID || "").trim();
+const USE_GIST = Boolean(GITHUB_TOKEN) && !USE_POSTGRES;
+const GIST_FILENAME = "nora-bridge-state.json";
+const GIST_API = "https://api.github.com";
+const GIST_BACKUP_INTERVAL_MS = Math.max(30000, Number(process.env.GIST_BACKUP_INTERVAL_MS || 120000));
+let gistId = GITHUB_GIST_ID || "";
+let gistLastBackupAt = 0;
+let gistBackupPending = false;
+
+const IS_DURABLE_STORAGE = USE_POSTGRES || IS_DURABLE_FILE_MODE || USE_GIST;
 const TELEGRAM_SYNC_MIN_INTERVAL_MS = Math.max(3000, Number(process.env.TELEGRAM_SYNC_MIN_INTERVAL_MS || 8000));
 const TELEGRAM_SUSPICIOUS_UPDATE_ID = 100000000;
 const TELEGRAM_AUTO_ALLOW_NEW_CHATS = !["0", "false", "no", "off"].includes(
@@ -435,14 +447,154 @@ async function writeStateToDb(nextState) {
   return safe;
 }
 
+// ─── GitHub Gist storage ─────────────────────────────────────────────────────
+async function gistFetch(method, path, body) {
+  const https = await import("node:https");
+  return new Promise((resolve, reject) => {
+    const bodyStr = body ? JSON.stringify(body) : null;
+    const opts = {
+      hostname: "api.github.com",
+      path,
+      method,
+      headers: {
+        "Authorization": `Bearer ${GITHUB_TOKEN}`,
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "nora-bridge/1.0",
+        "X-GitHub-Api-Version": "2022-11-28",
+        ...(bodyStr ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(bodyStr) } : {})
+      }
+    };
+    const req = https.request(opts, (res) => {
+      let data = "";
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        try { resolve({ status: res.statusCode, data: JSON.parse(data) }); }
+        catch { resolve({ status: res.statusCode, data }); }
+      });
+    });
+    req.on("error", reject);
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
+}
+
+async function readStateFromGist() {
+  if (!gistId) {
+    // Try to find existing gist by description
+    const resp = await gistFetch("GET", "/gists?per_page=50");
+    if (resp.status === 200 && Array.isArray(resp.data)) {
+      const found = resp.data.find(g => g.description === "nora-bridge-state" && g.files?.[GIST_FILENAME]);
+      if (found) {
+        gistId = found.id;
+        console.log(`[gist-storage] found existing gist: ${gistId}`);
+      }
+    }
+  }
+  if (!gistId) return null;
+
+  const resp = await gistFetch("GET", `/gists/${gistId}`);
+  if (resp.status !== 200) {
+    console.error(`[gist-storage] read failed: ${resp.status}`);
+    return null;
+  }
+  const rawUrl = resp.data?.files?.[GIST_FILENAME]?.raw_url;
+  if (!rawUrl) return null;
+
+  // Fetch raw content
+  const https = await import("node:https");
+  return new Promise((resolve) => {
+    https.get(rawUrl, { headers: { "Authorization": `Bearer ${GITHUB_TOKEN}`, "User-Agent": "nora-bridge/1.0" } }, (res) => {
+      let data = "";
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        try { resolve(normalizeState(JSON.parse(data))); }
+        catch { resolve(null); }
+      });
+    }).on("error", () => resolve(null));
+  });
+}
+
+async function writeStateToGist(state) {
+  const safe = normalizeState({ ...state, updatedAt: Number(state.updatedAt || Date.now()) });
+  const content = JSON.stringify(safe);
+  const payload = { description: "nora-bridge-state", public: false, files: { [GIST_FILENAME]: { content } } };
+
+  if (!gistId) {
+    const resp = await gistFetch("POST", "/gists", payload);
+    if (resp.status === 201) {
+      gistId = resp.data.id;
+      console.log(`[gist-storage] created new gist: ${gistId}`);
+    } else {
+      console.error(`[gist-storage] create failed: ${resp.status}`);
+    }
+  } else {
+    const resp = await gistFetch("PATCH", `/gists/${gistId}`, { files: { [GIST_FILENAME]: { content } } });
+    if (resp.status !== 200) {
+      console.error(`[gist-storage] update failed: ${resp.status}`);
+    }
+  }
+  return safe;
+}
+
+async function scheduleGistBackup(state) {
+  if (!USE_GIST || gistBackupPending) return;
+  const now = Date.now();
+  if (now - gistLastBackupAt < GIST_BACKUP_INTERVAL_MS) return;
+  gistBackupPending = true;
+  setImmediate(async () => {
+    try {
+      await writeStateToGist(state);
+      gistLastBackupAt = Date.now();
+    } catch (err) {
+      console.error("[gist-storage] backup error:", err.message);
+    } finally {
+      gistBackupPending = false;
+    }
+  });
+}
+
 async function readState() {
   if (USE_POSTGRES) return readStateFromDb();
+  if (USE_GIST) {
+    const fromFile = readStateFromFileSync();
+    // On first read, try to restore from Gist (only if file state is empty/default)
+    const fileIsEmpty = !fromFile.token && !fromFile.updatedAt && !(fromFile.appState?.schedules?.length);
+    if (fileIsEmpty) {
+      try {
+        const fromGist = await readStateFromGist();
+        if (fromGist) {
+          writeStateToFileSync(fromGist); // Cache locally
+          console.log("[gist-storage] restored state from Gist");
+          return fromGist;
+        }
+      } catch (err) {
+        console.error("[gist-storage] restore error:", err.message);
+      }
+    }
+    return fromFile;
+  }
   return readStateFromFileSync();
 }
 
 async function writeState(nextState) {
   if (USE_POSTGRES) return writeStateToDb(nextState);
-  return writeStateToFileSync(nextState);
+  const saved = writeStateToFileSync(nextState);
+  if (USE_GIST) await scheduleGistBackup(saved);
+  return saved;
+}
+
+async function flushGistImmediately() {
+  if (!USE_GIST) return;
+  try {
+    const state = readStateFromFileSync();
+    gistLastBackupAt = 0; // Force backup
+    gistBackupPending = false;
+    await writeStateToGist(state);
+    gistLastBackupAt = Date.now();
+    console.log("[gist-storage] immediate flush complete");
+  } catch (err) {
+    console.error("[gist-storage] immediate flush error:", err.message);
+  }
 }
 
 function normalizeUser(input = {}) {
@@ -2470,6 +2622,29 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Admin: flush state to Gist immediately
+  if (method === "POST" && url.pathname === "/api/admin/gist-flush") {
+    const authHeader = String(req.headers["authorization"] || "").trim();
+    const providedToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+    const currentState = await readState();
+    const expectedSecret = currentState.webhookSecret || ENV_WEBHOOK_SECRET;
+    if (!expectedSecret || providedToken !== expectedSecret) {
+      sendJson(res, 401, { ok: false, error: "Unauthorized" });
+      return;
+    }
+    if (!USE_GIST) {
+      sendJson(res, 400, { ok: false, error: "Gist storage not enabled. Set GITHUB_TOKEN env var." });
+      return;
+    }
+    try {
+      await flushGistImmediately();
+      sendJson(res, 200, { ok: true, gistId, message: "Flushed to Gist successfully" });
+    } catch (err) {
+      sendJson(res, 500, { ok: false, error: err.message });
+    }
+    return;
+  }
+
   // Admin: import full state snapshot (protected by webhook secret or admin token)
   if (method === "POST" && url.pathname === "/api/admin/import-full-state") {
     const authHeader = String(req.headers["authorization"] || "").trim();
@@ -2538,10 +2713,12 @@ const server = createServer(async (req, res) => {
       sendJson(res, 200, {
         ok: true,
         persistenceMode: PERSISTENCE_MODE,
-        mode: USE_POSTGRES ? "postgres" : "json-file",
+        mode: USE_POSTGRES ? "postgres" : USE_GIST ? "gist" : "json-file",
         durable: IS_DURABLE_STORAGE,
         renderDiskMounted: IS_RENDER_DISK_ATTACHED,
         stateFile: USE_POSTGRES ? null : STATE_FILE,
+        gistEnabled: USE_GIST,
+        gistId: USE_GIST ? (gistId || "auto-detect") : null,
         payloadSizeBytes,
         backupDir: BACKUP_DIR,
         backupIntervalMinutes: Math.round(BACKUP_INTERVAL_MS / 60000)
@@ -2602,4 +2779,13 @@ bootstrap().catch((error) => {
   console.error("[telegram-webhook-bridge] startup failed:", error.message);
   process.exit(1);
 });
+
+// Flush Gist on graceful shutdown to avoid data loss
+async function gracefulShutdown(signal) {
+  console.log(`[telegram-webhook-bridge] received ${signal}, flushing state...`);
+  await flushGistImmediately();
+  process.exit(0);
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 // Updated at Thu Apr 23 15:27:42 +07 2026

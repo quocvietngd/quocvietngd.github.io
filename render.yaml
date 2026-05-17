@@ -12,6 +12,10 @@ services:
         value: 0.0.0.0
       # DATABASE_URL phải được set thủ công qua Render Dashboard hoặc scripts/setup-render.sh
       # Hướng dẫn: https://neon.tech (PostgreSQL miễn phí) → copy connection string → paste vào Render env vars
+      #
+      # HOẶC (đơn giản hơn): Dùng GitHub Gist storage — chỉ cần 1 env var:
+      # GITHUB_TOKEN = GitHub Personal Access Token với scope "gist"
+      # Tạo tại: https://github.com/settings/tokens/new?scopes=gist&description=nora-bridge
       - key: PERSISTENCE_MODE
         value: auto
       - key: BACKUP_INTERVAL_MINUTES
