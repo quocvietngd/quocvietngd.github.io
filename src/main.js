@@ -2963,6 +2963,14 @@ function normalizeUsersSyncEndpointEndpoint(rawEndpoint) {
   return value;
 }
 
+function getPreferredUsersSyncEndpoint() {
+  return "https://nora-sync-quocvietngd-2026-2.onrender.com/api/users";
+}
+
+function isLegacyUsersSyncEndpoint(endpointUrl = "") {
+  return /nora-sync-quocvietngd-2026\.onrender\.com/i.test(String(endpointUrl || ""));
+}
+
 function getSavedUsersSyncEndpoint() {
   const saved = String(loadJSON(STORAGE.usersSyncEndpoint, "") || "").trim();
   const normalized = normalizeUsersSyncEndpointEndpoint(saved);
@@ -3000,8 +3008,10 @@ function getUsersSyncEndpoint() {
   if (isHttpUrl(saved)) return deriveUsersEndpoint(saved);
 
   const cfg = getCurrentDataSourceConfig();
-  if (!isHttpUrl(cfg.url)) return "";
-  return deriveUsersEndpoint(cfg.url);
+  if (isHttpUrl(cfg.url)) return deriveUsersEndpoint(cfg.url);
+
+  // Last-resort fallback to the known durable backend.
+  return deriveUsersEndpoint(getPreferredUsersSyncEndpoint());
 }
 
 const APP_STATE_SYNC_KEYS = new Set([
@@ -3082,7 +3092,7 @@ function notifyUnsafeCloudStorage(reason, showToastMessage = false) {
   cloudStorageWarningShown = true;
 }
 
-async function ensureDurableCloudStorage(showWarning = false, forceRefresh = false) {
+async function ensureDurableCloudStorage(showWarning = false, forceRefresh = false, allowEndpointHeal = true) {
   const usersEndpoint = getUsersSyncEndpoint();
   if (!usersEndpoint) return true;
 
@@ -3114,6 +3124,14 @@ async function ensureDurableCloudStorage(showWarning = false, forceRefresh = fal
     }
     const status = await response.json();
     const durable = isDurableStorageStatus(status);
+
+    // Auto-heal from legacy non-durable backend to the known durable backend.
+    if (!durable && allowEndpointHeal && isLegacyUsersSyncEndpoint(usersEndpoint)) {
+      saveUsersSyncEndpoint(getPreferredUsersSyncEndpoint());
+      cloudStorageStatus.checkedAt = 0;
+      return ensureDurableCloudStorage(showWarning, true, false);
+    }
+
     cloudStorageStatus = {
       checkedAt: now,
       durable,
@@ -3125,6 +3143,12 @@ async function ensureDurableCloudStorage(showWarning = false, forceRefresh = fal
     }
     return durable;
   } catch (err) {
+    if (allowEndpointHeal && isLegacyUsersSyncEndpoint(usersEndpoint)) {
+      saveUsersSyncEndpoint(getPreferredUsersSyncEndpoint());
+      cloudStorageStatus.checkedAt = 0;
+      return ensureDurableCloudStorage(showWarning, true, false);
+    }
+
     cloudStorageStatus = {
       checkedAt: now,
       durable: false,
