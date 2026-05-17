@@ -3593,12 +3593,11 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
 
   const hasPendingSync = Boolean(loadJSON(STORAGE.criticalStatePendingSync, false));
   const remoteSchedulesFiltered = filterScheduleRowsByDeleteMarkers(remoteState.schedules);
-  const remoteSchedulesFromTelesale = remoteSchedulesFiltered.filter((item) => isScheduleFromTelesaleFlow(item));
   const remoteUpdatedAt = Number(remoteState.updatedAt || 0);
   const localUpdatedAt = getLocalCriticalStateUpdatedAt();
 
   // Determine whether there is anything new on the remote not already in local.
-  const remoteScheduleCount = remoteSchedulesFromTelesale.length;
+  const remoteScheduleCount = remoteSchedulesFiltered.length;
   const localScheduleCount = Array.isArray(schedules) ? schedules.length : 0;
   const remoteRows = getRemoteCriticalStateRowCount(remoteState);
   const localRows = getRemoteCriticalStateRowCount(buildCriticalStatePayload(localUpdatedAt || Date.now()));
@@ -3607,7 +3606,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     || remoteUpdatedAt > localUpdatedAt
     || hasRemoteObjectKeysMissingLocally(remoteState.deletedCustomerIds, deletedCustomerIds)
     || hasRemoteObjectKeysMissingLocally(remoteState.deletedScheduleIds, deletedScheduleIds)
-    || hasRemoteListIdsMissingLocally(remoteSchedulesFromTelesale, schedules)
+    || hasRemoteListIdsMissingLocally(remoteSchedulesFiltered, schedules)
     || hasRemoteListIdsMissingLocally(remoteState.customers, customers)
     || hasRemoteListIdsMissingLocally(remoteState.inventoryItems, inventoryItems)
     || hasRemoteListIdsMissingLocally(remoteState.inventoryTransactions, inventoryTransactions)
@@ -3637,8 +3636,8 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     const mergedCustomers = preferRemoteList(remoteState.customers, customers);
     const mergedDeletedCustomerIds = mergeDeletedScheduleMarkerMaps(remoteState.deletedCustomerIds, deletedCustomerIds);
     const mergedSchedules = dedupeSchedulesByIdKeepNewest(
-      filterScheduleRowsByDeleteMarkers(preferRemoteList(remoteSchedulesFromTelesale, schedules))
-    ).filter((item) => isScheduleFromTelesaleFlow(item));
+      filterScheduleRowsByDeleteMarkers(preferRemoteList(remoteSchedulesFiltered, schedules))
+    );
     const mergedDeletedScheduleIds = mergeDeletedScheduleMarkerMaps(remoteState.deletedScheduleIds, deletedScheduleIds);
     const mergedInventoryItems = preferRemoteList(remoteState.inventoryItems, inventoryItems);
     const mergedInventoryTransactions = preferRemoteList(remoteState.inventoryTransactions, inventoryTransactions);
