@@ -4589,9 +4589,34 @@ function loadJSON(key, fallback) {
   }
 }
 
+/**
+ * Strip a schedule row down to the minimum fields needed for local bootstrap.
+ * Full data always lives in cloud; local cache only needs enough to render reports without a round-trip.
+ */
+function slimScheduleRow(item) {
+  if (!item || typeof item !== "object") return item;
+  const KEEP = [
+    "id","registrationDate","telegramRoute","telegramChatId","telegramMessageId","telegramUpdateId",
+    "source","status","createdSource","reportSource","createdAt","updatedAt",
+    "nurse","consultant","saleStaff","marketingName","marketingStaff","customerName","phone",
+    "service","mahd","kq","note","shiftMinutes","distanceKm","overtimeHolidayAllowance",
+    "contractAmount","thucthu","receivableAmount","marketingBudget","marketingMessCount",
+    "marketingPhoneCount","marketingBookedCount","marketingContractCount","marketingRevenue",
+    "marketingRevenue","caCancelled","pttt","sotien","stage","priority","appointmentTime"
+  ];
+  const slim = {};
+  for (const k of KEEP) if (item[k] !== undefined) slim[k] = item[k];
+  return slim;
+}
+
 function saveJSON(key, value) {
+  // For schedule storage always save a slimmed version to stay under 5 MB quota.
+  let valueToStore = value;
+  if (key === STORAGE.schedule && Array.isArray(value)) {
+    valueToStore = value.map(slimScheduleRow);
+  }
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(key, JSON.stringify(valueToStore));
   } catch (error) {
     const errorText = `${String(error?.name || "")} ${String(error?.message || "")}`.toLowerCase();
     const isQuotaError = errorText.includes("quota") || errorText.includes("exceeded");
