@@ -34,7 +34,7 @@ print(m.group(1) if m else url)
 fi
 
 if [[ -z "$BACKEND_URL" ]]; then
-  BACKEND_URL="https://nora-sync-quocvietngd-2026.onrender.com"
+  BACKEND_URL="https://nora-sync-quocvietngd-2026-2.onrender.com"
 fi
 
 info "Backend URL: ${BACKEND_URL}"
