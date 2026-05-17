@@ -2794,6 +2794,7 @@ let usersSyncListenersBound = false;
 const USERS_AUTO_SYNC_INTERVAL = 20000;
 let cloudStorageStatus = { checkedAt: 0, durable: null, mode: "unknown", reason: "" };
 let cloudStorageWarningShown = false;
+const localStorageQuotaWarnedKeys = new Set();
 let criticalStateSyncQueueTimer = null;
 let criticalStatePullTimer = null;
 let criticalStateSyncInFlight = false;
@@ -4525,7 +4526,37 @@ function loadJSON(key, fallback) {
 }
 
 function saveJSON(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    const errorText = `${String(error?.name || "")} ${String(error?.message || "")}`.toLowerCase();
+    const isQuotaError = errorText.includes("quota") || errorText.includes("exceeded");
+    if (!isQuotaError) throw error;
+
+    // Keep app alive when browser quota is full: drop heavy local snapshots and rely on cloud sync.
+    try {
+      if (key === STORAGE.schedule) {
+        localStorage.removeItem(STORAGE.schedule);
+        localStorage.setItem(STORAGE.schedule, JSON.stringify([]));
+      } else if (key === STORAGE.customers) {
+        localStorage.removeItem(STORAGE.customers);
+        localStorage.setItem(STORAGE.customers, JSON.stringify([]));
+      } else if (key === STORAGE.activities) {
+        localStorage.removeItem(STORAGE.activities);
+        localStorage.setItem(STORAGE.activities, JSON.stringify([]));
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch {
+      // Ignore cleanup failure and continue with in-memory state.
+    }
+
+    if (!localStorageQuotaWarnedKeys.has(key)) {
+      localStorageQuotaWarnedKeys.add(key);
+      showToast("Bo nho trinh duyet da day. He thong se uu tien doc/ghi cloud de tranh mat du lieu.", "warning");
+    }
+    console.warn("[storage] localStorage quota exceeded for key:", key);
+  }
   queueCriticalStateSync(key);
 }
 
