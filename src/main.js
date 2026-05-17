@@ -2957,8 +2957,8 @@ function deriveUsersEndpoint(rawUrl) {
 function normalizeUsersSyncEndpointEndpoint(rawEndpoint) {
   const value = String(rawEndpoint || "").trim();
   if (!value) return "";
-  if (/nora-sync-quocvietngd-2026-2\.onrender\.com/i.test(value)) {
-    return value.replace(/nora-sync-quocvietngd-2026-2\.onrender\.com/ig, "nora-sync-quocvietngd-2026.onrender.com");
+  if (/nora-sync-quocvietngd-2026\.onrender\.com/i.test(value)) {
+    return value.replace(/nora-sync-quocvietngd-2026\.onrender\.com/ig, "nora-sync-quocvietngd-2026-2.onrender.com");
   }
   return value;
 }
