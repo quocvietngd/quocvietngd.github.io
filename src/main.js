@@ -2972,16 +2972,18 @@ function isLegacyUsersSyncEndpoint(endpointUrl = "") {
 }
 
 function getSavedUsersSyncEndpoint() {
+  const locked = deriveUsersEndpoint(getPreferredUsersSyncEndpoint());
   const saved = String(loadJSON(STORAGE.usersSyncEndpoint, "") || "").trim();
   const normalized = normalizeUsersSyncEndpointEndpoint(saved);
-  if (normalized && normalized !== saved) {
-    saveJSON(STORAGE.usersSyncEndpoint, normalized);
+  if (normalized !== locked) {
+    saveJSON(STORAGE.usersSyncEndpoint, locked);
   }
-  return normalized;
+  return locked;
 }
 
 function saveUsersSyncEndpoint(endpointUrl) {
-  saveJSON(STORAGE.usersSyncEndpoint, normalizeUsersSyncEndpointEndpoint(endpointUrl));
+  const locked = deriveUsersEndpoint(getPreferredUsersSyncEndpoint());
+  saveJSON(STORAGE.usersSyncEndpoint, locked);
 }
 
 function rememberUsersSyncEndpointFromSource() {
@@ -3004,13 +3006,8 @@ async function loadRuntimeUsersSyncConfig() {
 }
 
 function getUsersSyncEndpoint() {
-  const saved = getSavedUsersSyncEndpoint();
-  if (isHttpUrl(saved)) return deriveUsersEndpoint(saved);
-
-  const cfg = getCurrentDataSourceConfig();
-  if (isHttpUrl(cfg.url)) return deriveUsersEndpoint(cfg.url);
-
-  // Last-resort fallback to the known durable backend.
+  // Hard-lock cloud sync endpoint to prevent stale local/runtime configs from
+  // silently routing users to a legacy non-durable backend.
   return deriveUsersEndpoint(getPreferredUsersSyncEndpoint());
 }
 
