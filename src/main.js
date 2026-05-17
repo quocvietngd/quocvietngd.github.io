@@ -10658,7 +10658,10 @@ function renderNurseReportMatrix() {
 }
 
 function getMarketingOwnerName(item) {
+  const isTelegramMarketing = String(item?.telegramRoute || "").toLowerCase() === "marketing";
   const candidates = [item?.marketingStaff, item?.marketingName, item?.marketer, item?.ownerName];
+  // For Telegram marketing rows, also consider customerName as the marketing owner
+  if (isTelegramMarketing) candidates.push(item?.customerName);
   const matched = candidates.map((value) => String(value || "").trim()).find(Boolean);
   if (!matched) return "";
   const normalized = normalizeTextForMatching(matched);
