@@ -1012,11 +1012,16 @@ function parseTelegramLineToField(line) {
     return { key, value };
   }
 
+  // Ignore label-only lines (e.g. "Mã HĐ:", "Giá trị HĐ:") to avoid false fallback matches.
+  if (/[:=\-–—|;,\.]+\s*$/u.test(raw)) return null;
+
   const isLooseTokenMatch = (actual, expected) => {
     const a = String(actual || "");
     const e = String(expected || "");
     if (!a || !e) return false;
     if (a === e) return true;
+    // Very short labels should only match exactly.
+    if (a.length <= 3 || e.length <= 3) return false;
     if (a.startsWith(e) || e.startsWith(a)) return true;
     if (Math.abs(a.length - e.length) > 1) return false;
 
