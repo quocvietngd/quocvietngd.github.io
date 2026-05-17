@@ -2470,6 +2470,67 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Admin: import full state snapshot (protected by webhook secret or admin token)
+  if (method === "POST" && url.pathname === "/api/admin/import-full-state") {
+    const authHeader = String(req.headers["authorization"] || "").trim();
+    const providedToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+    const currentState = await readState();
+    const expectedSecret = currentState.webhookSecret || ENV_WEBHOOK_SECRET;
+    if (!expectedSecret || providedToken !== expectedSecret) {
+      sendJson(res, 401, { ok: false, error: "Unauthorized" });
+      return;
+    }
+    try {
+      const body = await readBody(req);
+      const incoming = JSON.parse(body);
+      if (!incoming || typeof incoming !== "object") throw new Error("Invalid payload");
+      const merged = normalizeState({
+        ...currentState,
+        ...incoming,
+        reports: Array.isArray(incoming.reports) ? mergeLists(currentState.reports, incoming.reports) : currentState.reports,
+        users: Array.isArray(incoming.users) && incoming.users.length > 0 ? incoming.users : currentState.users,
+        kpiReports: Array.isArray(incoming.kpiReports) ? mergeLists(currentState.kpiReports, incoming.kpiReports) : currentState.kpiReports,
+        appState: (incoming.appState && typeof incoming.appState === "object") ? (() => {
+          const ex = currentState.appState || {};
+          const inc = incoming.appState;
+          return {
+            ...ex,
+            ...inc,
+            customers: mergeLists(ex.customers, inc.customers),
+            schedules: mergeLists(ex.schedules, inc.schedules),
+            inventoryItems: mergeLists(ex.inventoryItems, inc.inventoryItems),
+            inventoryTransactions: mergeLists(ex.inventoryTransactions, inc.inventoryTransactions),
+            activities: mergeLists(ex.activities, inc.activities),
+            recycleBin: mergeLists(ex.recycleBin, inc.recycleBin),
+            newsPosts: mergeLists(ex.newsPosts, inc.newsPosts),
+            newsEvents: mergeLists(ex.newsEvents, inc.newsEvents),
+            accountingCashflow: mergeLists(ex.accountingCashflow, inc.accountingCashflow),
+            accountingAttendance: mergeLists(ex.accountingAttendance, inc.accountingAttendance),
+            reports: mergeLists(ex.reports, inc.reports),
+            updatedAt: Date.now()
+          };
+        })() : currentState.appState,
+        updatedAt: Date.now()
+      });
+      const saved = await writeState(merged);
+      sendJson(res, 200, {
+        ok: true,
+        message: "State imported and merged successfully",
+        updatedAt: saved.updatedAt,
+        counts: {
+          reports: saved.reports.length,
+          users: saved.users.length,
+          kpiReports: saved.kpiReports.length,
+          schedules: (saved.appState?.schedules || []).length,
+          customers: (saved.appState?.customers || []).length
+        }
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Import failed" });
+    }
+    return;
+  }
+
   if (method === "GET" && url.pathname === "/api/storage/status") {
     try {
       const state = await readState();

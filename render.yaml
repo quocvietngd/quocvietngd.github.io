@@ -10,16 +10,9 @@ services:
         value: 22
       - key: TELEGRAM_WEBHOOK_HOST
         value: 0.0.0.0
-      - key: DATABASE_URL
-        fromDatabase:
-          name: nora-sync-postgres
-          property: connectionString
+      # DATABASE_URL phải được set thủ công qua Render Dashboard hoặc scripts/setup-render.sh
+      # Hướng dẫn: https://neon.tech (PostgreSQL miễn phí) → copy connection string → paste vào Render env vars
       - key: PERSISTENCE_MODE
-        value: postgres-only
+        value: auto
       - key: BACKUP_INTERVAL_MINUTES
         value: 30
-
-databases:
-  - name: nora-sync-postgres
-    databaseName: nora_sync
-    plan: free
