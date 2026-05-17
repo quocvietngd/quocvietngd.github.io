@@ -3170,7 +3170,7 @@ function getLocalCriticalStateUpdatedAt() {
 }
 
 function setLocalCriticalStateUpdatedAt(value) {
-  localStorage.setItem(STORAGE.criticalStateLocalUpdatedAt, JSON.stringify(Number(value) || Date.now()));
+  safeLocalStorageSetItem(STORAGE.criticalStateLocalUpdatedAt, JSON.stringify(Number(value) || Date.now()));
 }
 
 function touchLocalCriticalStateUpdatedAt() {
@@ -3442,7 +3442,7 @@ async function tryFlushCriticalStateWithKeepalive() {
       keepalive: true
     });
     if (response.ok) {
-      localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
+      safeLocalStorageSetItem(STORAGE.criticalStatePendingSync, "false");
       return true;
     }
   } catch {
@@ -3467,13 +3467,61 @@ async function pushRemoteCriticalState(endpointUrl, payload) {
   if (!response.ok) throw new Error(`Không thể PUT app-state (${response.status})`);
 }
 
+async function bootstrapCriticalStateForDisplay() {
+  if (Array.isArray(schedules) && schedules.length > 0) return false;
+  const endpointUrl = getAppStateSyncEndpoint();
+  if (!endpointUrl) return false;
+
+  try {
+    const remoteState = await fetchRemoteCriticalState(endpointUrl);
+    if (!remoteState || !Array.isArray(remoteState.schedules) || remoteState.schedules.length === 0) return false;
+
+    // Emergency in-memory bootstrap: prioritize showing data even when localStorage is full.
+    isApplyingRemoteCriticalState = true;
+    customers = remoteState.customers;
+    deletedCustomerIds = remoteState.deletedCustomerIds;
+    schedules = filterScheduleRowsByDeleteMarkers(remoteState.schedules);
+    deletedScheduleIds = remoteState.deletedScheduleIds;
+    inventoryItems = remoteState.inventoryItems;
+    inventoryTransactions = remoteState.inventoryTransactions;
+    hrFiles = remoteState.hrFiles;
+    customerCareProgress = remoteState.customerCareProgress;
+    customerCareFilterState = remoteState.customerCareFilters;
+    customerCareManualRows = remoteState.customerCareManualRows;
+    deletedCustomerCareManualRowIds = remoteState.deletedCustomerCareManualRowIds;
+    activityLogs = sortActivityLogsNewestFirst(remoteState.activities);
+    recycleBin = remoteState.recycleBin;
+    rolePermissionsState = remoteState.rolePermissions;
+    newsPosts = remoteState.newsPosts;
+    newsPinned = remoteState.newsPinned;
+    newsEvents = remoteState.newsEvents;
+    accountingCashflowEntries = remoteState.accountingCashflow;
+    accountingCashflowFilterState = remoteState.accountingCashflowFilters;
+    accountingAttendanceEntries = remoteState.accountingAttendance;
+    accountingAttendanceSourceState = remoteState.accountingAttendanceSource;
+    accountingAttendanceFilterState = remoteState.accountingAttendanceFilters;
+    accountingServicePayrollFilterState = remoteState.accountingServicePayrollFilters;
+    nurseReportOverrides = remoteState.nurseReportOverrides;
+    telegramSourceConfig = mergeTelegramSourceFromLocalAndRemote(telegramSourceConfig, remoteState.telegramSource);
+    dataSourceConfig = normalizeDataSourceConfig(remoteState.dataSourceConfig);
+    reports = mergeReportsByLatest(reports, remoteState.reports);
+    setLocalCriticalStateUpdatedAt(Number(remoteState.updatedAt || Date.now()));
+    renderAll();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    isApplyingRemoteCriticalState = false;
+  }
+}
+
 async function syncCriticalStateToRemote(showToastOnSuccess = false) {
   if (criticalStateSyncInFlight) return false;
   const endpointUrl = getAppStateSyncEndpoint();
   if (!endpointUrl) return false;
   const storageReady = await ensureDurableCloudStorage(showToastOnSuccess);
   if (!storageReady) {
-    localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
+    safeLocalStorageSetItem(STORAGE.criticalStatePendingSync, "true");
     return false;
   }
 
@@ -3481,13 +3529,13 @@ async function syncCriticalStateToRemote(showToastOnSuccess = false) {
   try {
     const updatedAt = touchLocalCriticalStateUpdatedAt();
     await pushRemoteCriticalState(endpointUrl, buildCriticalStatePayload(updatedAt));
-    localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
+    safeLocalStorageSetItem(STORAGE.criticalStatePendingSync, "false");
     if (showToastOnSuccess) {
       showToast("Đã đồng bộ toàn bộ dữ liệu nghiệp vụ lên cloud.", "success");
     }
     return true;
   } catch (err) {
-    localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
+    safeLocalStorageSetItem(STORAGE.criticalStatePendingSync, "true");
     if (showToastOnSuccess) {
       showToast(`Đồng bộ cloud thất bại: ${err.message}`, "warning");
     }
@@ -3501,7 +3549,7 @@ function queueCriticalStateSync(storageKey) {
   if (isApplyingRemoteCriticalState) return;
   if (!APP_STATE_SYNC_KEYS.has(storageKey)) return;
   touchLocalCriticalStateUpdatedAt();
-  localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
+  safeLocalStorageSetItem(STORAGE.criticalStatePendingSync, "true");
 
   const runSync = () => {
     syncCriticalStateToRemote(false)
@@ -3701,14 +3749,14 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     saveJSON(STORAGE.dataSource, dataSourceConfig);
     saveJSON(STORAGE.reports, reports);
     setLocalCriticalStateUpdatedAt(remoteState.updatedAt || Date.now());
-    localStorage.setItem(STORAGE.criticalStatePendingSync, "false");
+    safeLocalStorageSetItem(STORAGE.criticalStatePendingSync, "false");
 
     // If local had pending changes that weren't in remote, push merged state back
     // so the server also gets the union (local additions stay on server).
     if (hasPendingSync) {
       syncCriticalStateToRemote(false).catch(() => {
         // Best-effort: keep pending flag for next cycle if push fails.
-        localStorage.setItem(STORAGE.criticalStatePendingSync, "true");
+        safeLocalStorageSetItem(STORAGE.criticalStatePendingSync, "true");
       });
     }
   } finally {
@@ -4033,7 +4081,7 @@ const SCHEDULE_SOURCE_TYPE_TELESALE = "telesale-flow";
 if (!localStorage.getItem(SCHEDULE_CLEAR_FLAG)) {
   localStorage.removeItem(STORAGE.schedule);
   localStorage.removeItem(STORAGE.deletedScheduleIds);
-  localStorage.setItem(SCHEDULE_CLEAR_FLAG, "1");
+  safeLocalStorageSetItem(SCHEDULE_CLEAR_FLAG, "1");
 }
 let schedules = loadJSON(STORAGE.schedule, []);
 let deletedScheduleIds = normalizeDeletedScheduleIdMap(loadJSON(STORAGE.deletedScheduleIds, {}));
@@ -4512,11 +4560,28 @@ const POLICY_DEPARTMENT_LABELS = {
   "giam-sat": "Bo phan Giam sat"
 };
 
+const localStorageSetWarnedKeys = new Set();
+
+function safeLocalStorageSetItem(key, value, showWarning = false) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    const errorText = `${String(error?.name || "")} ${String(error?.message || "")}`.toLowerCase();
+    const isQuotaError = errorText.includes("quota") || errorText.includes("exceeded");
+    if (isQuotaError && showWarning && !localStorageSetWarnedKeys.has(key)) {
+      localStorageSetWarnedKeys.add(key);
+      showToast("Bo nho trinh duyet da day. He thong se uu tien doc/ghi cloud de tranh mat du lieu.", "warning");
+    }
+    return false;
+  }
+}
+
 function loadJSON(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) {
-      localStorage.setItem(key, JSON.stringify(fallback));
+      safeLocalStorageSetItem(key, JSON.stringify(fallback));
       return fallback;
     }
     return JSON.parse(raw);
@@ -14888,7 +14953,7 @@ els.logoUpload.addEventListener("change", () => {
   reader.onload = () => {
     const result = typeof reader.result === "string" ? reader.result : "";
     if (!result) return;
-    localStorage.setItem(STORAGE.logo, result);
+    safeLocalStorageSetItem(STORAGE.logo, result);
     setBrandLogo(result);
     showToast("Đã cập nhật logo thương hiệu.");
     logActivity("Hệ thống", "Cập nhật logo", "Thay đổi logo thương hiệu trên header");
@@ -15673,7 +15738,7 @@ async function flushReportOutbox() {
     }
     reportOutbox = failed;
     saveReportOutboxLocal();
-    localStorage.setItem(STORAGE.reportOutboxLastFlushAt, String(Date.now()));
+    safeLocalStorageSetItem(STORAGE.reportOutboxLastFlushAt, String(Date.now()));
     return { sent, left: failed.length };
   } finally {
     reportOutboxFlushInFlight = false;
@@ -15886,6 +15951,9 @@ els.telegramDiscoveredChatsBody.addEventListener("click", async (event) => {
 startTelegramRealtimeSync();
 
 loadRuntimeUsersSyncConfig().then(() => {
+  bootstrapCriticalStateForDisplay().catch(() => {
+    // Continue normal sync pipeline even if emergency bootstrap fails.
+  });
   ensureDurableCloudStorage(true).catch(() => {
     // Keep local fallback when cloud storage status cannot be verified.
   });
