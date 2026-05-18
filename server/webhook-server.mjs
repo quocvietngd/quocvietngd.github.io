@@ -1490,6 +1490,16 @@ function reconcileTelegramSchedulesFromReports(state, options = {}) {
   };
 }
 
+async function reconcileTelegramSchedulesSweep(options = {}) {
+  const state = await readState();
+  const result = reconcileTelegramSchedulesFromReports(state, options);
+  if (result.changed > 0) {
+    state.updatedAt = Date.now();
+    await writeState(state);
+  }
+  return result;
+}
+
 async function parseJsonBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -1807,12 +1817,17 @@ async function pollTelegramUpdatesOnce() {
     const fetchResult = await fetchTelegramUpdates(state);
     const updates = Array.isArray(fetchResult?.updates) ? fetchResult.updates : [];
     if (!updates.length) {
+      const reconcileResult = reconcileTelegramSchedulesFromReports(state);
+      if (reconcileResult.changed > 0) {
+        await writeState(state);
+      }
       return {
         configured: true,
         fetchedUpdates: 0,
         savedReports: 0,
         updatedReports: 0,
         ignoredUpdates: 0,
+        reconcile: reconcileResult,
         lastUpdateId: Number(state.lastUpdateId || 0),
         recoveredOffsetSkew: Boolean(fetchResult?.recoveredOffsetSkew)
       };
@@ -1969,6 +1984,13 @@ const server = createServer(async (req, res) => {
         lastReason: debug.lastReason
       },
       sync: getTelegramSyncRuntimeSnapshot()
+      ,
+      reconcile: {
+        intervalMs: TELEGRAM_RECONCILE_INTERVAL_MS,
+        lastRunAt: Number(telegramReconcileRuntime.lastRunAt || 0),
+        lastChanged: Number(telegramReconcileRuntime.lastChanged || 0),
+        lastScanned: Number(telegramReconcileRuntime.lastScanned || 0)
+      }
     });
     return;
   }
@@ -1984,6 +2006,12 @@ const server = createServer(async (req, res) => {
         reportsCount: Array.isArray(state.reports) ? state.reports.length : 0,
         debug,
         sync: getTelegramSyncRuntimeSnapshot(),
+        reconcile: {
+          intervalMs: TELEGRAM_RECONCILE_INTERVAL_MS,
+          lastRunAt: Number(telegramReconcileRuntime.lastRunAt || 0),
+          lastChanged: Number(telegramReconcileRuntime.lastChanged || 0),
+          lastScanned: Number(telegramReconcileRuntime.lastScanned || 0)
+        },
         latestReports: (state.reports || []).slice(-5).map((item) => ({
           id: String(item.id || ""),
           receivedAt: Number(item.receivedAt || 0),
@@ -3009,8 +3037,18 @@ async function bootstrap() {
     });
   }, 10000);
 
+  setInterval(() => {
+    reconcileTelegramSchedulesSweep().catch((error) => {
+      console.error("[telegram-webhook-bridge] reconcile sweep failure:", error.message);
+    });
+  }, TELEGRAM_RECONCILE_INTERVAL_MS);
+
   pollTelegramUpdatesOnce().catch((error) => {
     console.error("[telegram-webhook-bridge] initial polling failure:", error.message);
+  });
+
+  reconcileTelegramSchedulesSweep({ force: true }).catch((error) => {
+    console.error("[telegram-webhook-bridge] initial reconcile failure:", error.message);
   });
 
   setInterval(() => {
