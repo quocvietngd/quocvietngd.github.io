@@ -53,6 +53,7 @@ let gistBackupPending = false;
 
 const IS_DURABLE_STORAGE = USE_POSTGRES || IS_DURABLE_FILE_MODE || USE_GIST;
 const TELEGRAM_SYNC_MIN_INTERVAL_MS = Math.max(3000, Number(process.env.TELEGRAM_SYNC_MIN_INTERVAL_MS || 8000));
+const TELEGRAM_RECONCILE_INTERVAL_MS = Math.max(30000, Number(process.env.TELEGRAM_RECONCILE_INTERVAL_MS || 60000));
 const TELEGRAM_SUSPICIOUS_UPDATE_ID = 100000000;
 const TELEGRAM_AUTO_ALLOW_NEW_CHATS = !["0", "false", "no", "off"].includes(
   String(process.env.TELEGRAM_AUTO_ALLOW_NEW_CHATS || "1").trim().toLowerCase()
@@ -67,6 +68,11 @@ let telegramSyncRuntime = {
   lastDurationMs: 0,
   lastError: "",
   lastResult: null
+};
+let telegramReconcileRuntime = {
+  lastRunAt: 0,
+  lastChanged: 0,
+  lastScanned: 0
 };
 
 function assertPersistenceConfig() {
@@ -1433,6 +1439,57 @@ function patchConsultantReceivableInAppState(state, mahd, receivableAmount = 0) 
   return patched;
 }
 
+function reconcileTelegramSchedulesFromReports(state, options = {}) {
+  const force = Boolean(options.force);
+  const routeFilter = String(options.route || "").trim().toLowerCase();
+  const dateFilter = String(options.date || "").trim();
+  const now = Date.now();
+
+  if (!force && telegramReconcileRuntime.lastRunAt > 0 && now - telegramReconcileRuntime.lastRunAt < TELEGRAM_RECONCILE_INTERVAL_MS) {
+    return {
+      changed: 0,
+      scanned: 0,
+      skipped: true,
+      reason: "cooldown",
+      lastRunAt: telegramReconcileRuntime.lastRunAt,
+      cooldownMs: TELEGRAM_RECONCILE_INTERVAL_MS
+    };
+  }
+
+  const reports = Array.isArray(state.reports) ? state.reports : [];
+  const normalizedDateFilter = dateFilter ? normalizeDate(dateFilter) : "";
+
+  let scanned = 0;
+  let changed = 0;
+
+  reports.forEach((item) => {
+    const raw = item?.raw;
+    if (!raw || typeof raw !== "object") return;
+    const route = String(raw.telegramRoute || "").trim().toLowerCase();
+    if (!route) return;
+    if (routeFilter && route !== routeFilter) return;
+
+    const rawDate = String(raw.registrationDate || "").trim();
+    const normalizedDate = rawDate ? normalizeDate(rawDate) : "";
+    if (normalizedDateFilter && normalizedDate !== normalizedDateFilter) return;
+
+    scanned += 1;
+    if (upsertTelegramScheduleInAppState(state, raw)) changed += 1;
+  });
+
+  telegramReconcileRuntime.lastRunAt = now;
+  telegramReconcileRuntime.lastChanged = changed;
+  telegramReconcileRuntime.lastScanned = scanned;
+
+  return {
+    changed,
+    scanned,
+    skipped: false,
+    route: routeFilter || "all",
+    date: normalizedDateFilter || "all"
+  };
+}
+
 async function parseJsonBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -1776,6 +1833,7 @@ async function pollTelegramUpdatesOnce() {
       if (result?.updated) updatedReports += 1;
       if (result?.ignored) ignoredUpdates += 1;
     });
+    const reconcileResult = reconcileTelegramSchedulesFromReports(state);
     await writeState(state);
     return {
       configured: true,
@@ -1783,6 +1841,7 @@ async function pollTelegramUpdatesOnce() {
       savedReports,
       updatedReports,
       ignoredUpdates,
+      reconcile: reconcileResult,
       lastUpdateId: Number(state.lastUpdateId || 0),
       recoveredOffsetSkew: Boolean(fetchResult?.recoveredOffsetSkew),
       offsetUsed: Number(fetchResult?.offsetUsed || 0),
@@ -2351,6 +2410,26 @@ const server = createServer(async (req, res) => {
       });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Reparse dropped previews failed" });
+    }
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/telegram/admin/reconcile-schedules") {
+    try {
+      const payload = await parseJsonBody(req).catch(() => ({}));
+      const state = await readState();
+      const result = reconcileTelegramSchedulesFromReports(state, {
+        force: payload?.force !== false,
+        route: payload?.route || "",
+        date: payload?.date || ""
+      });
+      if (result.changed > 0) {
+        state.updatedAt = Date.now();
+        await writeState(state);
+      }
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Reconcile schedules failed" });
     }
     return;
   }
