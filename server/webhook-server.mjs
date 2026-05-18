@@ -1299,6 +1299,51 @@ function buildTelegramScheduleId(raw = {}) {
   return "";
 }
 
+function buildTelegramScheduleContentSignature(row = {}) {
+  const pick = (value) => String(value ?? "").trim();
+  const pickNum = (value) => Number(value || 0);
+  return JSON.stringify({
+    id: pick(row.id),
+    registrationDate: pick(row.registrationDate),
+    appointmentTime: pick(row.appointmentTime),
+    customerName: pick(row.customerName),
+    phone: pick(row.phone),
+    address: pick(row.address),
+    service: pick(row.service),
+    source: pick(row.source),
+    note: pick(row.note),
+    status: pick(row.status),
+    saleStaff: pick(row.saleStaff),
+    consultant: pick(row.consultant),
+    nurse: pick(row.nurse),
+    marketingName: pick(row.marketingName),
+    marketingStaff: pick(row.marketingStaff),
+    contractAmount: pickNum(row.contractAmount),
+    kq: pick(row.kq),
+    mahd: pick(row.mahd),
+    sotien: pickNum(row.sotien),
+    thucthu: row.thucthu == null ? null : pickNum(row.thucthu),
+    pttt: pick(row.pttt),
+    receivableAmount: row.receivableAmount == null ? null : pickNum(row.receivableAmount),
+    shiftMinutes: pickNum(row.shiftMinutes),
+    marketingBudget: pickNum(row.marketingBudget),
+    marketingMessCount: pickNum(row.marketingMessCount),
+    marketingPhoneCount: pickNum(row.marketingPhoneCount),
+    marketingBookedCount: pickNum(row.marketingBookedCount),
+    marketingContractCount: pickNum(row.marketingContractCount),
+    marketingRevenue: pickNum(row.marketingRevenue),
+    caCancelled: pickNum(row.caCancelled),
+    distanceKm: pickNum(row.distanceKm),
+    overtimeHolidayAllowance: pickNum(row.overtimeHolidayAllowance),
+    telegramUpdateId: pick(row.telegramUpdateId),
+    telegramMessageId: pick(row.telegramMessageId),
+    telegramChatId: pick(row.telegramChatId),
+    telegramRoute: pick(row.telegramRoute),
+    reportSource: pick(row.reportSource),
+    createdSource: pick(row.createdSource)
+  });
+}
+
 function toTelegramScheduleRow(raw = {}, previous = null) {
   const now = Date.now();
   const prev = previous && typeof previous === "object" ? previous : {};
@@ -1394,6 +1439,12 @@ function upsertTelegramScheduleInAppState(state, raw) {
   const nextRow = toTelegramScheduleRow(raw, existing);
   if (!nextRow.id) return false;
   if (isScheduleDeletedByMarkerMap(nextRow, deletedMarkerMap)) return false;
+
+  if (existing) {
+    const previousSignature = buildTelegramScheduleContentSignature(existing);
+    const nextSignature = buildTelegramScheduleContentSignature(nextRow);
+    if (previousSignature === nextSignature) return false;
+  }
 
   if (fallbackIndex >= 0) {
     schedules[fallbackIndex] = nextRow;
