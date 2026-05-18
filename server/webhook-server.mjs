@@ -1275,6 +1275,164 @@ function parseTelegramReportMessage(text) {
   return null;
 }
 
+function normalizeTelegramScheduleStatus(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "pending";
+  if (raw.includes("huy") || raw.includes("cancel")) return "cancelled";
+  if (raw.includes("hoan") || raw.includes("complete")) return "completed";
+  if (raw.includes("xac") || raw.includes("confirm")) return "confirmed";
+  return "pending";
+}
+
+function buildTelegramScheduleId(raw = {}) {
+  const chatId = String(raw.telegramChatId || "").trim();
+  const messageId = String(raw.telegramMessageId || "").trim();
+  const updateId = String(raw.telegramUpdateId || "").trim();
+  if (chatId && messageId) return `tgm-${chatId}:${messageId}`;
+  if (updateId) return `tg-${updateId}`;
+  return "";
+}
+
+function toTelegramScheduleRow(raw = {}, previous = null) {
+  const now = Date.now();
+  const prev = previous && typeof previous === "object" ? previous : {};
+  const pickDefined = (...values) => {
+    for (const value of values) {
+      if (value === undefined || value === null) continue;
+      if (typeof value === "string" && value.trim() === "") continue;
+      return value;
+    }
+    return undefined;
+  };
+  const normalizedStatus = normalizeTelegramScheduleStatus(raw.status);
+  const contractAmount = parseFlexibleNumber(pickDefined(raw.contractAmount, raw.sotien, prev.contractAmount, prev.sotien));
+  const receivableAmount = parseFlexibleNumber(pickDefined(raw.receivableAmount, raw.congno, prev.receivableAmount));
+  const thucthuRaw = raw.thucthu;
+  const thucthuParsed = parseFlexibleNumber(thucthuRaw);
+  const thucthu = thucthuRaw === null || thucthuRaw === undefined || String(thucthuRaw).trim() === ""
+    ? (contractAmount > 0 && receivableAmount > 0 ? Math.max(0, contractAmount - receivableAmount) : null)
+    : (thucthuParsed > 0 ? thucthuParsed : null);
+
+  const marketingMessCount = parseFlexibleNumber(pickDefined(raw.marketingMessCount, prev.marketingMessCount));
+  const marketingPhoneCount = parseFlexibleNumber(pickDefined(raw.marketingPhoneCount, prev.marketingPhoneCount));
+  const marketingBookedCount = parseFlexibleNumber(pickDefined(raw.marketingBookedCount, prev.marketingBookedCount));
+  const marketingContractCount = parseFlexibleNumber(pickDefined(raw.marketingContractCount, prev.marketingContractCount));
+  const marketingRevenue = parseFlexibleNumber(pickDefined(raw.marketingRevenue, raw.contractAmount, prev.marketingRevenue, prev.contractAmount));
+
+  return {
+    ...prev,
+    id: buildTelegramScheduleId(raw) || String(prev.id || ""),
+    registrationDate: normalizeDate(raw.registrationDate || prev.registrationDate || ""),
+    appointmentTime: String(raw.appointmentTime || prev.appointmentTime || "").trim(),
+    customerName: String(raw.customerName || prev.customerName || "").trim(),
+    phone: String(raw.phone || prev.phone || "").trim(),
+    address: String(raw.address || prev.address || "").trim(),
+    service: String(raw.service || prev.service || "").trim(),
+    source: String(raw.source || prev.source || "Telegram Webhook").trim(),
+    note: String(raw.note || prev.note || "").trim(),
+    status: normalizedStatus,
+    saleStaff: String(raw.saleStaff || prev.saleStaff || "").trim(),
+    consultant: String(raw.consultant || prev.consultant || "").trim(),
+    nurse: String(raw.nurse || prev.nurse || "").trim(),
+    marketingName: String(raw.marketingName || prev.marketingName || "").trim(),
+    marketingStaff: String(raw.marketingStaff || raw.marketingName || prev.marketingStaff || "").trim(),
+    contractAmount,
+    kq: String(raw.kq || prev.kq || "").trim(),
+    mahd: normalizeContractCode(raw.mahd || prev.mahd || ""),
+    sotien: parseFlexibleNumber(pickDefined(raw.sotien, prev.sotien, contractAmount)),
+    thucthu,
+    pttt: String(raw.pttt || prev.pttt || "").trim(),
+    receivableAmount: receivableAmount || null,
+    shiftMinutes: parseFlexibleNumber(pickDefined(raw.shiftMinutes, prev.shiftMinutes)),
+    marketingBudget: parseFlexibleNumber(pickDefined(raw.marketingBudget, prev.marketingBudget)),
+    marketingMessCount: Math.max(0, marketingMessCount),
+    marketingPhoneCount: Math.max(0, marketingPhoneCount),
+    marketingBookedCount: Math.max(0, marketingBookedCount),
+    marketingContractCount: Math.max(0, marketingContractCount),
+    marketingRevenue,
+    caCancelled: Math.max(0, parseFlexibleNumber(pickDefined(raw.caCancelled, prev.caCancelled))),
+    distanceKm: parseFlexibleNumber(pickDefined(raw.distanceKm, raw.khoangcach, prev.distanceKm)),
+    overtimeHolidayAllowance: parseFlexibleNumber(pickDefined(raw.overtimeHolidayAllowance, raw.phuPhi, prev.overtimeHolidayAllowance)),
+    telegramUpdateId: String(raw.telegramUpdateId || prev.telegramUpdateId || "").trim(),
+    telegramMessageId: String(raw.telegramMessageId || prev.telegramMessageId || "").trim(),
+    telegramChatId: String(raw.telegramChatId || prev.telegramChatId || "").trim(),
+    telegramRoute: String(raw.telegramRoute || prev.telegramRoute || "").trim(),
+    reportSource: "telegram",
+    createdSource: "telegram",
+    updatedAt: now,
+    createdAt: Number(prev.createdAt || now)
+  };
+}
+
+function upsertTelegramScheduleInAppState(state, raw) {
+  if (!raw || typeof raw !== "object") return false;
+  const scheduleId = buildTelegramScheduleId(raw);
+  if (!scheduleId) return false;
+
+  const appState = normalizeAppState(state.appState || {});
+  const schedules = Array.isArray(appState.schedules) ? appState.schedules.slice() : [];
+  const deletedMarkerMap = appState.deletedScheduleIds && typeof appState.deletedScheduleIds === "object"
+    ? appState.deletedScheduleIds
+    : {};
+
+  const directIndex = schedules.findIndex((item) => String(item?.id || "") === scheduleId);
+  const fallbackIndex = directIndex >= 0
+    ? directIndex
+    : schedules.findIndex((item) => {
+        const chatId = String(item?.telegramChatId || "").trim();
+        const messageId = String(item?.telegramMessageId || "").trim();
+        return chatId && messageId && `tgm-${chatId}:${messageId}` === scheduleId;
+      });
+
+  const existing = fallbackIndex >= 0 ? schedules[fallbackIndex] : null;
+  const nextRow = toTelegramScheduleRow(raw, existing);
+  if (!nextRow.id) return false;
+  if (isScheduleDeletedByMarkerMap(nextRow, deletedMarkerMap)) return false;
+
+  if (fallbackIndex >= 0) {
+    schedules[fallbackIndex] = nextRow;
+  } else {
+    schedules.unshift(nextRow);
+  }
+
+  appState.schedules = schedules;
+  appState.updatedAt = Date.now();
+  state.appState = appState;
+  state.updatedAt = Date.now();
+  return true;
+}
+
+function patchConsultantReceivableInAppState(state, mahd, receivableAmount = 0) {
+  const contractCode = normalizeContractCode(mahd).toLowerCase();
+  if (!contractCode) return 0;
+
+  const appState = normalizeAppState(state.appState || {});
+  const schedules = Array.isArray(appState.schedules) ? appState.schedules : [];
+  let patched = 0;
+
+  appState.schedules = schedules.map((item) => {
+    if (String(item?.telegramRoute || "") !== "consultant") return item;
+    if (normalizeContractCode(item?.mahd).toLowerCase() !== contractCode) return item;
+    const contractAmount = parseFlexibleNumber(item.contractAmount || item.sotien);
+    const nextReceivable = Number(receivableAmount) || 0;
+    patched += 1;
+    return {
+      ...item,
+      receivableAmount: nextReceivable,
+      thucthu: contractAmount > 0 ? Math.max(0, contractAmount - nextReceivable) : item.thucthu,
+      updatedAt: Date.now()
+    };
+  });
+
+  if (patched > 0) {
+    appState.updatedAt = Date.now();
+    state.appState = appState;
+    state.updatedAt = Date.now();
+  }
+
+  return patched;
+}
+
 async function parseJsonBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -1426,6 +1584,7 @@ function appendTelegramReport(state, update) {
     nextReports[existingByMessageIndex] = merged;
     state.reports = nextReports.slice(-MAX_REPORTS);
     state.updatedAt = Date.now();
+    upsertTelegramScheduleInAppState(state, merged.raw || raw);
     debug.acceptedCount += 1;
     debug.lastAcceptedAt = Date.now();
     state.telegramDebug = debug;
@@ -1434,6 +1593,7 @@ function appendTelegramReport(state, update) {
 
   state.reports = [...reports, report].slice(-MAX_REPORTS);
     state.updatedAt = Date.now();
+    upsertTelegramScheduleInAppState(state, raw);
     debug.acceptedCount += 1;
     debug.lastAcceptedAt = Date.now();
     state.telegramDebug = debug;
@@ -1449,6 +1609,7 @@ function appendTelegramReport(state, update) {
         patched++;
         return { ...item, raw: { ...item.raw, receivableAmount: newReceivable } };
       });
+      patchConsultantReceivableInAppState(state, raw.mahd, newReceivable);
       console.log(`[congno] Patched ${patched} consultant records for mahd=${raw.mahd}, receivable=${newReceivable}`);
     }
 
