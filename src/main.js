@@ -3915,6 +3915,8 @@ function applyCriticalStateRelayDelta(deltaPayload = {}, updatedAt = Date.now())
   if (!deltaPayload || typeof deltaPayload !== "object") return;
 
   const hasOwn = (key) => Object.prototype.hasOwnProperty.call(deltaPayload, key);
+  const hasScheduleDelta = hasOwn("schedules");
+  const hasDeletedScheduleDelta = hasOwn("deletedScheduleIds");
   isApplyingRemoteCriticalState = true;
   try {
     if (hasOwn("customers")) {
@@ -3925,14 +3927,18 @@ function applyCriticalStateRelayDelta(deltaPayload = {}, updatedAt = Date.now())
       deletedCustomerIds = normalizeDeletedScheduleIdMap(deltaPayload.deletedCustomerIds || {});
       saveJSON(STORAGE.deletedCustomerIds, deletedCustomerIds);
     }
-    if (hasOwn("schedules")) {
+    if (hasDeletedScheduleDelta) {
+      deletedScheduleIds = normalizeDeletedScheduleIdMap(mergeDeletedScheduleMarkerMaps(deltaPayload.deletedScheduleIds || {}, deletedScheduleIds));
+      saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
+    }
+    if (hasScheduleDelta) {
       const incomingSchedules = Array.isArray(deltaPayload.schedules) ? deltaPayload.schedules : [];
       schedules = dedupeSchedulesByIdKeepNewest(filterScheduleRowsByDeleteMarkers(preferRemoteList(incomingSchedules, schedules)));
       saveJSON(STORAGE.schedule, schedules);
     }
-    if (hasOwn("deletedScheduleIds")) {
-      deletedScheduleIds = normalizeDeletedScheduleIdMap(mergeDeletedScheduleMarkerMaps(deltaPayload.deletedScheduleIds || {}, deletedScheduleIds));
-      saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
+    if (!hasScheduleDelta && hasDeletedScheduleDelta) {
+      schedules = dedupeSchedulesByIdKeepNewest(filterScheduleRowsByDeleteMarkers(schedules));
+      saveJSON(STORAGE.schedule, schedules);
     }
     if (hasOwn("reports")) {
       reports = mergeReportsByLatest(Array.isArray(deltaPayload.reports) ? deltaPayload.reports : [], reports);
