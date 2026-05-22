@@ -3615,6 +3615,8 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     || hasRemoteListIdsMissingLocally(remoteState.accountingAttendance, accountingAttendanceEntries)
     || hasRemoteListIdsMissingLocally(remoteState.reports, reports);
 
+  const shouldRerenderAfterMerge = remoteHasNewData;
+
   // If local has unsaved changes AND remote has nothing new, just push local to remote.
   if (hasPendingSync && !remoteHasNewData) {
     return syncCriticalStateToRemote(showToastOnSuccess);
@@ -3759,6 +3761,9 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
 
   applyDataSourceConfigToInputs();
   rememberUsersSyncEndpointFromSource();
+  if (shouldRerenderAfterMerge) {
+    renderAll();
+  }
 
   if (showToastOnSuccess) {
     showToast("Đã tải toàn bộ dữ liệu nghiệp vụ từ cloud.", "success");
