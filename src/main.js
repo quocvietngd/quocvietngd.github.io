@@ -3566,21 +3566,21 @@ function queueCriticalStateSync(storageKey) {
         if (criticalStateSyncQueueTimer) clearTimeout(criticalStateSyncQueueTimer);
         criticalStateSyncQueueTimer = setTimeout(() => {
           runSync();
-        }, 3000);
+        }, 500);
       })
       .catch(() => {
         if (!Boolean(loadJSON(STORAGE.criticalStatePendingSync, false))) return;
         if (criticalStateSyncQueueTimer) clearTimeout(criticalStateSyncQueueTimer);
         criticalStateSyncQueueTimer = setTimeout(() => {
           runSync();
-        }, 3000);
+        }, 500);
       });
   };
 
   if (criticalStateSyncQueueTimer) clearTimeout(criticalStateSyncQueueTimer);
   criticalStateSyncQueueTimer = setTimeout(() => {
     runSync();
-  }, 250);
+  }, 50);
 }
 
 async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
