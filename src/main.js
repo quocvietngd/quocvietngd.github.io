@@ -3775,7 +3775,6 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
 function startCriticalStateAutoSync() {
   if (criticalStatePullTimer) clearInterval(criticalStatePullTimer);
   criticalStatePullTimer = setInterval(() => {
-    if (document.hidden) return;
     syncCriticalStateFromRemote(false).catch(() => {
       // Keep local fallback and retry.
     });
@@ -4050,7 +4049,6 @@ function syncUsersToRemoteInBackground(actionLabel = "") {
 function startUsersAutoSync() {
   if (usersSyncTimer) clearInterval(usersSyncTimer);
   usersSyncTimer = setInterval(() => {
-    if (document.hidden) return;
     syncUsersFromRemote(false).catch(() => {
       // Keep local fallback when endpoint is temporarily unavailable.
     });
