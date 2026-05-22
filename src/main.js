@@ -3926,11 +3926,12 @@ function applyCriticalStateRelayDelta(deltaPayload = {}, updatedAt = Date.now())
       saveJSON(STORAGE.deletedCustomerIds, deletedCustomerIds);
     }
     if (hasOwn("schedules")) {
-      schedules = dedupeSchedulesByIdKeepNewest(filterScheduleRowsByDeleteMarkers(Array.isArray(deltaPayload.schedules) ? deltaPayload.schedules : []));
+      const incomingSchedules = Array.isArray(deltaPayload.schedules) ? deltaPayload.schedules : [];
+      schedules = dedupeSchedulesByIdKeepNewest(filterScheduleRowsByDeleteMarkers(preferRemoteList(incomingSchedules, schedules)));
       saveJSON(STORAGE.schedule, schedules);
     }
     if (hasOwn("deletedScheduleIds")) {
-      deletedScheduleIds = normalizeDeletedScheduleIdMap(deltaPayload.deletedScheduleIds || {});
+      deletedScheduleIds = normalizeDeletedScheduleIdMap(mergeDeletedScheduleMarkerMaps(deltaPayload.deletedScheduleIds || {}, deletedScheduleIds));
       saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
     }
     if (hasOwn("reports")) {
@@ -8110,6 +8111,7 @@ function autoCreateScheduleFromCustomer(customerId) {
     updatedAt: Date.now(),
     createdAt: Date.now()
   };
+  clearDeletedScheduleRows([entry]);
   schedules.unshift(entry);
   saveJSON(STORAGE.schedule, schedules);
   renderScheduleTable();
@@ -15043,6 +15045,7 @@ els.saveScheduleBtn.addEventListener("click", () => {
     schedules.unshift(entry);
     logActivity("Lịch KH", "Thêm lịch mới", `${customerName} | ${entry.registrationDate}`);
   }
+  clearDeletedScheduleRows([entry]);
   saveJSON(STORAGE.schedule, schedules);
   closeScheduleModal();
   renderScheduleTable();
