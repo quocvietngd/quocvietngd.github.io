@@ -7165,6 +7165,15 @@ function closeUserModal() {
   resetUserForm();
 }
 
+function getCustomerStatusRowClass(status) {
+  const normalized = String(status || "").trim();
+  if (normalized === "Chốt trải nghiệm") return "customer-row-status-green";
+  if (normalized === "Khách tỉnh" || normalized === "Không có nhu cầu") return "customer-row-status-red";
+  if (normalized === "Không nghe máy") return "customer-row-status-yellow";
+  if (normalized === "Đang cân nhắc" || normalized === "Đang chăm lại" || normalized === "Liên hệ lại sau") return "customer-row-status-blue";
+  return "";
+}
+
 function renderCustomerTable() {
   renderCustomerFilterControls();
   const filteredCustomers = getFilteredCustomers();
@@ -7177,8 +7186,10 @@ function renderCustomerTable() {
 
   els.customerBody.innerHTML = [...filteredCustomers]
     .sort((a, b) => b.updatedAt - a.updatedAt)
-    .map((c) => `
-      <tr>
+    .map((c) => {
+      const rowStatusClass = getCustomerStatusRowClass(c.status);
+      return `
+      <tr class="${rowStatusClass}">
         <td>
           <strong>${c.name}</strong>
           <div class="muted" style="font-size:0.78rem;">${c.phone || "--"} | ${c.email || "--"}</div>
@@ -7204,7 +7215,8 @@ function renderCustomerTable() {
           </div>
         </td>
       </tr>
-    `)
+    `;
+    })
     .join("");
 }
 

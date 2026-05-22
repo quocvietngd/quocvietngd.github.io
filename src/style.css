@@ -1105,6 +1105,26 @@ th {
   color: #3b4b5f;
 }
 
+#customerBody tr.customer-row-status-green td {
+  background: linear-gradient(180deg, rgba(22, 163, 74, 0.03) 0%, rgba(22, 163, 74, 0.1) 100%);
+  box-shadow: inset 0 -4px 0 rgba(22, 163, 74, 0.42);
+}
+
+#customerBody tr.customer-row-status-red td {
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.02) 0%, rgba(239, 68, 68, 0.09) 100%);
+  box-shadow: inset 0 -4px 0 rgba(239, 68, 68, 0.3);
+}
+
+#customerBody tr.customer-row-status-yellow td {
+  background: linear-gradient(180deg, rgba(234, 179, 8, 0.03) 0%, rgba(234, 179, 8, 0.11) 100%);
+  box-shadow: inset 0 -4px 0 rgba(234, 179, 8, 0.38);
+}
+
+#customerBody tr.customer-row-status-blue td {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.03) 0%, rgba(37, 99, 235, 0.11) 100%);
+  box-shadow: inset 0 -4px 0 rgba(37, 99, 235, 0.34);
+}
+
 .muted {
   color: var(--muted);
 }
