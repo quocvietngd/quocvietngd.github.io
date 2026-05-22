@@ -2795,10 +2795,13 @@ let criticalStatePullTimer = null;
 let criticalStateSyncInFlight = false;
 let criticalStateSyncListenersBound = false;
 let isApplyingRemoteCriticalState = false;
+const dirtyCriticalStateKeys = new Set();
 let criticalStateStream = null;
 let criticalStateStreamReconnectTimer = null;
 let criticalStateStreamBackoffMs = 1000;
 let criticalStateStreamLastUpdatedAt = 0;
+let criticalStateRelayTimer = null;
+const criticalStateClientId = `cc-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
 const CRITICAL_STATE_AUTO_SYNC_INTERVAL = 1000;
 let editingUserId = null;
 let editingCustomerId = null;
@@ -3057,6 +3060,14 @@ function deriveAppStateStreamEndpoint(appStateEndpoint) {
   return `${normalized}/app-state/stream`;
 }
 
+function deriveAppStateRelayEndpoint(appStateEndpoint) {
+  const normalized = String(appStateEndpoint || "").trim().replace(/\/+$/g, "");
+  if (!normalized) return "";
+  if (/\/app-state\/relay$/i.test(normalized)) return normalized;
+  if (/\/app-state$/i.test(normalized)) return `${normalized}/relay`;
+  return `${normalized}/app-state/relay`;
+}
+
 function getAppStateSyncEndpoint() {
   const usersEndpoint = getUsersSyncEndpoint();
   if (!isHttpUrl(usersEndpoint)) return "";
@@ -3242,6 +3253,46 @@ function buildCriticalStatePayload(updatedAt = Date.now()) {
     reports: Array.isArray(reports) ? reports : [],
     updatedAt: Number(updatedAt) || Date.now()
   };
+}
+
+function buildCriticalStateDeltaPayload(updatedAt = Date.now(), keys = []) {
+  const include = new Set(Array.isArray(keys) ? keys : []);
+  if (!include.size) return buildCriticalStatePayload(updatedAt);
+
+  const payload = {
+    schemaVersion: 2,
+    updatedAt: Number(updatedAt) || Date.now()
+  };
+
+  if (include.has(STORAGE.customers)) payload.customers = Array.isArray(customers) ? customers : [];
+  if (include.has(STORAGE.deletedCustomerIds)) payload.deletedCustomerIds = deletedCustomerIds && typeof deletedCustomerIds === "object" ? deletedCustomerIds : {};
+  if (include.has(STORAGE.schedule)) payload.schedules = Array.isArray(schedules) ? schedules : [];
+  if (include.has(STORAGE.deletedScheduleIds)) payload.deletedScheduleIds = deletedScheduleIds && typeof deletedScheduleIds === "object" ? deletedScheduleIds : {};
+  if (include.has(STORAGE.inventoryItems)) payload.inventoryItems = Array.isArray(inventoryItems) ? inventoryItems : [];
+  if (include.has(STORAGE.inventoryTransactions)) payload.inventoryTransactions = Array.isArray(inventoryTransactions) ? inventoryTransactions : [];
+  if (include.has(STORAGE.hrFiles)) payload.hrFiles = hrFiles && typeof hrFiles === "object" ? hrFiles : {};
+  if (include.has(STORAGE.customerCareProgress)) payload.customerCareProgress = customerCareProgress && typeof customerCareProgress === "object" ? customerCareProgress : {};
+  if (include.has(STORAGE.customerCareFilters)) payload.customerCareFilters = customerCareFilterState && typeof customerCareFilterState === "object" ? customerCareFilterState : {};
+  if (include.has(STORAGE.customerCareManualRows)) payload.customerCareManualRows = Array.isArray(customerCareManualRows) ? customerCareManualRows : [];
+  if (include.has(STORAGE.deletedCustomerCareManualRowIds)) payload.deletedCustomerCareManualRowIds = deletedCustomerCareManualRowIds && typeof deletedCustomerCareManualRowIds === "object" ? deletedCustomerCareManualRowIds : {};
+  if (include.has(STORAGE.activities)) payload.activities = Array.isArray(activityLogs) ? activityLogs : [];
+  if (include.has(STORAGE.recycleBin)) payload.recycleBin = Array.isArray(recycleBin) ? recycleBin : [];
+  if (include.has(STORAGE.rolePermissions)) payload.rolePermissions = rolePermissionsState && typeof rolePermissionsState === "object" ? rolePermissionsState : {};
+  if (include.has(STORAGE.newsPosts)) payload.newsPosts = Array.isArray(newsPosts) ? newsPosts : [];
+  if (include.has(STORAGE.newsPinned)) payload.newsPinned = Array.isArray(newsPinned) ? newsPinned : [];
+  if (include.has(STORAGE.newsEvents)) payload.newsEvents = Array.isArray(newsEvents) ? newsEvents : [];
+  if (include.has(STORAGE.accountingCashflow)) payload.accountingCashflow = Array.isArray(accountingCashflowEntries) ? accountingCashflowEntries : [];
+  if (include.has(STORAGE.accountingCashflowFilters)) payload.accountingCashflowFilters = accountingCashflowFilterState && typeof accountingCashflowFilterState === "object" ? accountingCashflowFilterState : {};
+  if (include.has(STORAGE.accountingAttendance)) payload.accountingAttendance = Array.isArray(accountingAttendanceEntries) ? accountingAttendanceEntries : [];
+  if (include.has(STORAGE.accountingAttendanceSource)) payload.accountingAttendanceSource = accountingAttendanceSource && typeof accountingAttendanceSource === "object" ? accountingAttendanceSource : {};
+  if (include.has(STORAGE.accountingAttendanceFilters)) payload.accountingAttendanceFilters = accountingAttendanceFilterState && typeof accountingAttendanceFilterState === "object" ? accountingAttendanceFilterState : {};
+  if (include.has(STORAGE.accountingServicePayrollFilters)) payload.accountingServicePayrollFilters = accountingServicePayrollFilterState && typeof accountingServicePayrollFilterState === "object" ? accountingServicePayrollFilterState : {};
+  if (include.has(STORAGE.nurseReportOverrides)) payload.nurseReportOverrides = nurseReportOverrides && typeof nurseReportOverrides === "object" ? nurseReportOverrides : {};
+  if (include.has(STORAGE.telegramSource)) payload.telegramSource = telegramSourceConfig && typeof telegramSourceConfig === "object" ? telegramSourceConfig : {};
+  if (include.has(STORAGE.dataSource)) payload.dataSourceConfig = dataSourceConfig && typeof dataSourceConfig === "object" ? dataSourceConfig : { type: "local", url: "" };
+  if (include.has(STORAGE.reports)) payload.reports = Array.isArray(reports) ? reports : [];
+
+  return payload;
 }
 
 function normalizeRemoteCriticalState(raw = {}) {
@@ -3535,8 +3586,13 @@ async function syncCriticalStateToRemote(showToastOnSuccess = false) {
   criticalStateSyncInFlight = true;
   try {
     const updatedAt = touchLocalCriticalStateUpdatedAt();
-    await pushRemoteCriticalState(endpointUrl, buildCriticalStatePayload(updatedAt));
+    const keysToSync = Array.from(dirtyCriticalStateKeys);
+    const payload = buildCriticalStateDeltaPayload(updatedAt, keysToSync);
+    await pushRemoteCriticalState(endpointUrl, payload);
     safeLocalStorageSetItem(STORAGE.criticalStatePendingSync, "false");
+    if (keysToSync.length) {
+      keysToSync.forEach((key) => dirtyCriticalStateKeys.delete(key));
+    }
     if (showToastOnSuccess) {
       showToast("Đã đồng bộ toàn bộ dữ liệu nghiệp vụ lên cloud.", "success");
     }
@@ -3555,8 +3611,10 @@ async function syncCriticalStateToRemote(showToastOnSuccess = false) {
 function queueCriticalStateSync(storageKey) {
   if (isApplyingRemoteCriticalState) return;
   if (!APP_STATE_SYNC_KEYS.has(storageKey)) return;
+  dirtyCriticalStateKeys.add(storageKey);
   touchLocalCriticalStateUpdatedAt();
   safeLocalStorageSetItem(STORAGE.criticalStatePendingSync, "true");
+  scheduleCriticalStateRelayBroadcast();
 
   const runSync = () => {
     syncCriticalStateToRemote(false)
@@ -3826,6 +3884,77 @@ function startCriticalStateAutoSync() {
   });
 }
 
+function scheduleCriticalStateRelayBroadcast() {
+  if (criticalStateRelayTimer) clearTimeout(criticalStateRelayTimer);
+  criticalStateRelayTimer = setTimeout(() => {
+    criticalStateRelayTimer = null;
+    const appStateEndpoint = getAppStateSyncEndpoint();
+    const relayEndpoint = deriveAppStateRelayEndpoint(appStateEndpoint);
+    if (!relayEndpoint || !isHttpUrl(relayEndpoint)) return;
+
+    const keys = Array.from(dirtyCriticalStateKeys);
+    if (!keys.length) return;
+    const updatedAt = Number(getLocalCriticalStateUpdatedAt() || Date.now());
+    const payload = buildCriticalStateDeltaPayload(updatedAt, keys);
+
+    fetch(relayEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        updatedAt,
+        clientId: criticalStateClientId,
+        payload
+      })
+    }).catch(() => {
+      // Relay is best-effort; persistence sync remains the source of truth.
+    });
+  }, 40);
+}
+
+function applyCriticalStateRelayDelta(deltaPayload = {}, updatedAt = Date.now()) {
+  if (!deltaPayload || typeof deltaPayload !== "object") return;
+
+  const hasOwn = (key) => Object.prototype.hasOwnProperty.call(deltaPayload, key);
+  isApplyingRemoteCriticalState = true;
+  try {
+    if (hasOwn("customers")) {
+      customers = (Array.isArray(deltaPayload.customers) ? deltaPayload.customers : []).map((item) => normalizeCustomer(item));
+      saveJSON(STORAGE.customers, customers);
+    }
+    if (hasOwn("deletedCustomerIds")) {
+      deletedCustomerIds = normalizeDeletedScheduleIdMap(deltaPayload.deletedCustomerIds || {});
+      saveJSON(STORAGE.deletedCustomerIds, deletedCustomerIds);
+    }
+    if (hasOwn("schedules")) {
+      schedules = dedupeSchedulesByIdKeepNewest(filterScheduleRowsByDeleteMarkers(Array.isArray(deltaPayload.schedules) ? deltaPayload.schedules : []));
+      saveJSON(STORAGE.schedule, schedules);
+    }
+    if (hasOwn("deletedScheduleIds")) {
+      deletedScheduleIds = normalizeDeletedScheduleIdMap(deltaPayload.deletedScheduleIds || {});
+      saveJSON(STORAGE.deletedScheduleIds, deletedScheduleIds);
+    }
+    if (hasOwn("reports")) {
+      reports = mergeReportsByLatest(Array.isArray(deltaPayload.reports) ? deltaPayload.reports : [], reports);
+      saveJSON(STORAGE.reports, reports);
+    }
+    if (hasOwn("telegramSource")) {
+      telegramSourceConfig = mergeTelegramSourceFromLocalAndRemote(telegramSourceConfig, deltaPayload.telegramSource || {});
+      saveJSON(STORAGE.telegramSource, telegramSourceConfig);
+    }
+    if (hasOwn("dataSourceConfig")) {
+      dataSourceConfig = normalizeDataSourceConfig(deltaPayload.dataSourceConfig || {});
+      saveJSON(STORAGE.dataSource, dataSourceConfig);
+      applyDataSourceConfigToInputs();
+    }
+    setLocalCriticalStateUpdatedAt(Number(updatedAt || Date.now()));
+    safeLocalStorageSetItem(STORAGE.criticalStatePendingSync, "false");
+  } finally {
+    isApplyingRemoteCriticalState = false;
+  }
+
+  renderAll();
+}
+
 function stopCriticalStateLiveStream() {
   if (criticalStateStreamReconnectTimer) {
     clearTimeout(criticalStateStreamReconnectTimer);
@@ -3888,6 +4017,22 @@ function startCriticalStateLiveStream() {
     syncCriticalStateFromRemote(false).catch(() => {
       // Fall back to interval-based sync when live push fetch fails.
     });
+  });
+
+  stream.addEventListener("app-state-relay", (event) => {
+    try {
+      const payload = JSON.parse(String(event.data || "{}"));
+      const sender = String(payload.clientId || "");
+      const updatedAt = Number(payload.updatedAt || 0);
+      const delta = payload.payload && typeof payload.payload === "object" ? payload.payload : null;
+      if (!delta) return;
+      if (sender && sender === criticalStateClientId) return;
+      if (updatedAt > 0 && updatedAt <= criticalStateStreamLastUpdatedAt) return;
+      if (updatedAt > 0) criticalStateStreamLastUpdatedAt = updatedAt;
+      applyCriticalStateRelayDelta(delta, updatedAt || Date.now());
+    } catch {
+      // Ignore malformed relay events.
+    }
   });
 
   stream.onopen = () => {

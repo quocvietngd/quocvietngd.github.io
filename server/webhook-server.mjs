@@ -78,12 +78,8 @@ let telegramReconcileRuntime = {
 const appStateStreamClients = new Set();
 let lastAppStateBroadcastAt = 0;
 
-function broadcastAppStateUpdate(state, reason = "state-write") {
-  const updatedAt = Number(state?.appState?.updatedAt || state?.updatedAt || Date.now());
-  if (!updatedAt || updatedAt <= lastAppStateBroadcastAt) return;
-  lastAppStateBroadcastAt = updatedAt;
-
-  const payload = `event: app-state-updated\ndata: ${JSON.stringify({ updatedAt, reason })}\n\n`;
+function broadcastSseEvent(eventName, data) {
+  const payload = `event: ${eventName}\ndata: ${JSON.stringify(data || {})}\n\n`;
   for (const client of appStateStreamClients) {
     try {
       client.write(payload);
@@ -96,6 +92,13 @@ function broadcastAppStateUpdate(state, reason = "state-write") {
       }
     }
   }
+}
+
+function broadcastAppStateUpdate(state, reason = "state-write") {
+  const updatedAt = Number(state?.appState?.updatedAt || state?.updatedAt || Date.now());
+  if (!updatedAt || updatedAt <= lastAppStateBroadcastAt) return;
+  lastAppStateBroadcastAt = updatedAt;
+  broadcastSseEvent("app-state-updated", { updatedAt, reason });
 }
 
 function assertPersistenceConfig() {
@@ -3010,6 +3013,24 @@ const server = createServer(async (req, res) => {
       });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Save app state failed" });
+    }
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/app-state/relay") {
+    try {
+      const payload = await parseJsonBody(req);
+      const updatedAt = Number(payload?.updatedAt || Date.now());
+      const clientId = String(payload?.clientId || "").trim();
+      const delta = payload?.payload && typeof payload.payload === "object" ? payload.payload : {};
+      broadcastSseEvent("app-state-relay", {
+        updatedAt,
+        clientId,
+        payload: delta
+      });
+      sendJson(res, 200, { ok: true, updatedAt });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Relay app state failed" });
     }
     return;
   }
