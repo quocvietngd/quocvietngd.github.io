@@ -2777,7 +2777,9 @@ const server = createServer(async (req, res) => {
       const state = await readState();
       const updatedAt = Number(state?.appState?.updatedAt || state?.updatedAt || Date.now());
       const headers = {
-        ...defaultHeaders(),
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type,Authorization",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         "Connection": "keep-alive",
