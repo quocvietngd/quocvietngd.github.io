@@ -54,6 +54,7 @@ let gistBackupPending = false;
 const IS_DURABLE_STORAGE = USE_POSTGRES || IS_DURABLE_FILE_MODE || USE_GIST;
 const TELEGRAM_SYNC_MIN_INTERVAL_MS = Math.max(3000, Number(process.env.TELEGRAM_SYNC_MIN_INTERVAL_MS || 8000));
 const TELEGRAM_RECONCILE_INTERVAL_MS = Math.max(30000, Number(process.env.TELEGRAM_RECONCILE_INTERVAL_MS || 60000));
+const APP_STATE_SSE_HEARTBEAT_MS = Math.max(10000, Number(process.env.APP_STATE_SSE_HEARTBEAT_MS || 15000));
 const TELEGRAM_SUSPICIOUS_UPDATE_ID = 100000000;
 const TELEGRAM_AUTO_ALLOW_NEW_CHATS = !["0", "false", "no", "off"].includes(
   String(process.env.TELEGRAM_AUTO_ALLOW_NEW_CHATS || "1").trim().toLowerCase()
@@ -74,6 +75,28 @@ let telegramReconcileRuntime = {
   lastChanged: 0,
   lastScanned: 0
 };
+const appStateStreamClients = new Set();
+let lastAppStateBroadcastAt = 0;
+
+function broadcastAppStateUpdate(state, reason = "state-write") {
+  const updatedAt = Number(state?.appState?.updatedAt || state?.updatedAt || Date.now());
+  if (!updatedAt || updatedAt <= lastAppStateBroadcastAt) return;
+  lastAppStateBroadcastAt = updatedAt;
+
+  const payload = `event: app-state-updated\ndata: ${JSON.stringify({ updatedAt, reason })}\n\n`;
+  for (const client of appStateStreamClients) {
+    try {
+      client.write(payload);
+    } catch {
+      appStateStreamClients.delete(client);
+      try {
+        client.end();
+      } catch {
+        // Ignore close errors for stale sockets.
+      }
+    }
+  }
+}
 
 function assertPersistenceConfig() {
   if (!["auto", "durable-only", "postgres-only", "disk-only"].includes(PERSISTENCE_MODE)) {
@@ -583,9 +606,14 @@ async function readState() {
 }
 
 async function writeState(nextState) {
-  if (USE_POSTGRES) return writeStateToDb(nextState);
-  const saved = writeStateToFileSync(nextState);
-  if (USE_GIST) await scheduleGistBackup(saved);
+  let saved;
+  if (USE_POSTGRES) {
+    saved = await writeStateToDb(nextState);
+  } else {
+    saved = writeStateToFileSync(nextState);
+    if (USE_GIST) await scheduleGistBackup(saved);
+  }
+  broadcastAppStateUpdate(saved);
   return saved;
 }
 
@@ -2740,6 +2768,44 @@ const server = createServer(async (req, res) => {
       sendJson(res, 200, appState);
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error.message || "Read app state failed" });
+    }
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/app-state/stream") {
+    try {
+      const state = await readState();
+      const updatedAt = Number(state?.appState?.updatedAt || state?.updatedAt || Date.now());
+      const headers = {
+        ...defaultHeaders(),
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+      };
+
+      res.writeHead(200, headers);
+      res.write(`event: app-state-snapshot\ndata: ${JSON.stringify({ updatedAt })}\n\n`);
+      appStateStreamClients.add(res);
+
+      const heartbeat = setInterval(() => {
+        try {
+          res.write(`event: ping\ndata: ${Date.now()}\n\n`);
+        } catch {
+          clearInterval(heartbeat);
+          appStateStreamClients.delete(res);
+        }
+      }, APP_STATE_SSE_HEARTBEAT_MS);
+
+      const cleanup = () => {
+        clearInterval(heartbeat);
+        appStateStreamClients.delete(res);
+      };
+
+      req.on("close", cleanup);
+      req.on("aborted", cleanup);
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message || "Open app-state stream failed" });
     }
     return;
   }

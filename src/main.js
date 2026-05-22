@@ -2795,6 +2795,10 @@ let criticalStatePullTimer = null;
 let criticalStateSyncInFlight = false;
 let criticalStateSyncListenersBound = false;
 let isApplyingRemoteCriticalState = false;
+let criticalStateStream = null;
+let criticalStateStreamReconnectTimer = null;
+let criticalStateStreamBackoffMs = 1000;
+let criticalStateStreamLastUpdatedAt = 0;
 const CRITICAL_STATE_AUTO_SYNC_INTERVAL = 2000;
 let editingUserId = null;
 let editingCustomerId = null;
@@ -3043,6 +3047,14 @@ function deriveAppStateEndpoint(usersEndpoint) {
   if (/\/app-state$/i.test(normalized)) return normalized;
   if (/\/users?$/i.test(normalized)) return normalized.replace(/\/users?$/i, "/app-state");
   return `${normalized}/app-state`;
+}
+
+function deriveAppStateStreamEndpoint(appStateEndpoint) {
+  const normalized = String(appStateEndpoint || "").trim().replace(/\/+$/g, "");
+  if (!normalized) return "";
+  if (/\/app-state\/stream$/i.test(normalized)) return normalized;
+  if (/\/app-state$/i.test(normalized)) return `${normalized}/stream`;
+  return `${normalized}/app-state/stream`;
 }
 
 function getAppStateSyncEndpoint() {
@@ -3812,6 +3824,80 @@ function startCriticalStateAutoSync() {
   window.addEventListener("beforeunload", () => {
     flushCriticalStateToRemoteWithBeacon();
   });
+}
+
+function stopCriticalStateLiveStream() {
+  if (criticalStateStreamReconnectTimer) {
+    clearTimeout(criticalStateStreamReconnectTimer);
+    criticalStateStreamReconnectTimer = null;
+  }
+  if (criticalStateStream) {
+    criticalStateStream.close();
+    criticalStateStream = null;
+  }
+}
+
+function scheduleCriticalStateLiveStreamReconnect() {
+  if (criticalStateStreamReconnectTimer) return;
+  const delayMs = Math.min(Math.max(criticalStateStreamBackoffMs, 1000), 10000);
+  criticalStateStreamReconnectTimer = setTimeout(() => {
+    criticalStateStreamReconnectTimer = null;
+    startCriticalStateLiveStream();
+  }, delayMs);
+  criticalStateStreamBackoffMs = Math.min(delayMs * 2, 10000);
+}
+
+function startCriticalStateLiveStream() {
+  if (typeof EventSource === "undefined") return;
+  if (criticalStateStream) return;
+
+  const streamEndpoint = deriveAppStateStreamEndpoint(getAppStateSyncEndpoint());
+  if (!streamEndpoint || !isHttpUrl(streamEndpoint)) return;
+
+  const stream = new EventSource(streamEndpoint);
+  criticalStateStream = stream;
+
+  stream.addEventListener("app-state-snapshot", (event) => {
+    try {
+      const payload = JSON.parse(String(event.data || "{}"));
+      const updatedAt = Number(payload.updatedAt || 0);
+      if (updatedAt > criticalStateStreamLastUpdatedAt) {
+        criticalStateStreamLastUpdatedAt = updatedAt;
+      }
+    } catch {
+      // Ignore malformed snapshot event.
+    }
+  });
+
+  stream.addEventListener("app-state-updated", (event) => {
+    let updatedAt = 0;
+    try {
+      const payload = JSON.parse(String(event.data || "{}"));
+      updatedAt = Number(payload.updatedAt || 0);
+    } catch {
+      updatedAt = 0;
+    }
+
+    if (updatedAt > 0 && updatedAt <= criticalStateStreamLastUpdatedAt) {
+      return;
+    }
+    if (updatedAt > 0) {
+      criticalStateStreamLastUpdatedAt = updatedAt;
+    }
+
+    syncCriticalStateFromRemote(false).catch(() => {
+      // Fall back to interval-based sync when live push fetch fails.
+    });
+  });
+
+  stream.onopen = () => {
+    criticalStateStreamBackoffMs = 1000;
+  };
+
+  stream.onerror = () => {
+    stopCriticalStateLiveStream();
+    scheduleCriticalStateLiveStreamReconnect();
+  };
 }
 
 function normalizeRemoteUser(user = {}) {
@@ -15541,6 +15627,7 @@ syncCriticalStateFromRemote(false).then((updated) => {
 });
 startUsersAutoSync();
 startCriticalStateAutoSync();
+startCriticalStateLiveStream();
 startReportOutboxAutoFlush();
 flushReportOutbox().catch(() => {
   // Keep queue for next retry cycle.
