@@ -1266,7 +1266,7 @@ app.innerHTML = `
           <span class="alert" id="customerStatusMessage"></span>
           <div class="customer-filter form-grid">
             <div class="customer-search-field">
-              <label>Tìm nhanh (Tên / Người liên hệ / SĐT / Email)</label>
+              <label>Tìm nhanh (Tên / SĐT / Email)</label>
               <input id="customerQuickSearch" placeholder="Nhập từ khóa để lọc nhanh" />
             </div>
             <div class="customer-date-field" id="customerDateRangeField">
@@ -1315,7 +1315,7 @@ app.innerHTML = `
           <div class="tables" style="margin-top:10px;">
             <table>
               <thead>
-                <tr><th>Khách hàng</th><th>Liên hệ</th><th>Phân loại</th><th>Người phụ trách</th><th>Trạng thái chăm sóc</th><th>Nguồn data</th><th>Ghi chú</th><th>Cập nhật</th><th>Thao tác</th></tr>
+                <tr><th>Khách hàng</th><th>Phân loại</th><th>Người phụ trách</th><th>Trạng thái chăm sóc</th><th>Nguồn data</th><th>Ghi chú</th><th>Cập nhật</th><th>Thao tác</th></tr>
               </thead>
               <tbody id="customerBody"></tbody>
             </table>
@@ -1329,13 +1329,9 @@ app.innerHTML = `
                 <button class="btn warn" id="closeCustomerModalBtn" type="button">Đóng</button>
               </div>
               <div class="form-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:8px;">
-                <div>
+                <div style="grid-column:1 / -1;">
                   <label>Tên khách hàng</label>
                   <input id="customerName" placeholder="Công ty ABC" />
-                </div>
-                <div>
-                  <label>Người liên hệ</label>
-                  <select id="customerContactPerson"></select>
                 </div>
                 <div>
                   <label>Số điện thoại</label>
@@ -2469,7 +2465,6 @@ const els = {
   customerModalBackdrop: document.querySelector("#customerModalBackdrop"),
   closeCustomerModalBtn: document.querySelector("#closeCustomerModalBtn"),
   customerModalTitle: document.querySelector("#customerModalTitle"),
-  customerContactPerson: document.querySelector("#customerContactPerson"),
   customerPhone: document.querySelector("#customerPhone"),
   customerEmail: document.querySelector("#customerEmail"),
   customerAddress: document.querySelector("#customerAddress"),
@@ -6101,7 +6096,6 @@ function resetCustomerForm() {
   els.customerModalTitle.textContent = "Thêm khách hàng mới";
   els.saveCustomerBtn.textContent = "Lưu khách hàng";
   renderCustomerOwnerOptions(getCurrentUser()?.username || "Chưa gán");
-  renderCustomerContactPersonOptions("");
   els.customerName.value = "";
   els.customerPhone.value = "";
   els.customerEmail.value = "";
@@ -7187,11 +7181,8 @@ function renderCustomerTable() {
       <tr>
         <td>
           <strong>${c.name}</strong>
-          <div class="muted" style="font-size:0.78rem;">${c.address || "--"}</div>
-        </td>
-        <td>
-          <div>${c.contactPerson || "--"}</div>
           <div class="muted" style="font-size:0.78rem;">${c.phone || "--"} | ${c.email || "--"}</div>
+          <div class="muted" style="font-size:0.78rem;">${c.address || "--"}</div>
         </td>
         <td>${c.tier}</td>
         <td>${c.owner || "--"}</td>
@@ -7222,8 +7213,11 @@ function getCustomerDateKey(customer) {
 }
 
 function getCustomerOptionSets() {
+  const kinhDoanhNames = users
+    .filter((u) => u.department === "Kinh doanh")
+    .map((u) => u.fullName || u.username);
   const ownerSet = new Set(customers.map((item) => item.owner).filter(Boolean));
-  users.forEach((user) => ownerSet.add(user.username));
+  kinhDoanhNames.forEach((n) => ownerSet.add(n));
   ownerSet.add("Chưa gán");
 
   const statusSet = new Set(CUSTOMER_STATUSES);
@@ -7243,37 +7237,23 @@ function getCustomerOptionSets() {
   };
 }
 
-function renderCustomerContactPersonOptions(selectedPerson = "") {
-  const kinhDoanhUsers = users
-    .filter((u) => u.department === "Kinh doanh")
-    .map((u) => u.username)
-    .sort((a, b) => a.localeCompare(b, "vi"));
-  const options = ["", ...kinhDoanhUsers];
-  els.customerContactPerson.innerHTML = options
-    .map((name) => `<option value="${name}">${name || "-- Chọn người liên hệ --"}</option>`)
-    .join("");
-  if (selectedPerson && kinhDoanhUsers.includes(selectedPerson)) {
-    els.customerContactPerson.value = selectedPerson;
-  } else {
-    els.customerContactPerson.value = "";
-  }
-}
-
 function renderCustomerOwnerOptions(selectedOwner = "") {
-  const { owners } = getCustomerOptionSets();
-  els.customerOwner.innerHTML = owners
-    .map((owner) => `<option value="${owner}">${owner}</option>`)
+  const kinhDoanhUsers = users.filter((u) => u.department === "Kinh doanh");
+  const names = kinhDoanhUsers.map((u) => u.fullName || u.username).sort((a, b) => a.localeCompare(b, "vi"));
+  if (!names.includes("Chưa gán")) names.push("Chưa gán");
+  els.customerOwner.innerHTML = names
+    .map((name) => `<option value="${name}">${name}</option>`)
     .join("");
 
-  if (selectedOwner && owners.includes(selectedOwner)) {
+  if (selectedOwner && names.includes(selectedOwner)) {
     els.customerOwner.value = selectedOwner;
     return;
   }
 
-  const defaultOwner = getCurrentUser()?.username || owners[0] || "Chưa gán";
-  if (owners.includes(defaultOwner)) {
-    els.customerOwner.value = defaultOwner;
-  }
+  const currentUser = getCurrentUser();
+  const currentFullName = currentUser ? (currentUser.fullName || currentUser.username) : "";
+  const defaultOwner = (currentFullName && names.includes(currentFullName)) ? currentFullName : names[0] || "Chưa gán";
+  els.customerOwner.value = defaultOwner;
 }
 
 function renderCustomerFilterControls() {
@@ -7443,7 +7423,7 @@ function getFilteredCustomers() {
     if (customerFilterState.status !== "all" && customer.status !== customerFilterState.status) return false;
     if (customerFilterState.source !== "all" && customer.source !== customerFilterState.source) return false;
     if (keyword) {
-      const haystack = `${customer.name || ""} ${customer.contactPerson || ""} ${customer.phone || ""} ${customer.email || ""}`.toLowerCase();
+      const haystack = `${customer.name || ""} ${customer.phone || ""} ${customer.email || ""}`.toLowerCase();
       if (!haystack.includes(keyword)) return false;
     }
     return true;
@@ -7473,10 +7453,9 @@ function exportFilteredCustomersToExcel() {
     return;
   }
 
-  const header = ["Khách hàng", "Người liên hệ", "Số điện thoại", "Email", "Địa chỉ", "Phân loại", "Người phụ trách", "Trạng thái", "Nguồn data", "Nhu cầu", "Ghi chú", "Cập nhật"];
+  const header = ["Khách hàng", "Số điện thoại", "Email", "Địa chỉ", "Phân loại", "Người phụ trách", "Trạng thái", "Nguồn data", "Nhu cầu", "Ghi chú", "Cập nhật"];
   const records = rows.map((item) => [
     item.name,
-    item.contactPerson,
     item.phone,
     item.email,
     item.address,
@@ -15150,7 +15129,6 @@ els.menuLogoutBtn.addEventListener("click", () => {
 
 els.saveCustomerBtn.addEventListener("click", () => {
   const name = els.customerName.value.trim();
-  const contactPerson = els.customerContactPerson.value.trim();
   const phone = els.customerPhone.value.trim();
   const email = els.customerEmail.value.trim();
   const address = els.customerAddress.value.trim();
@@ -15161,8 +15139,8 @@ els.saveCustomerBtn.addEventListener("click", () => {
   const demand = els.customerDemand.value.trim();
   const note = els.customerNote.value.trim();
 
-  if (!name || !phone || !contactPerson) {
-    els.customerStatusMessage.textContent = "Vui lòng nhập tên khách hàng, người liên hệ và số điện thoại.";
+  if (!name || !phone) {
+    els.customerStatusMessage.textContent = "Vui lòng nhập tên khách hàng và số điện thoại.";
     return;
   }
 
@@ -15172,7 +15150,6 @@ els.saveCustomerBtn.addEventListener("click", () => {
       return {
         ...item,
         name,
-        contactPerson,
         phone,
         email,
         address,
@@ -15192,7 +15169,6 @@ els.saveCustomerBtn.addEventListener("click", () => {
     customers.unshift({
       id: `c-${Date.now()}`,
       name,
-      contactPerson,
       phone,
       email,
       address,
@@ -15241,7 +15217,6 @@ els.customerBody.addEventListener("click", (event) => {
     els.customerModalTitle.textContent = `Chỉnh sửa: ${customer.name}`;
     els.saveCustomerBtn.textContent = "Cập nhật khách hàng";
     els.customerName.value = customer.name || "";
-    renderCustomerContactPersonOptions(customer.contactPerson || "");
     els.customerPhone.value = customer.phone || "";
     els.customerEmail.value = customer.email || "";
     els.customerAddress.value = customer.address || "";
