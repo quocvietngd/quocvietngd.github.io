@@ -3447,7 +3447,7 @@ async function tryFlushCriticalStateWithKeepalive() {
 }
 
 async function fetchRemoteCriticalState(endpointUrl) {
-  const response = await fetch(endpointUrl, { method: "GET" });
+  const response = await fetch(endpointUrl, { method: "GET", cache: "no-store" });
   if (!response.ok) throw new Error(`Không thể GET app-state (${response.status})`);
   const data = await response.json();
   return normalizeRemoteCriticalState(data);
@@ -3590,6 +3590,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
   const remoteSchedulesFiltered = filterScheduleRowsByDeleteMarkers(remoteState.schedules);
   const remoteUpdatedAt = Number(remoteState.updatedAt || 0);
   const localUpdatedAt = getLocalCriticalStateUpdatedAt();
+  const remoteUpdatedAtChanged = remoteUpdatedAt > 0 && remoteUpdatedAt !== localUpdatedAt;
 
   // Determine whether there is anything new on the remote not already in local.
   const remoteScheduleCount = remoteSchedulesFiltered.length;
@@ -3615,7 +3616,7 @@ async function syncCriticalStateFromRemote(showToastOnSuccess = false) {
     || hasRemoteListIdsMissingLocally(remoteState.accountingAttendance, accountingAttendanceEntries)
     || hasRemoteListIdsMissingLocally(remoteState.reports, reports);
 
-  const shouldRerenderAfterMerge = remoteHasNewData;
+  const shouldRerenderAfterMerge = remoteHasNewData || remoteUpdatedAtChanged;
 
   // If local has unsaved changes AND remote has nothing new, just push local to remote.
   if (hasPendingSync && !remoteHasNewData) {
