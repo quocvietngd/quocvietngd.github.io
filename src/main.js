@@ -26,7 +26,7 @@ const DEPARTMENT_MONTHLY_REVENUE_TARGET = {
   "Vận hành": 360000000,
   "Tài chính": 300000000
 };
-const CUSTOMER_STATUSES = ["Đã gọi", "Không nghe máy", "Đang cân nhắc", "Chốt trải nghiệm", "Đã ký", "Đang chăm lại"];
+const CUSTOMER_STATUSES = ["Đã gọi", "Không nghe máy", "Đang cân nhắc", "Chốt trải nghiệm", "Đang chăm lại", "Khách tỉnh", "Không có nhu cầu", "Liên hệ lại sau"];
 const CUSTOMER_SOURCES = ["Nhập tay", "Website", "Facebook", "Zalo", "Giới thiệu", "API", "Google Sheets"];
 /* eslint-disable */
 const VN_ADDRESSES = {
@@ -1335,7 +1335,7 @@ app.innerHTML = `
                 </div>
                 <div>
                   <label>Người liên hệ</label>
-                  <input id="customerContactPerson" placeholder="Nguyễn Văn A" />
+                  <select id="customerContactPerson"></select>
                 </div>
                 <div>
                   <label>Số điện thoại</label>
@@ -6101,8 +6101,8 @@ function resetCustomerForm() {
   els.customerModalTitle.textContent = "Thêm khách hàng mới";
   els.saveCustomerBtn.textContent = "Lưu khách hàng";
   renderCustomerOwnerOptions(getCurrentUser()?.username || "Chưa gán");
+  renderCustomerContactPersonOptions("");
   els.customerName.value = "";
-  els.customerContactPerson.value = "";
   els.customerPhone.value = "";
   els.customerEmail.value = "";
   els.customerAddress.value = "";
@@ -7241,6 +7241,22 @@ function getCustomerOptionSets() {
     statuses: Array.from(statusSet),
     sources: Array.from(sourceSet)
   };
+}
+
+function renderCustomerContactPersonOptions(selectedPerson = "") {
+  const kinhDoanhUsers = users
+    .filter((u) => u.department === "Kinh doanh")
+    .map((u) => u.username)
+    .sort((a, b) => a.localeCompare(b, "vi"));
+  const options = ["", ...kinhDoanhUsers];
+  els.customerContactPerson.innerHTML = options
+    .map((name) => `<option value="${name}">${name || "-- Chọn người liên hệ --"}</option>`)
+    .join("");
+  if (selectedPerson && kinhDoanhUsers.includes(selectedPerson)) {
+    els.customerContactPerson.value = selectedPerson;
+  } else {
+    els.customerContactPerson.value = "";
+  }
 }
 
 function renderCustomerOwnerOptions(selectedOwner = "") {
@@ -15225,7 +15241,7 @@ els.customerBody.addEventListener("click", (event) => {
     els.customerModalTitle.textContent = `Chỉnh sửa: ${customer.name}`;
     els.saveCustomerBtn.textContent = "Cập nhật khách hàng";
     els.customerName.value = customer.name || "";
-    els.customerContactPerson.value = customer.contactPerson || "";
+    renderCustomerContactPersonOptions(customer.contactPerson || "");
     els.customerPhone.value = customer.phone || "";
     els.customerEmail.value = customer.email || "";
     els.customerAddress.value = customer.address || "";
