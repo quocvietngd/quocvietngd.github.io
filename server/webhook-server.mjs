@@ -3071,6 +3071,44 @@ const server = createServer(async (req, res) => {
     try {
       const incoming = await parseJsonBody(req);
       if (!incoming || typeof incoming !== "object") throw new Error("Invalid payload");
+
+      const mergeLists = (existingList = [], incomingList = []) => {
+        const byId = new Map();
+        const noIdSeen = new Set();
+        const extras = [];
+
+        for (const item of existingList || []) {
+          const id = String(item?.id || "").trim();
+          if (!id) {
+            const sig = JSON.stringify(item);
+            if (!noIdSeen.has(sig)) {
+              noIdSeen.add(sig);
+              extras.push(item);
+            }
+            continue;
+          }
+          byId.set(id, item);
+        }
+
+        for (const item of incomingList || []) {
+          const id = String(item?.id || "").trim();
+          if (!id) {
+            const sig = JSON.stringify(item);
+            if (!noIdSeen.has(sig)) {
+              noIdSeen.add(sig);
+              extras.push(item);
+            }
+            continue;
+          }
+          const existing = byId.get(id);
+          if (!existing || Number(item.updatedAt || 0) >= Number(existing.updatedAt || 0)) {
+            byId.set(id, { ...(existing || {}), ...item, id });
+          }
+        }
+
+        return [...byId.values(), ...extras];
+      };
+
       const merged = normalizeState({
         ...currentState,
         ...incoming,
