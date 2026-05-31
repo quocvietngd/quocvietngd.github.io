@@ -3069,8 +3069,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     try {
-      const body = await readBody(req);
-      const incoming = JSON.parse(body);
+      const incoming = await parseJsonBody(req);
       if (!incoming || typeof incoming !== "object") throw new Error("Invalid payload");
       const merged = normalizeState({
         ...currentState,
