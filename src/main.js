@@ -595,6 +595,79 @@ const seedAccountingAttendance = [
   }
 ];
 
+// --- Marketing Daily Entry Form submit handler ---
+els.reportDate.value = today;
+
+if (els.marketingDailyEntryForm) {
+  els.marketingDailyEntryForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!can("canSubmitReport")) {
+      showToast("Bạn không có quyền nhập báo cáo chỉ số.", "warning");
+      return;
+    }
+
+    const date = String(els.marketingEntryDate?.value || today).trim();
+    const marketingName = String(els.marketingEntryName?.value || "").trim();
+    const marketingBudget = Math.max(0, Number(els.marketingEntryBudget?.value) || 0);
+    const marketingMessCount = Math.max(0, Number(els.marketingEntryMess?.value) || 0);
+    const marketingPhoneCount = Math.max(0, Number(els.marketingEntryPhones?.value) || 0);
+    const marketingBookedCount = Math.max(0, Number(els.marketingEntryBooked?.value) || 0);
+    const marketingContractCount = Math.max(0, Number(els.marketingEntryContracts?.value) || 0);
+    const marketingRevenue = Math.max(0, Number(els.marketingEntryRevenue?.value) || 0);
+
+    if (!marketingName) {
+      showToast("Vui lòng nhập tên nhân viên Marketing.", "warning");
+      els.marketingEntryName?.focus();
+      return;
+    }
+
+    const existingIndex = schedules.findIndex((item) => {
+      const sameDate = normalizeScheduleDateKey(item.registrationDate) === date;
+      const sameName = String(item.marketingName || item.marketingStaff || "").trim() === marketingName;
+      return sameDate && sameName && (item.reportSource === "manual-marketing" || item.source === "Manual Marketing Report");
+    });
+
+    const row = {
+      id: existingIndex >= 0 ? schedules[existingIndex].id : `mkt-${date}-${Math.random().toString(36).slice(2, 8)}`,
+      registrationDate: date,
+      customerName: marketingName,
+      marketingName,
+      marketingStaff: marketingName,
+      marketingBudget,
+      marketingMessCount,
+      marketingPhoneCount,
+      marketingBookedCount,
+      marketingContractCount,
+      marketingRevenue,
+      contractAmount: marketingRevenue,
+      status: "completed",
+      source: "Manual Marketing Report",
+      reportSource: "manual-marketing",
+      createdSource: "manual-marketing",
+      updatedAt: Date.now(),
+      createdAt: existingIndex >= 0 ? (schedules[existingIndex].createdAt || Date.now()) : Date.now()
+    };
+
+    if (existingIndex >= 0) schedules[existingIndex] = row;
+    else schedules.unshift(row);
+    clearDeletedScheduleRows([row]);
+    saveJSON(STORAGE.schedule, schedules);
+    queueCriticalStateSync(STORAGE.schedule);
+    logActivity("Báo cáo", "Nhập chỉ số Marketing", `${marketingName} | ${date}`);
+    renderReportsPage();
+
+    try {
+      await callTelegramBridge("/api/telegram/marketing-report", {
+        method: "POST",
+        body: JSON.stringify(row)
+      });
+      showToast("Đã lưu chỉ số và gửi thông báo Telegram.", "success");
+    } catch (error) {
+      showToast(`Đã lưu chỉ số. Gửi Telegram thất bại: ${error.message}`, "warning");
+    }
+  });
+}
+
 const app = document.querySelector("#app");
 
 let activeReportDepartment = null;
