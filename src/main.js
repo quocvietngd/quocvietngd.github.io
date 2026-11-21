@@ -12302,6 +12302,12 @@ async function openReportDepartment(departmentKey) {
   }
   activeReportDepartment = departmentKey;
   renderReportsPage();
+  if (els.marketingDailyEntryCard) {
+    els.marketingDailyEntryCard.classList.toggle("hidden", departmentKey !== "marketing");
+  }
+  if (departmentKey === "marketing" && els.marketingEntryDate) {
+    els.marketingEntryDate.value = els.marketingEntryDate.value || today;
+  }
 }
 
 function closeReportDepartment() {
