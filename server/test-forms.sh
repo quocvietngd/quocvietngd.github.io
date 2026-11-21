@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test tất cả 4 form template sau khi Render deploy mới
 
-BASE="${SERVICE_URL:-https://nora-sync-quocvietngd-2026-2.onrender.com}"
+BASE="${SERVICE_URL:-https://nora-sync-quocvietngd-2026.onrender.com}"
 SECRET=""
 
 echo "=== Kiểm tra Render build version ==="

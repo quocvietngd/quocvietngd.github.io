@@ -6,6 +6,11 @@ import * as XLSX from "xlsx";
 
 Chart.register(...registerables);
 
+// Migrate: fallback từ service -2 không còn hoạt động về service chuẩn đang hoạt động.
+if (typeof _rawTelegramSourceConfig !== "undefined" && _rawTelegramSourceConfig.bridgeApiUrl && /nora-sync-quocvietngd-2026-2\.onrender\.com/.test(_rawTelegramSourceConfig.bridgeApiUrl)) {
+  _rawTelegramSourceConfig.bridgeApiUrl = "https://nora-sync-quocvietngd-2026.onrender.com";
+}
+
 const DEPARTMENTS = ["Nhân sự", "Kinh doanh", "Marketing", "Kỹ thuật", "Vận hành", "Tài chính"];
 const HR_DEPARTMENTS = [
   "Marketing",
@@ -230,6 +235,24 @@ const STORAGE = {
   newsPinned: "nora_news_pinned_v1",
   newsEvents: "nora_news_events_v1"
 };
+
+// Chuẩn hóa endpoint users sync về canonical backend và nhận diện legacy URL
+function normalizeUsersSyncEndpointEndpoint(rawEndpoint) {
+  const value = String(rawEndpoint || "").trim();
+  if (!value) return "";
+  if (/nora-sync-quocvietngd-2026-2\.onrender\.com/i.test(value)) {
+    return value.replace(/nora-sync-quocvietngd-2026-2\.onrender\.com/ig, "nora-sync-quocvietngd-2026.onrender.com");
+  }
+  return value;
+}
+
+function getPreferredUsersSyncEndpoint() {
+  return "https://nora-sync-quocvietngd-2026.onrender.com/api/users";
+}
+
+function isLegacyUsersSyncEndpoint(endpointUrl = "") {
+  return /nora-sync-quocvietngd-2026-2\.onrender\.com/i.test(String(endpointUrl || ""));
+}
 
 const LOGO_CANDIDATES = [
   "/nora-care-logo.png",
@@ -2955,23 +2978,6 @@ function deriveUsersEndpoint(rawUrl) {
   if (/\/storage\/status$/i.test(normalized)) return normalized.replace(/\/storage\/status$/i, "/users");
   if (/\/reports?$/i.test(normalized)) return normalized.replace(/\/reports?$/i, "/users");
   return `${normalized}/users`;
-}
-
-function normalizeUsersSyncEndpointEndpoint(rawEndpoint) {
-  const value = String(rawEndpoint || "").trim();
-  if (!value) return "";
-  if (/nora-sync-quocvietngd-2026\.onrender\.com/i.test(value)) {
-    return value.replace(/nora-sync-quocvietngd-2026\.onrender\.com/ig, "nora-sync-quocvietngd-2026-2.onrender.com");
-  }
-  return value;
-}
-
-function getPreferredUsersSyncEndpoint() {
-  return "https://nora-sync-quocvietngd-2026-2.onrender.com/api/users";
-}
-
-function isLegacyUsersSyncEndpoint(endpointUrl = "") {
-  return /nora-sync-quocvietngd-2026\.onrender\.com/i.test(String(endpointUrl || ""));
 }
 
 function getSavedUsersSyncEndpoint() {
