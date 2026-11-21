@@ -1006,6 +1006,21 @@ app.innerHTML = `
                 <span>Khách đang chăm, hoàn tất và điểm dịch vụ</span>
               </button>
             </div>
+div>
+
+          <div id="reportsDetailView" class="hidden">
+            <div class="reports-detail-head">
+              <div>
+                <h3 id="reportsDetailTitle">Báo cáo bộ phận</h3>
+                <p class="muted" id="reportsDetailDesc" style="margin:3px 0 0;">Chi tiết KPI theo ngày</p>
+              </div>
+              <div class="reports-detail-actions">
+                <button class="btn secondary" id="exportReportsExcelBtn" type="button">Xuất Excel (CSV)</button>
+                <button class="btn warn" id="exportReportsPdfBtn" type="button">Xuất PDF</button>
+                <button class="btn secondary" id="reportsSyncMetricsBtn" type="button">Đồng bộ sang Trang chỉ số</button>
+                <button class="btn secondary" id="reportsBackBtn" type="button">← Quay về thư mục</button>
+              </div>
+            </div>
             <div id="marketingDailyEntryCard" class="card hidden" style="margin-top:12px;padding:12px;">
               <div>
                 <h4 style="margin:0 0 3px;">Nhập chỉ số Marketing hằng ngày</h4>
@@ -1026,21 +1041,6 @@ app.innerHTML = `
                   <button id="submitMarketingEntryBtn" class="btn primary" type="submit">Lưu & gửi Telegram</button>
                 </div>
               </form>
-            </div>
-          </div>
-
-          <div id="reportsDetailView" class="hidden">
-            <div class="reports-detail-head">
-              <div>
-                <h3 id="reportsDetailTitle">Báo cáo bộ phận</h3>
-                <p class="muted" id="reportsDetailDesc" style="margin:3px 0 0;">Chi tiết KPI theo ngày</p>
-              </div>
-              <div class="reports-detail-actions">
-                <button class="btn secondary" id="exportReportsExcelBtn" type="button">Xuất Excel (CSV)</button>
-                <button class="btn warn" id="exportReportsPdfBtn" type="button">Xuất PDF</button>
-                <button class="btn secondary" id="reportsSyncMetricsBtn" type="button">Đồng bộ sang Trang chỉ số</button>
-                <button class="btn secondary" id="reportsBackBtn" type="button">← Quay về thư mục</button>
-              </div>
             </div>
             <div class="reports-filter" style="margin-top:10px;">
               <div>
