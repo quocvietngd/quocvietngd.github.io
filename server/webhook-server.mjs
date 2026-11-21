@@ -705,9 +705,10 @@ function normalizeKpiReportsList(list) {
 function sendJson(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": "https://quocvietngd.github.io",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type"
+    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    "Vary": "Origin"
   });
   res.end(JSON.stringify(payload));
 }
