@@ -26,8 +26,10 @@ const MAX_REPORTS = 2000;
 const MAX_TELEGRAM_DEBUG_EVENTS = 100;
 const MAX_USERS = 500;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
-const USE_POSTGRES = Boolean(DATABASE_URL);
-const PERSISTENCE_MODE = String(process.env.PERSISTENCE_MODE || "auto").trim().toLowerCase();
+const USE_POSTGRES = /^postgres(ql)?:\/\//i.test(DATABASE_URL);
+const PERSISTENCE_MODE = !USE_POSTGRES && String(process.env.PERSISTENCE_MODE || "").trim().toLowerCase() === "postgres-only"
+  ? "auto"
+  : String(process.env.PERSISTENCE_MODE || "auto").trim().toLowerCase();
 const PG_STATE_KEY = "global_state";
 const DEFAULT_BACKUP_DIR = existsSync(RENDER_DISK_ROOT)
   ? resolve(RENDER_DISK_ROOT, "backups")
