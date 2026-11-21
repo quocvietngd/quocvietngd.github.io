@@ -6,11 +6,6 @@ import * as XLSX from "xlsx";
 
 Chart.register(...registerables);
 
-// Migrate: fallback từ service -2 không còn hoạt động về service chuẩn đang hoạt động.
-if (typeof _rawTelegramSourceConfig !== "undefined" && _rawTelegramSourceConfig.bridgeApiUrl && /nora-sync-quocvietngd-2026-2\.onrender\.com/.test(_rawTelegramSourceConfig.bridgeApiUrl)) {
-  _rawTelegramSourceConfig.bridgeApiUrl = "https://nora-sync-quocvietngd-2026.onrender.com";
-}
-
 const DEPARTMENTS = ["Nhân sự", "Kinh doanh", "Marketing", "Kỹ thuật", "Vận hành", "Tài chính"];
 const HR_DEPARTMENTS = [
   "Marketing",
