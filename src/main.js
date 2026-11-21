@@ -1005,8 +1005,8 @@ app.innerHTML = `
                 <strong>Báo cáo Điều dưỡng</strong>
                 <span>Khách đang chăm, hoàn tất và điểm dịch vụ</span>
               </button>
-            </div>
-div>
+          </div>
+          </div>
 
           <div id="reportsDetailView" class="hidden">
             <div class="reports-detail-head">
@@ -12129,6 +12129,12 @@ function renderReportsPage() {
   els.reportsDetailDesc.textContent = detailMeta.desc;
   els.reportsStartDate.value = reportFilterState.start;
   els.reportsEndDate.value = reportFilterState.end;
+  if (els.marketingDailyEntryCard) {
+    els.marketingDailyEntryCard.classList.toggle("hidden", activeReportDepartment !== "marketing");
+  }
+  if (activeReportDepartment === "marketing" && els.marketingEntryDate && !els.marketingEntryDate.value) {
+    els.marketingEntryDate.value = today;
+  }
   if (els.reportsMarketingFilterWrap) {
     els.reportsMarketingFilterWrap.classList.toggle("hidden", activeReportDepartment !== "marketing");
   }
