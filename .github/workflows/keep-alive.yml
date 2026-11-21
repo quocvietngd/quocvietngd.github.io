@@ -14,7 +14,7 @@ jobs:
       - name: Ping backend health endpoint
         run: |
           RESPONSE=$(curl -sS --max-time 30 \
-            "https://nora-sync-quocvietngd-2026.onrender.com/api/telegram/health")
+            "https://nora-sync-quocvietngd-2026-2.onrender.com/api/telegram/health")
           echo "Response: $RESPONSE"
 
           # Kiểm tra server có ok không
@@ -28,6 +28,6 @@ jobs:
       - name: Trigger Telegram sync
         run: |
           curl -sS --max-time 30 \
-            "https://nora-sync-quocvietngd-2026.onrender.com/api/telegram/pending?sync=1&forceSync=0" \
+            "https://nora-sync-quocvietngd-2026-2.onrender.com/api/telegram/pending?sync=1&forceSync=0" \
             -o /dev/null -w "HTTP %{http_code}\n"
           echo "✅ Telegram sync triggered"

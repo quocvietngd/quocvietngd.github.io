@@ -35,7 +35,7 @@ Chinh sach repo (single source of truth):
 - Khong push/deploy sang repo thu 2 de tranh lech phien ban.
 - Moi thay doi code va du lieu trien khai deu di qua branch `main` cua repo nay.
 - URL public chinh thuc: `https://quocvietngd.github.io/`.
-- Backend realtime chinh thuc: `https://nora-sync-quocvietngd-2026.onrender.com`.
+- Backend realtime chinh thuc: `https://nora-sync-quocvietngd-2026-2.onrender.com`.
 
 Các bước bật public site:
 

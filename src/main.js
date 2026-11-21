@@ -236,13 +236,13 @@ function normalizeUsersSyncEndpointEndpoint(rawEndpoint) {
   const value = String(rawEndpoint || "").trim();
   if (!value) return "";
   if (/nora-sync-quocvietngd-2026-2\.onrender\.com/i.test(value)) {
-    return value.replace(/nora-sync-quocvietngd-2026-2\.onrender\.com/ig, "nora-sync-quocvietngd-2026.onrender.com");
+    return value.replace(/nora-sync-quocvietngd-2026-2\.onrender\.com/ig, "nora-sync-quocvietngd-2026-2.onrender.com");
   }
   return value;
 }
 
 function getPreferredUsersSyncEndpoint() {
-  return "https://nora-sync-quocvietngd-2026.onrender.com/api/users";
+  return "https://nora-sync-quocvietngd-2026-2.onrender.com/api/users";
 }
 
 function isLegacyUsersSyncEndpoint(endpointUrl = "") {
@@ -3057,7 +3057,7 @@ if (_rawTelegramSourceConfig.bridgeApiUrl && /localhost|127\.0\.0\.1/.test(_rawT
 }
 // Migrate: fallback từ service -2 (không ổn định) về service chuẩn đang hoạt động.
 if (_rawTelegramSourceConfig.bridgeApiUrl && /nora-sync-quocvietngd-2026-2\.onrender\.com/.test(_rawTelegramSourceConfig.bridgeApiUrl)) {
-  _rawTelegramSourceConfig.bridgeApiUrl = "https://nora-sync-quocvietngd-2026.onrender.com";
+  _rawTelegramSourceConfig.bridgeApiUrl = "https://nora-sync-quocvietngd-2026-2.onrender.com";
 }
 let telegramSourceConfig = _rawTelegramSourceConfig;
 let attendanceAutoSyncTimer = null;
@@ -9116,7 +9116,7 @@ function clearLocalTelegramSchedules() {
   resetTelegramSyncCursor();
 }
 
-const TELEGRAM_BRIDGE_DEFAULT_API = "https://nora-sync-quocvietngd-2026.onrender.com";
+const TELEGRAM_BRIDGE_DEFAULT_API = "https://nora-sync-quocvietngd-2026-2.onrender.com";
 function getTelegramBridgeApiBase() {
   const configured = String(telegramSourceConfig.bridgeApiUrl || "").trim();
   return (configured || TELEGRAM_BRIDGE_DEFAULT_API).replace(/\/+$/, "");

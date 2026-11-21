@@ -7,7 +7,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_FILE="${REPO_DIR}/server/telegram-bridge-state.json"
-BACKEND_URL="${1:-https://nora-sync-quocvietngd-2026.onrender.com}"
+BACKEND_URL="${1:-https://nora-sync-quocvietngd-2026-2.onrender.com}"
 MAX_MINUTES="${2:-30}"
 
 if [[ ! -f "$STATE_FILE" ]]; then
