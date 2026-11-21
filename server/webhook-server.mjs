@@ -366,6 +366,8 @@ function normalizeTelegramDebug(input = {}) {
   };
 }
 
+let postgresRuntimeAvailable = USE_POSTGRES;
+
 async function ensureDbReady() {
   if (!USE_POSTGRES) return;
   if (dbReadyPromise) {
@@ -588,7 +590,14 @@ async function scheduleGistBackup(state) {
 }
 
 async function readState() {
-  if (USE_POSTGRES) return readStateFromDb();
+  if (postgresRuntimeAvailable) {
+    try {
+      return await readStateFromDb();
+    } catch (error) {
+      postgresRuntimeAvailable = false;
+      console.error("[storage] PostgreSQL unavailable, falling back to durable Gist/file storage:", error.message);
+    }
+  }
   if (USE_GIST) {
     const fromFile = readStateFromFileSync();
     // On first read, try to restore from Gist (only if file state is empty/default)
@@ -612,8 +621,15 @@ async function readState() {
 
 async function writeState(nextState) {
   let saved;
-  if (USE_POSTGRES) {
-    saved = await writeStateToDb(nextState);
+  if (postgresRuntimeAvailable) {
+    try {
+      saved = await writeStateToDb(nextState);
+    } catch (error) {
+      postgresRuntimeAvailable = false;
+      console.error("[storage] PostgreSQL write failed, falling back to Gist/file:", error.message);
+      saved = writeStateToFileSync(nextState);
+      if (USE_GIST) await scheduleGistBackup(saved);
+    }
   } else {
     saved = writeStateToFileSync(nextState);
     if (USE_GIST) await scheduleGistBackup(saved);
