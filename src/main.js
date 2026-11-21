@@ -597,6 +597,20 @@ const seedAccountingAttendance = [
 
 const app = document.querySelector("#app");
 
+let activeReportDepartment = null;
+const reportsFolderButtons = document.querySelectorAll('[data-report-dept]');
+reportsFolderButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeReportDepartment = btn.getAttribute('data-report-dept');
+    if (els.marketingDailyEntryCard) {
+      els.marketingDailyEntryCard.classList.toggle("hidden", activeReportDepartment !== "marketing");
+    }
+    if (activeReportDepartment === "marketing" && els.marketingEntryDate && !els.marketingEntryDate.value) {
+      els.marketingEntryDate.value = today;
+    }
+  });
+});
+
 const seedSchedule = [];
 app.innerHTML = `
   <div class="app" id="dashboardRoot">
@@ -991,6 +1005,27 @@ app.innerHTML = `
                 <strong>Báo cáo Điều dưỡng</strong>
                 <span>Khách đang chăm, hoàn tất và điểm dịch vụ</span>
               </button>
+            </div>
+            <div id="marketingDailyEntryCard" class="card hidden" style="margin-top:12px;padding:12px;">
+              <div>
+                <h4 style="margin:0 0 3px;">Nhập chỉ số Marketing hằng ngày</h4>
+                <span class="muted" style="font-size:0.78rem;">Dữ liệu nhập tại đây thay thế nguồn Telegram cho báo cáo Marketing thử nghiệm.</span>
+              </div>
+              <form id="marketingDailyEntryForm">
+                <div class="form-grid" style="grid-template-columns:repeat(4,minmax(140px,1fr));margin-top:10px;">
+                  <div><label>Ngày báo cáo</label><input id="marketingEntryDate" type="date" /></div>
+                  <div><label>Tên nhân viên Marketing</label><input id="marketingEntryName" placeholder="Ví dụ: Phúc" /></div>
+                  <div><label>Ngân sách / Chi phí (đ)</label><input id="marketingEntryBudget" type="number" min="0" /></div>
+                  <div><label>Số Mess</label><input id="marketingEntryMess" type="number" min="0" /></div>
+                  <div><label>Số SĐT</label><input id="marketingEntryPhones" type="number" min="0" /></div>
+                  <div><label>Lịch trải nghiệm</label><input id="marketingEntryBooked" type="number" min="0" /></div>
+                  <div><label>Số hợp đồng</label><input id="marketingEntryContracts" type="number" min="0" /></div>
+                  <div><label>Doanh số (đ)</label><input id="marketingEntryRevenue" type="number" min="0" /></div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+                  <button id="submitMarketingEntryBtn" class="btn primary" type="submit">Lưu & gửi Telegram</button>
+                </div>
+              </form>
             </div>
           </div>
 
@@ -2596,6 +2631,17 @@ const els = {
   reportsDetailDesc: document.querySelector("#reportsDetailDesc"),
   reportsBackBtn: document.querySelector("#reportsBackBtn"),
   reportsSyncMetricsBtn: document.querySelector("#reportsSyncMetricsBtn"),
+  marketingDailyEntryCard: document.querySelector("#marketingDailyEntryCard"),
+  marketingDailyEntryForm: document.querySelector("#marketingDailyEntryForm"),
+  marketingEntryDate: document.querySelector("#marketingEntryDate"),
+  marketingEntryName: document.querySelector("#marketingEntryName"),
+  marketingEntryBudget: document.querySelector("#marketingEntryBudget"),
+  marketingEntryMess: document.querySelector("#marketingEntryMess"),
+  marketingEntryPhones: document.querySelector("#marketingEntryPhones"),
+  marketingEntryBooked: document.querySelector("#marketingEntryBooked"),
+  marketingEntryContracts: document.querySelector("#marketingEntryContracts"),
+  marketingEntryRevenue: document.querySelector("#marketingEntryRevenue"),
+  submitMarketingEntryBtn: document.querySelector("#submitMarketingEntryBtn"),
   exportReportsExcelBtn: document.querySelector("#exportReportsExcelBtn"),
   exportReportsPdfBtn: document.querySelector("#exportReportsPdfBtn"),
   reportsStartDate: document.querySelector("#reportsStartDate"),
@@ -2888,7 +2934,6 @@ let newsEvents = loadJSON(STORAGE.newsEvents, seedNewsEvents).map((item) => ({
 let activeWorkflowDetail = null;
 let activePolicyParent = null;
 let activePolicyChild = null;
-let activeReportDepartment = null;
 let activeAccountingFolder = null;
 let reportFilterState = { start: `${today.slice(0, 7)}-01`, end: today };
 let nurseReportSortState = { key: "total", direction: "desc" };

@@ -835,8 +835,8 @@ function normalizeContractCode(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
   const compact = raw.toUpperCase().replace(/\s+/g, "");
-  if (/^NR[0-9A-Z\/-]+$/.test(compact)) return compact;
-  if (/^[0-9][0-9A-Z\/-]*$/.test(compact)) return `NR${compact}`;
+  if (/^NR[0-9A-Z/-]+$/.test(compact)) return compact;
+  if (/^[0-9][0-9A-Z/-]*$/.test(compact)) return `NR${compact}`;
   return compact;
 }
 
@@ -2544,493 +2544,56 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (method === "POST" && url.pathname === "/api/telegram/admin/fix-date-swap") {
-    // Migration: fix records where DD/MM/YYYY with extra whitespace was parsed by JS Date as MM/DD/YYYY,
-    // resulting in month and day being swapped.
-    try {
-      const payload = await parseJsonBody(req).catch(() => ({}));
-      const inferredMonth = Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh", month: "numeric" }));
-      const targetMonthInput = Number(payload?.targetMonth || inferredMonth || 5);
-      const targetMonth = Math.max(1, Math.min(12, Number.isFinite(targetMonthInput) ? targetMonthInput : 5));
-
-      const state = await readState();
-      const reports = Array.isArray(state.reports) ? state.reports : [];
-      const fixed = [];
-      const skipped = [];
-
-      for (const item of reports) {
-        const raw = item?.raw;
-        if (!raw || raw.telegramRoute !== "nurse") continue;
-        const d = raw.registrationDate;
-        if (!d) continue;
-        // Expect YYYY-MM-DD
-        const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        if (!m) continue;
-        const [, yyyy, mm, dd] = m;
-        const month = Number(mm);
-        const day = Number(dd);
-        // Swapped pattern for DD/MM/YYYY interpreted as MM/DD/YYYY:
-        // month = original day, day = original month. For current-month reports, day tends to be targetMonth.
-        const likelySwapped = month !== targetMonth && day === targetMonth && month >= 1 && month <= 12;
-        if (likelySwapped) {
-          const corrected = `${yyyy}-${dd}-${mm}`;
-          fixed.push({ old: d, new: corrected, nurse: raw.nurse, customer: raw.customerName });
-          raw.registrationDate = corrected;
-        } else {
-          skipped.push(d);
-        }
-      }
-
-      if (fixed.length > 0) {
-        state.reports = reports;
-        state.updatedAt = Date.now();
-        await writeState(state);
-      }
-
-      sendJson(res, 200, {
-        ok: true,
-        targetMonth,
-        fixed: fixed.length,
-        skippedCount: skipped.length,
-        details: fixed
-      });
-    } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || "fix-date-swap failed" });
-    }
-    return;
-  }
-
-  if (method === "POST" && url.pathname === "/api/telegram/test-parse") {
+  if (method === "POST" && url.pathname === "/api/telegram/marketing-report") {
     try {
       const payload = await parseJsonBody(req);
-      const text = String(payload.text || "");
-      const raw = parseTelegramReportMessage(text);
-      sendJson(res, 200, {
-        ok: true,
-        inputText: text.slice(0, 200),
-        parsed: raw ? Object.keys(raw).length : 0,
-        result: raw || { error: "parse returned null" }
-      });
-    } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message });
-    }
-    return;
-  }
-
-  if (method === "POST" && url.pathname.startsWith("/api/telegram/webhook/")) {
-    try {
       const state = await readState();
-      const incomingSecret = url.pathname.split("/").pop() || "";
-      if (!incomingSecret || incomingSecret !== state.webhookSecret) {
-        sendJson(res, 403, { ok: false, error: "Invalid webhook secret" });
+      const token = String(state.token || ENV_TELEGRAM_TOKEN || "").trim();
+      const chatIds = parseTelegramAllowedChatIds(state.chatId || ENV_TELEGRAM_CHAT_ID);
+      if (!token || !chatIds.length) {
+        sendJson(res, 400, { ok: false, error: "Chưa cấu hình Bot Token hoặc Chat ID Telegram." });
         return;
       }
-
-      const update = await parseJsonBody(req);
-      state.lastUpdateId = Math.max(Number(state.lastUpdateId || 0), Number(update?.update_id || 0));
-      const result = appendTelegramReport(state, update);
-      await writeState(state);
-      sendJson(res, 200, { ok: true, accepted: result.saved, ignored: result.ignored });
-    } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || "Webhook processing failed" });
-    }
-    return;
-  }
-
-  if (method === "POST" && url.pathname === "/api/admin/dedupe-schedules") {
-    try {
-      const state = await readState();
-      const appState = normalizeAppState(state.appState || {});
-      const schedules = Array.isArray(appState.schedules) ? appState.schedules : [];
-
-      const normalizeDupText = (value) => String(value || "")
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[đ]/g, "d")
-        .replace(/["'’`.,;:!?()\[\]{}\\/\-_]+/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      const normalizeContractCodeSafe = (value) => {
-        const raw = String(value || "").trim();
-        if (!raw) return "";
-        const compact = raw.toUpperCase().replace(/\s+/g, "");
-        if (/^NR[0-9A-Z/-]+$/.test(compact)) return compact;
-        if (/^[0-9][0-9A-Z/-]*$/.test(compact)) return `NR${compact}`;
-        return compact;
-      };
-
-      const normalizeDateKey = (value) => {
-        const v = String(value || "").trim();
-        const iso = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-        const ddmmyyyy = v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/);
-        if (ddmmyyyy) {
-          const dd = ddmmyyyy[1].padStart(2, "0");
-          const mm = ddmmyyyy[2].padStart(2, "0");
-          const yy = ddmmyyyy[3].length === 2 ? `20${ddmmyyyy[3]}` : ddmmyyyy[3];
-          return `${yy}-${mm}-${dd}`;
-        }
-        return v;
-      };
-
-      const getRecencyScore = (item) => {
-        const updatedAt = Number(item?.updatedAt || item?.createdAt || 0);
-        const updateId = String(item?.telegramUpdateId || "");
-        const messageId = String(item?.telegramMessageId || "");
-        const updateNum = Number((updateId.match(/(\d+)(?!.*\d)/) || [])[1] || 0);
-        const messageNum = Number((messageId.match(/(\d+)(?!.*\d)/) || [])[1] || 0);
-        return updatedAt * 1_000_000 + updateNum * 1000 + messageNum;
-      };
-
-      const getDupKey = (item) => {
-        const route = String(item?.telegramRoute || "").toLowerCase();
-        const source = String(item?.source || "").toLowerCase();
-        const id = String(item?.id || "").toLowerCase();
-        const isTelegram = id.startsWith("tg-") || id.startsWith("tgm-") || source.includes("telegram");
-        if (!isTelegram || route !== "nurse") return "";
-
-        const dateKey = normalizeDateKey(item?.registrationDate || "");
-        const serviceKey = normalizeDupText(item?.service || "");
-        const customerKey = normalizeDupText(item?.customerName || "");
-        const contractKey = normalizeContractCodeSafe(item?.mahd || "") || "-";
-        const timeKey = normalizeDupText(item?.appointmentTime || "") || "-";
-        if (!dateKey || !serviceKey || !customerKey) return "";
-        return `${dateKey}__${serviceKey}__${customerKey}__${contractKey}__${timeKey}`;
-      };
-
-      const bestByKey = new Map();
-      const removedIndexes = new Set();
-      let duplicatePairs = 0;
-
-      schedules.forEach((item, index) => {
-        const key = getDupKey(item);
-        if (!key) return;
-        const prev = bestByKey.get(key);
-        if (!prev) {
-          bestByKey.set(key, { index, score: getRecencyScore(item) });
-          return;
-        }
-
-        duplicatePairs += 1;
-        const score = getRecencyScore(item);
-        if (score >= prev.score) {
-          removedIndexes.add(prev.index);
-          bestByKey.set(key, { index, score });
-        } else {
-          removedIndexes.add(index);
-        }
-      });
-
-      if (!removedIndexes.size) {
-        sendJson(res, 200, {
-          ok: true,
-          before: schedules.length,
-          after: schedules.length,
-          removed: 0,
-          duplicatePairs
-        });
+      const date = String(payload.date || payload.registrationDate || "").trim();
+      const name = String(payload.marketingName || payload.marketingStaff || "").trim();
+      const budget = Math.max(0, Number(payload.marketingBudget) || 0);
+      const mess = Math.max(0, Number(payload.marketingMessCount) || 0);
+      const phones = Math.max(0, Number(payload.marketingPhoneCount) || 0);
+      const booked = Math.max(0, Number(payload.marketingBookedCount) || 0);
+      const contracts = Math.max(0, Number(payload.marketingContractCount) || 0);
+      const revenue = Math.max(0, Number(payload.marketingRevenue) || 0);
+      if (!date || !name) {
+        sendJson(res, 400, { ok: false, error: "Thiếu ngày hoặc tên nhân viên Marketing." });
         return;
       }
-
-      const cleaned = schedules.filter((_, index) => !removedIndexes.has(index));
-      appState.schedules = cleaned;
-      appState.updatedAt = Date.now();
-      state.appState = appState;
-      state.updatedAt = Date.now();
-      await writeState(state);
-
-      sendJson(res, 200, {
-        ok: true,
-        before: schedules.length,
-        after: cleaned.length,
-        removed: schedules.length - cleaned.length,
-        duplicatePairs
-      });
-    } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || "Dedupe schedules failed" });
-    }
-    return;
-  }
-
-  if (method === "GET" && url.pathname === "/api/app-state") {
-    try {
-      const state = await readState();
-      const appState = state.appState || normalizeAppState();
-      // Migrate legacy rows: thucthu stored as 0 should be null so frontend
-      // falls back to contractAmount - receivableAmount correctly.
-      if (Array.isArray(appState.schedules)) {
-        appState.schedules = appState.schedules.map((s) => {
-          if (Number(s.thucthu) === 0 && s.thucthu !== undefined) {
-            return { ...s, thucthu: null };
-          }
-          return s;
-        });
-      }
-      sendJson(res, 200, appState);
-    } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || "Read app state failed" });
-    }
-    return;
-  }
-
-  if (method === "GET" && url.pathname === "/api/app-state/stream") {
-    try {
-      const state = await readState();
-      const updatedAt = Number(state?.appState?.updatedAt || state?.updatedAt || Date.now());
-      const headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type,Authorization",
-        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no"
-      };
-
-      res.writeHead(200, headers);
-      res.write(`event: app-state-snapshot\ndata: ${JSON.stringify({ updatedAt })}\n\n`);
-      appStateStreamClients.add(res);
-
-      const heartbeat = setInterval(() => {
+      const text = [
+        "📣 BÁO CÁO MARKETING",
+        `Ngày: ${date}`,
+        `Nhân viên: ${name}`,
+        `Ngân sách: ${budget.toLocaleString("vi-VN")} đ`,
+        `Mess: ${mess.toLocaleString("vi-VN")}`,
+        `SĐT: ${phones.toLocaleString("vi-VN")}`,
+        `Lịch trải nghiệm: ${booked.toLocaleString("vi-VN")}`,
+        `Hợp đồng: ${contracts.toLocaleString("vi-VN")}`,
+        `Doanh số: ${revenue.toLocaleString("vi-VN")} đ`
+      ].join("\n");
+      const delivered = [];
+      const failed = [];
+      for (const chatId of chatIds) {
         try {
-          res.write(`event: ping\ndata: ${Date.now()}\n\n`);
-        } catch {
-          clearInterval(heartbeat);
-          appStateStreamClients.delete(res);
+          await sendTelegramMessage(token, chatId, text);
+          delivered.push(chatId);
+        } catch (error) {
+          failed.push({ chatId, error: error.message });
         }
-      }, APP_STATE_SSE_HEARTBEAT_MS);
-
-      const cleanup = () => {
-        clearInterval(heartbeat);
-        appStateStreamClients.delete(res);
-      };
-
-      req.on("close", cleanup);
-      req.on("aborted", cleanup);
+      }
+      if (!delivered.length) {
+        sendJson(res, 502, { ok: false, error: "Không gửi được tin Telegram.", failed });
+        return;
+      }
+      sendJson(res, 200, { ok: true, delivered, failed, text });
     } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || "Open app-state stream failed" });
-    }
-    return;
-  }
-
-  if ((method === "PUT" || method === "POST") && url.pathname === "/api/app-state") {
-    try {
-      const payload = await parseJsonBody(req);
-      const state = await readState();
-      const incomingAppState = normalizeAppState(payload);
-      const existingAppState = normalizeAppState(state.appState || {});
-
-      /**
-       * Merge two arrays by `id` field (union, newer updatedAt wins per item).
-       * Items without id are de-duplicated by JSON content to avoid accumulation.
-       */
-      const mergeLists = (existingList = [], incomingList = []) => {
-        const byId = new Map();
-        const noIdSeen = new Set();
-        const extras = [];
-
-        for (const item of existingList) {
-          const id = String(item?.id || "").trim();
-          if (!id) {
-            const sig = JSON.stringify(item);
-            if (!noIdSeen.has(sig)) { noIdSeen.add(sig); extras.push(item); }
-            continue;
-          }
-          byId.set(id, item);
-        }
-
-        for (const item of incomingList) {
-          const id = String(item?.id || "").trim();
-          if (!id) {
-            const sig = JSON.stringify(item);
-            if (!noIdSeen.has(sig)) { noIdSeen.add(sig); extras.push(item); }
-            continue;
-          }
-          const existing = byId.get(id);
-          if (!existing || Number(item.updatedAt || 0) >= Number(existing.updatedAt || 0)) {
-            byId.set(id, { ...(existing || {}), ...item, id });
-          }
-        }
-
-        return [...byId.values(), ...extras];
-      };
-
-      const mergeDeletedScheduleIds = (existingObj = {}, incomingObj = {}) => {
-        const safeExisting = existingObj && typeof existingObj === "object" ? existingObj : {};
-        const safeIncoming = incomingObj && typeof incomingObj === "object" ? incomingObj : {};
-        const merged = {};
-        const keys = new Set([...Object.keys(safeExisting), ...Object.keys(safeIncoming)]);
-
-        keys.forEach((key) => {
-          const existingMeta = safeExisting[key];
-          const incomingMeta = safeIncoming[key];
-          const existingDeletedAt = Number(existingMeta?.deletedAt || 0);
-          const incomingDeletedAt = Number(incomingMeta?.deletedAt || 0);
-          const chosen = incomingDeletedAt >= existingDeletedAt ? incomingMeta : existingMeta;
-          merged[key] = {
-            deletedAt: Number(chosen?.deletedAt || 0) || Date.now(),
-            reason: String(chosen?.reason || "manual-delete").trim()
-          };
-        });
-
-        return merged;
-      };
-
-      const dedupeTelegramNurseSchedules = (rows = []) => {
-        const normalizeDupText = (value) => String(value || "")
-          .toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .replace(/[đ]/g, "d")
-          .replace(/["'’`.,;:!?()\[\]{}\\/\-_]+/g, " ")
-          .replace(/\s+/g, " ")
-          .trim();
-
-        const normalizeContractCodeSafe = (value) => {
-          const raw = String(value || "").trim();
-          if (!raw) return "";
-          const compact = raw.toUpperCase().replace(/\s+/g, "");
-          if (/^NR[0-9A-Z/-]+$/.test(compact)) return compact;
-          if (/^[0-9][0-9A-Z/-]*$/.test(compact)) return `NR${compact}`;
-          return compact;
-        };
-
-        const normalizeDateKey = (value) => {
-          const v = String(value || "").trim();
-          const iso = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-          if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-          const ddmmyyyy = v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/);
-          if (ddmmyyyy) {
-            const dd = ddmmyyyy[1].padStart(2, "0");
-            const mm = ddmmyyyy[2].padStart(2, "0");
-            const yy = ddmmyyyy[3].length === 2 ? `20${ddmmyyyy[3]}` : ddmmyyyy[3];
-            return `${yy}-${mm}-${dd}`;
-          }
-          return v;
-        };
-
-        const recency = (item) => {
-          const updatedAt = Number(item?.updatedAt || item?.createdAt || 0);
-          const updateId = String(item?.telegramUpdateId || "");
-          const messageId = String(item?.telegramMessageId || "");
-          const updateNum = Number((updateId.match(/(\d+)(?!.*\d)/) || [])[1] || 0);
-          const messageNum = Number((messageId.match(/(\d+)(?!.*\d)/) || [])[1] || 0);
-          return updatedAt * 1_000_000 + updateNum * 1000 + messageNum;
-        };
-
-        const dupKey = (item) => {
-          const route = String(item?.telegramRoute || "").toLowerCase();
-          const source = String(item?.source || "").toLowerCase();
-          const id = String(item?.id || "").toLowerCase();
-          const isTelegram = id.startsWith("tg-") || id.startsWith("tgm-") || source.includes("telegram");
-          if (!isTelegram || route !== "nurse") return "";
-
-          const date = normalizeDateKey(item?.registrationDate || "");
-          const service = normalizeDupText(item?.service || "");
-          const customer = normalizeDupText(item?.customerName || "");
-          const contract = normalizeContractCodeSafe(item?.mahd || "") || "-";
-          const time = normalizeDupText(item?.appointmentTime || "") || "-";
-          if (!date || !service || !customer) return "";
-          return `${date}__${service}__${customer}__${contract}__${time}`;
-        };
-
-        const list = Array.isArray(rows) ? rows : [];
-        const bestByKey = new Map();
-        const removedIndexes = new Set();
-
-        list.forEach((item, index) => {
-          const key = dupKey(item);
-          if (!key) return;
-          const prev = bestByKey.get(key);
-          if (!prev) {
-            bestByKey.set(key, { index, score: recency(item) });
-            return;
-          }
-          const score = recency(item);
-          if (score >= prev.score) {
-            removedIndexes.add(prev.index);
-            bestByKey.set(key, { index, score });
-          } else {
-            removedIndexes.add(index);
-          }
-        });
-
-        if (!removedIndexes.size) return list;
-        return list.filter((_, index) => !removedIndexes.has(index));
-      };
-
-      // Merge all list fields — never replace anything blindly.
-      incomingAppState.schedules = mergeLists(existingAppState.schedules, incomingAppState.schedules);
-      incomingAppState.schedules = dedupeTelegramNurseSchedules(incomingAppState.schedules);
-      incomingAppState.deletedScheduleIds = mergeDeletedScheduleIds(existingAppState.deletedScheduleIds, incomingAppState.deletedScheduleIds);
-      incomingAppState.schedules = incomingAppState.schedules.filter((item) => !isScheduleDeletedByMarkerMap(item, incomingAppState.deletedScheduleIds));
-      incomingAppState.customers = mergeLists(existingAppState.customers, incomingAppState.customers);
-      incomingAppState.deletedCustomerIds = mergeDeletedScheduleIds(existingAppState.deletedCustomerIds, incomingAppState.deletedCustomerIds);
-      incomingAppState.customers = incomingAppState.customers.filter((item) => {
-        const customerId = String(item?.id || "").trim();
-        if (!customerId) return true;
-        return !incomingAppState.deletedCustomerIds[customerId];
-      });
-      incomingAppState.inventoryItems = mergeLists(existingAppState.inventoryItems, incomingAppState.inventoryItems);
-      incomingAppState.inventoryTransactions = mergeLists(existingAppState.inventoryTransactions, incomingAppState.inventoryTransactions);
-      incomingAppState.customerCareManualRows = mergeLists(existingAppState.customerCareManualRows, incomingAppState.customerCareManualRows);
-      incomingAppState.deletedCustomerCareManualRowIds = mergeDeletedScheduleIds(existingAppState.deletedCustomerCareManualRowIds, incomingAppState.deletedCustomerCareManualRowIds);
-      incomingAppState.customerCareManualRows = incomingAppState.customerCareManualRows.filter((item) => {
-        const rowKey = String(item?.key || "").trim();
-        if (!rowKey) return true;
-        return !incomingAppState.deletedCustomerCareManualRowIds[rowKey];
-      });
-      incomingAppState.newsPosts = mergeLists(existingAppState.newsPosts, incomingAppState.newsPosts);
-      incomingAppState.newsPinned = mergeLists(existingAppState.newsPinned, incomingAppState.newsPinned);
-      incomingAppState.newsEvents = mergeLists(existingAppState.newsEvents, incomingAppState.newsEvents);
-      incomingAppState.accountingCashflow = mergeLists(existingAppState.accountingCashflow, incomingAppState.accountingCashflow);
-      incomingAppState.accountingAttendance = mergeLists(existingAppState.accountingAttendance, incomingAppState.accountingAttendance);
-      incomingAppState.recycleBin = mergeLists(existingAppState.recycleBin, incomingAppState.recycleBin);
-      incomingAppState.activities = mergeLists(existingAppState.activities, incomingAppState.activities);
-      incomingAppState.reports = mergeLists(existingAppState.reports, incomingAppState.reports);
-      state.appState = incomingAppState;
-      state.appState.updatedAt = Date.now();
-      state.updatedAt = Date.now();
-      const saved = await writeState(state);
-      sendJson(res, 200, {
-        ok: true,
-        updatedAt: saved.appState.updatedAt,
-        counts: {
-          customers: saved.appState.customers.length,
-          schedules: saved.appState.schedules.length,
-          inventoryItems: saved.appState.inventoryItems.length,
-          inventoryTransactions: saved.appState.inventoryTransactions.length,
-          activities: saved.appState.activities.length,
-          recycleBin: saved.appState.recycleBin.length,
-          newsPosts: saved.appState.newsPosts.length,
-          newsEvents: saved.appState.newsEvents.length,
-          accountingCashflow: saved.appState.accountingCashflow.length,
-          accountingAttendance: saved.appState.accountingAttendance.length,
-          reports: saved.appState.reports.length
-        }
-      });
-    } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || "Save app state failed" });
-    }
-    return;
-  }
-
-  if (method === "POST" && url.pathname === "/api/app-state/relay") {
-    try {
-      const payload = await parseJsonBody(req);
-      const updatedAt = Number(payload?.updatedAt || Date.now());
-      const clientId = String(payload?.clientId || "").trim();
-      const delta = payload?.payload && typeof payload.payload === "object" ? payload.payload : {};
-      broadcastSseEvent("app-state-relay", {
-        updatedAt,
-        clientId,
-        payload: delta
-      });
-      sendJson(res, 200, { ok: true, updatedAt });
-    } catch (error) {
-      sendJson(res, 500, { ok: false, error: error.message || "Relay app state failed" });
+      sendJson(res, 500, { ok: false, error: error.message || "Gửi báo cáo Marketing thất bại" });
     }
     return;
   }
@@ -3163,7 +2726,7 @@ const server = createServer(async (req, res) => {
       sendJson(res, 200, {
         ok: true,
         persistenceMode: PERSISTENCE_MODE,
-        mode: USE_POSTGRES ? "postgres" : USE_GIST ? "gist" : "json-file",
+        mode: USE_POSTGRES ? "postgres" : "json-file",
         durable: IS_DURABLE_STORAGE,
         renderDiskMounted: IS_RENDER_DISK_ATTACHED,
         stateFile: USE_POSTGRES ? null : STATE_FILE,
@@ -3248,4 +2811,18 @@ async function gracefulShutdown(signal) {
 }
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-// Updated at Thu Apr 23 15:27:42 +07 2026
+
+// New function to send Telegram message via Bot API
+async function sendTelegramMessage(token, chatId, text) {
+  const endpoint = `https://api.telegram.org/bot${token}/sendMessage`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML", disable_web_page_preview: true })
+  });
+  const payload = await response.json();
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.description || `sendMessage failed with HTTP ${response.status}`);
+  }
+  return payload.result;
+}
